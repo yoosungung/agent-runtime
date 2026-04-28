@@ -91,3 +91,18 @@ export function useDeleteCustomImage() {
     },
   });
 }
+
+export function useRestartCustomImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, slug }: { kind: string; slug: string }) =>
+      apiFetch(`/api/admin/custom-images/${kind}/${slug}/restart`, {
+        method: "POST",
+      }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["custom-images", "list"] });
+    },
+  });
+}

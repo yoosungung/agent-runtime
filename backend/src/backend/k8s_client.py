@@ -335,6 +335,26 @@ class K8sPoolManager:
                 _content_type="application/json-patch+json",
             )
 
+    async def restart_pool(self, kind: str, slug: str) -> None:
+        """Trigger a rolling restart by patching the restartedAt annotation."""
+        from datetime import timezone
+
+        import datetime
+
+        name = f"{kind}-pool-custom-{slug}"
+        now = datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        patch = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
+                    }
+                }
+            }
+        }
+        await self._apps.patch_namespaced_deployment(name, self._ns, patch)
+        logger.info("k8s.restart_pool done", extra={"pool": name})
+
     async def deployment_exists(self, kind: str, slug: str) -> bool:
         """Return True if the Deployment exists in K8s."""
         from kubernetes_asyncio.client.exceptions import ApiException

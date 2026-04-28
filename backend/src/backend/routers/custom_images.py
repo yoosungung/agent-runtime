@@ -1,9 +1,10 @@
 """Admin router for custom image mode pool lifecycle.
 
-POST   /api/admin/custom-images           — register + deploy
-DELETE /api/admin/custom-images/{kind}/{slug} — retire + teardown
-PATCH  /api/admin/custom-images/{kind}/{slug} — update operational params
-GET    /api/admin/custom-images           — list all image-mode entries
+POST   /api/admin/custom-images                      — register + deploy
+GET    /api/admin/custom-images                      — list all image-mode entries
+DELETE /api/admin/custom-images/{kind}/{slug}        — retire + teardown
+PATCH  /api/admin/custom-images/{kind}/{slug}        — update operational params
+POST   /api/admin/custom-images/{kind}/{slug}/restart — rolling restart
 """
 
 from __future__ import annotations
@@ -414,3 +415,61 @@ async def patch_custom_image(
         slug=slug,
     )
     return _row_to_response(row)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/custom-images/{kind}/{slug}/restart
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{kind}/{slug}/restart", status_code=204)
+async def restart_custom_image(
+    kind: str,
+    slug: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal=Depends(require_admin),
+) -> None:
+    if kind not in ("agent", "mcp"):
+        raise HTTPException(status_code=400, detail="kind must be 'agent' or 'mcp'")
+
+    stmt = select(SourceMetaRow).where(
+        SourceMetaRow.kind == kind,
+        SourceMetaRow.slug == slug,
+        SourceMetaRow.deploy_mode == "image",
+        SourceMetaRow.status == "active",
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail=f"active custom image {kind}/{slug} not found"
+        )
+
+    k8s: Any = getattr(request.app.state, "k8s_pool_manager", None)
+    if k8s is None:
+        raise HTTPException(status_code=503, detail="K8s not configured")
+
+    try:
+        await k8s.restart_pool(kind, slug)
+    except Exception as exc:
+        logger.error("custom_image.k8s_restart_failed", extra={"slug": slug, "error": str(exc)})
+        raise HTTPException(status_code=500, detail=f"K8s restart failed: {exc}") from exc
+
+    db.add(
+        make_audit_row(
+            "custom_image.restart",
+            principal.user_id,
+            principal.sub,
+            kind=kind,
+            slug=slug,
+        )
+    )
+    await db.commit()
+
+    log_event(
+        "custom_image.restart",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        slug=slug,
+    )

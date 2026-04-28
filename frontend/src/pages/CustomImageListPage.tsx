@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCustomImageList, useDeleteCustomImage, type CustomImage } from "../hooks/useCustomImages";
+import {
+  useCustomImageList,
+  useDeleteCustomImage,
+  useRestartCustomImage,
+  type CustomImage,
+} from "../hooks/useCustomImages";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
 interface Props {
@@ -31,7 +36,9 @@ export function CustomImageListPage({ kind }: Props) {
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useCustomImageList(kind);
   const deleteMut = useDeleteCustomImage();
+  const restartMut = useRestartCustomImage();
   const [deleteTarget, setDeleteTarget] = useState<CustomImage | null>(null);
+  const [restartTarget, setRestartTarget] = useState<CustomImage | null>(null);
 
   const title = kind === "agent" ? "Custom Agent Images" : "Custom MCP Images";
   const newPath = kind === "agent" ? "/custom-agents/new" : "/custom-mcp/new";
@@ -41,6 +48,12 @@ export function CustomImageListPage({ kind }: Props) {
     await deleteMut.mutateAsync({ kind: deleteTarget.kind, slug: deleteTarget.slug });
     setDeleteTarget(null);
     refetch();
+  };
+
+  const handleRestart = async () => {
+    if (!restartTarget) return;
+    await restartMut.mutateAsync({ kind: restartTarget.kind, slug: restartTarget.slug });
+    setRestartTarget(null);
   };
 
   return (
@@ -111,7 +124,16 @@ export function CustomImageListPage({ kind }: Props) {
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDate(item.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-4 py-3 text-sm flex gap-3">
+                      {item.status === "active" && (
+                        <button
+                          onClick={() => setRestartTarget(item)}
+                          disabled={restartMut.isPending}
+                          className="text-blue-600 hover:underline text-xs disabled:opacity-50"
+                        >
+                          Restart
+                        </button>
+                      )}
                       {item.status !== "retired" && (
                         <button
                           onClick={() => setDeleteTarget(item)}
@@ -128,6 +150,19 @@ export function CustomImageListPage({ kind }: Props) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={restartTarget !== null}
+        title="Restart deployment?"
+        description={
+          restartTarget
+            ? `This will trigger a rolling restart of "${restartTarget.name} ${restartTarget.version}" (slug: ${restartTarget.slug}). Pods will be replaced one by one.`
+            : ""
+        }
+        onConfirm={handleRestart}
+        onCancel={() => setRestartTarget(null)}
+        confirmLabel="Restart"
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

@@ -326,3 +326,38 @@ async def test_patch_nonexistent_404(client: AsyncClient):
     assert r.status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# POST /api/admin/custom-images/{kind}/{slug}/restart
+# ---------------------------------------------------------------------------
+
+
+async def test_restart_no_k8s_503(client: AsyncClient):
+    # k8s_pool_manager is None in test fixture → 503
+    create_r = await client.post(
+        "/api/admin/custom-images",
+        json={
+            "kind": "agent",
+            "name": "restart-test",
+            "version": "v1",
+            "image_uri": "reg/restart-test:v1",
+            "slug": "restart-test-v1",
+        },
+        headers=_headers(),
+    )
+    assert create_r.status_code == 201
+
+    r = await client.post(
+        "/api/admin/custom-images/agent/restart-test-v1/restart",
+        headers=_headers(),
+    )
+    assert r.status_code == 503
+
+
+async def test_restart_nonexistent_404(client: AsyncClient):
+    r = await client.post(
+        "/api/admin/custom-images/agent/no-such-slug/restart",
+        headers=_headers(),
+    )
+    assert r.status_code == 404
+
+
