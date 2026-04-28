@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-api
+  namespace: runtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deploy-api
+  template:
+    metadata:
+      labels:
+        app: deploy-api
+    spec:
+      serviceAccountName: deploy-api
+      containers:
+        - name: deploy-api
+          image: agents-runtime/deploy-api:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          envFrom:
+            - configMapRef:
+                name: runtime-env
+            - secretRef:
+                name: postgres-credentials
+          env:
+            - name: SERVICE_NAME
+              value: deploy-api
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deploy-api
+  namespace: runtime
+spec:
+  selector:
+    app: deploy-api
+  ports:
+    - port: 8080
+      targetPort: 8080

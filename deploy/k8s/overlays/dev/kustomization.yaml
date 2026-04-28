@@ -1,0 +1,127 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: runtime
+resources:
+  - ../../base
+images:
+  - name: agents-runtime/ext-authz
+    newName: ax1-images.kr.ncr.ntruss.com/ext-authz
+  - name: agents-runtime/auth
+    newName: ax1-images.kr.ncr.ntruss.com/auth
+  - name: agents-runtime/deploy-api
+    newName: ax1-images.kr.ncr.ntruss.com/deploy-api
+  - name: agents-runtime/agent-base
+    newName: ax1-images.kr.ncr.ntruss.com/agent-base
+  - name: agents-runtime/mcp-base
+    newName: ax1-images.kr.ncr.ntruss.com/mcp-base
+  - name: agents-runtime/backend
+    newName: ax1-images.kr.ncr.ntruss.com/backend
+patches:
+  - patch: |-
+      - op: replace
+        path: /data/ENV
+        value: dev
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: DEBUG
+      - op: replace
+        path: /data/OTLP_ENDPOINT
+        value: http://otel-collector.monitoring.svc.cluster.local:4317
+      - op: add
+        path: /data/OPIK_URL
+        value: http://opik-frontend.opik-ax1.svc.cluster.local:5173/api
+    target:
+      kind: ConfigMap
+      name: runtime-env
+  - patch: |-
+      $patch: delete
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      metadata:
+        name: unused
+    target:
+      group: keda.sh
+      kind: ScaledObject
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+    target:
+      kind: Deployment
+      name: pgbouncer-rw
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+    target:
+      kind: Deployment
+      name: pgbouncer-ro
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_READ_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_PGBOUNCER
+          value: "false"
+    target:
+      kind: Deployment
+      name: backend
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_READ_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_PGBOUNCER
+          value: "false"
+    target:
+      kind: Deployment
+      name: auth
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_READ_DSN
+          value: "postgresql+asyncpg://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_PGBOUNCER
+          value: "false"
+    target:
+      kind: Deployment
+      name: deploy-api
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+    target:
+      kind: HorizontalPodAutoscaler

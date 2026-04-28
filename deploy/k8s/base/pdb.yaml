@@ -1,0 +1,57 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-pdb
+  namespace: runtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: deploy-api-pdb
+  namespace: runtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: deploy-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agent-pool-compiled-graph-pdb
+  namespace: runtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: agent-pool
+      kind: compiled-graph
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-pool-fastmcp-pdb
+  namespace: runtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mcp-pool
+      kind: fastmcp
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-pool-mcp-sdk-pdb
+  namespace: runtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mcp-pool
+      kind: mcp-sdk

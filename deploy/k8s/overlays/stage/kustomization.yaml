@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: runtime
+resources:
+  - ../../base
+patches:
+  - patch: |-
+      - op: replace
+        path: /data/ENV
+        value: stage
+      - op: replace
+        path: /data/OTLP_ENDPOINT
+        value: http://otel-collector.monitoring.svc.cluster.local:4317
+      - op: add
+        path: /data/OPIK_URL
+        value: http://opik-frontend.opik-ax1.svc.cluster.local:5173/api
+    target:
+      kind: ConfigMap
+      name: runtime-env

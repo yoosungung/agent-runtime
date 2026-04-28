@@ -1,0 +1,89 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agents-runtime
+  namespace: runtime
+  annotations:
+    # Disable buffering so SSE / chunked streaming reaches clients immediately.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - agents.didim365.app
+      secretName: agents-didim365-app-tls  # managed by cert-manager
+  rules:
+    - host: agents.didim365.app
+      http:
+        paths:
+          # auth is not exposed publicly. Browser → POST /api/auth/login (backend BFF)
+          # → backend proxies to auth:8080/login intra-cluster. /verify is internal-only.
+          # /login on this host is an SPA route served by the backend catch-all below.
+
+          # Phase 2: agent + mcp invoke routes go through Envoy.
+          # Envoy's HTTP ext_authz calls ext-authz for auth + access + resolve
+          # + pod pick; the body is relayed by Envoy (C++) directly to the
+          # chosen pool pod. /v1/mcp/invoke-internal is intentionally kept
+          # off this public Ingress — internal callers dial the in-cluster
+          # `envoy` Service directly.
+          - path: /v1/agents/
+            pathType: Prefix
+            backend:
+              service:
+                name: envoy
+                port:
+                  number: 8080
+          - path: /v1/mcp/invoke
+            pathType: Exact
+            backend:
+              service:
+                name: envoy
+                port:
+                  number: 8080
+
+          - path: /v1/mcp/servers
+            pathType: Prefix
+            backend:
+              service:
+                name: envoy
+                port:
+                  number: 8080
+
+          - path: /v1/mcp/stream
+            pathType: Exact
+            backend:
+              service:
+                name: envoy
+                port:
+                  number: 8080
+
+          # deploy-api: source-meta and user-meta management APIs.
+          # Restrict to VPN/CIDR in production via an overlay annotation:
+          #   nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+          - path: /v1/source-meta
+            pathType: Prefix
+            backend:
+              service:
+                name: deploy-api
+                port:
+                  number: 8080
+          - path: /v1/user-meta
+            pathType: Prefix
+            backend:
+              service:
+                name: deploy-api
+                port:
+                  number: 8080
+
+          # admin console SPA + backend API (must be last — catch-all)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000

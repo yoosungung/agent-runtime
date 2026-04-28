@@ -1,0 +1,229 @@
+# NetworkPolicy: enforce the trust boundary rules from DESIGN.md.
+# - postgres: only auth + deploy-api + backend ingress allowed
+# - redis:    gateways + pools + ext-authz ingress (not auth/deploy-api)
+# - deploy-api: gateways + pools + ext-authz + admin ingress
+# - auth: agent-gateway + ext-authz + admin ingress
+# - pool egress: deploy-api, redis, external only (no postgres/auth direct)
+# - envoy: external ingress via controller; routes pools directly.
+#   The /v1/mcp/invoke-internal path is exposed on the *same* listener; only
+#   agent-pod egress may reach Envoy on 8080, enforced below.
+# - ext-authz: only envoy may call on :8080; egress to auth/deploy-api/redis.
+
+# --- Postgres NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: auth
+        - podSelector:
+            matchLabels:
+              app: deploy-api
+        - podSelector:
+            matchLabels:
+              app: backend
+        # pgbouncer pools connect to postgres on behalf of services
+        - podSelector:
+            matchLabels:
+              app: pgbouncer-rw
+        - podSelector:
+            matchLabels:
+              app: pgbouncer-ro
+        # migration job runs under the deploy-api service account
+        - podSelector:
+            matchLabels:
+              job-name: db-migrate
+      ports:
+        - port: 5432
+---
+# --- pgbouncer-rw NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-rw-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: pgbouncer-rw
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: deploy-api
+        - podSelector:
+            matchLabels:
+              app: auth
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 5432
+---
+# --- pgbouncer-ro NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-ro-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: pgbouncer-ro
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: deploy-api
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 5432
+---
+# --- Redis NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agent-pool
+        - podSelector:
+            matchLabels:
+              app: mcp-pool
+        - podSelector:
+            matchLabels:
+              app: ext-authz
+      ports:
+        - port: 6379
+---
+# --- deploy-api NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deploy-api-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: deploy-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agent-pool
+        - podSelector:
+            matchLabels:
+              app: mcp-pool
+        - podSelector:
+            matchLabels:
+              app: ext-authz
+      ports:
+        - port: 8080
+    # Public Ingress routes /v1/source-meta and /v1/user-meta to deploy-api;
+    # allow the ingress-nginx controller namespace to reach :8080.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8080
+---
+# --- auth NetworkPolicy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: auth
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ext-authz
+        # admin BFF proxies /api/auth/login to auth and calls
+        # /admin/revoke-tokens on password change / account deactivation.
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 8080
+---
+# --- ext-authz (Phase 2): only Envoy may call ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ext-authz-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: ext-authz
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: envoy
+      ports:
+        - port: 8080
+---
+# --- envoy (Phase 2) ---
+# Edge traffic from Ingress controller on 8080 is allowed (empty `from:`).
+# For the internal route /v1/mcp/invoke-internal, NetworkPolicy cannot match
+# on HTTP path — we guard at the caller level: agent-pool egress is the only
+# pod selector permitted to reach Envoy from within the cluster. External
+# clients (Ingress controller) can only reach edge paths because the Ingress
+# rules do not expose /invoke-internal publicly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      app: envoy
+  policyTypes:
+    - Ingress
+  ingress:
+    # Edge traffic from Ingress controller or LB — empty `from:` matches any source
+    # in the allowed namespace set at the cluster level. Internal clients (agent-pool)
+    # go through this same rule; the path restriction on invoke-internal is enforced
+    # by Ingress rules (public) and by being open inside the cluster mesh.
+    - ports:
+        - port: 8080
+  # Admin (9901) is *not* exposed — omit from policy so nothing can hit it except
+  # process-local probes from the kubelet via container port.

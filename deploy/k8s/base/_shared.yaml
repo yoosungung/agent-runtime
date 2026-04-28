@@ -1,0 +1,14 @@
+# ConfigMap shared by all services. POSTGRES_DSN is NOT here — injected only into auth/deploy-api.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtime-env
+  namespace: runtime
+data:
+  ENV: "dev"
+  LOG_LEVEL: "INFO"
+  AUTH_SERVICE_URL: "http://auth.runtime.svc.cluster.local:8080"
+  DEPLOY_API_URL: "http://deploy-api.runtime.svc.cluster.local:8080"
+  JWT_ISSUER: "agents-runtime"
+  REDIS_URL: "redis://redis.runtime.svc.cluster.local:6379"
+  OTLP_ENDPOINT: ""  # empty = disabled; set per overlay or via CI/CD env injection

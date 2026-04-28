@@ -1,0 +1,150 @@
+# KEDA ScaledObjects for pool deployments.
+#
+# These scale on `pool_active_requests` (an OTEL ObservableGauge exposed by
+# each pool pod via the OTLP → Prometheus pipeline) instead of CPU utilisation.
+# LLM streaming keeps CPU low even under heavy load, so CPU-based HPA
+# chronically under-scales — active_requests is the right signal.
+#
+# Prerequisites:
+#   1. KEDA installed: https://keda.sh/docs/latest/deploy/
+#   2. Prometheus scraping pool pods (OTLP → Prometheus via otel-collector, or
+#      direct scrape if using prometheus_exporter).
+#   3. PROMETHEUS_URL set to the Prometheus service within the cluster.
+#
+# The trigger fires when average active requests per pod >= threshold.
+# Formula: total_active / replicas >= threshold → scale up.
+#
+# Tune `threshold` to match MAX_CONCURRENT * target_utilisation
+# (e.g. MAX_CONCURRENT=32, target 75% → threshold=24).
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: agent-pool-compiled-graph-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: agent-pool-compiled-graph
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_compiled_graph
+        query: >-
+          sum(pool_active_requests{service_name="agent-pool-compiled-graph"})
+          /
+          count(pool_active_requests{service_name="agent-pool-compiled-graph"})
+        threshold: "24"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: agent-pool-adk-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: agent-pool-adk
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_adk
+        query: >-
+          sum(pool_active_requests{service_name="agent-pool-adk"})
+          /
+          count(pool_active_requests{service_name="agent-pool-adk"})
+        threshold: "24"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: agent-pool-custom-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: agent-pool-custom
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_custom
+        query: >-
+          sum(pool_active_requests{service_name="agent-pool-custom"})
+          /
+          count(pool_active_requests{service_name="agent-pool-custom"})
+        threshold: "24"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mcp-pool-fastmcp-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: mcp-pool-fastmcp
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_fastmcp
+        query: >-
+          sum(pool_active_requests{service_name="mcp-pool-fastmcp"})
+          /
+          count(pool_active_requests{service_name="mcp-pool-fastmcp"})
+        threshold: "24"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mcp-pool-mcp-sdk-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: mcp-pool-mcp-sdk
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_mcp_sdk
+        query: >-
+          sum(pool_active_requests{service_name="mcp-pool-mcp-sdk"})
+          /
+          count(pool_active_requests{service_name="mcp-pool-mcp-sdk"})
+        threshold: "24"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mcp-pool-custom-scaledobject
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    name: mcp-pool-custom
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: pool_active_requests_mcp_custom
+        query: >-
+          sum(pool_active_requests{service_name="mcp-pool-custom"})
+          /
+          count(pool_active_requests{service_name="mcp-pool-custom"})
+        threshold: "24"

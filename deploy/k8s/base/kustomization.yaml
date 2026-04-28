@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: runtime
+resources:
+  - namespace.yaml
+  - _shared.yaml
+  - secrets.yaml
+  - serviceaccounts.yaml
+  - postgres.yaml
+  - pgbouncer.yaml
+  - redis.yaml
+  - migration-job.yaml
+  - auth.yaml
+  - deploy-api.yaml
+  - backend.yaml
+  - ext-authz.yaml
+  - envoy.yaml
+  - agent-pool-compiled-graph.yaml
+  - agent-pool-adk.yaml
+  - agent-pool-custom.yaml
+  - mcp-pool-fastmcp.yaml
+  - mcp-pool-mcp-sdk.yaml
+  - mcp-pool-custom.yaml
+  - network-policy.yaml
+  - pdb.yaml
+  - hpa.yaml
+  - keda.yaml
+  - ingress.yaml

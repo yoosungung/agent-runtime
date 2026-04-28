@@ -1,0 +1,109 @@
+# agent-runtime — architecture diagram
+#
+# Build:
+#   d2 agent-runtime.d2 agent-runtime.svg
+#   d2 agent-runtime.d2 agent-runtime.png    # needs headless chrome (playwright)
+#
+# Install d2:  brew install d2   (or see https://d2lang.com/tour/install)
+#
+# Legend
+#   solid arrow  — request / data-plane
+#   dashed arrow — meta lookup / control-plane
+#   green fill   — runtime pool kinds implemented today
+
+direction: right
+
+classes: {
+  db: {
+    shape: cylinder
+  }
+  ext: {
+    style.stroke-dash: 3
+    style.fill: "#fafafa"
+  }
+  impl: {
+    style.fill: "#d7f2d1"
+  }
+  meta: {
+    style.stroke-dash: 3
+  }
+}
+
+user: User {
+  chat_ui: Chat UI
+  bff: "backend (BFF)"
+  chat_ui -> bff: "invoke (REST/SSE)"
+}
+
+admin: Admin {
+  admin_ui: Admin UI
+  admin_service: "backend (Admin API)"
+  admin_ui -> admin_service
+}
+
+runtime: Runtime {
+  envoy: Envoy
+  ext_authz: ext-authz
+  auth: auth
+  deploy_api: deploy-api
+  postgres: Postgres { class: db }
+
+  agent_pools: Agent-Pools {
+    compiled_graph: "agent:compiled_graph" { class: impl }
+    adk: "agent:adk" { class: impl }
+    custom: "agent:custom"
+  }
+
+  mcp_pools: MCP-Pools {
+    fastmcp: "mcp:fastmcp" { class: impl }
+    mcp_sdk: "mcp:mcp_sdk" { class: impl }
+    didim_rag: "mcp:didim_rag"
+    t2sql: "mcp:t2sql"
+  }
+
+  envoy -> ext_authz: "ext_authz check\n(verify+access+resolve+pick)" { class: meta }
+  ext_authz -> auth: "verify → Principal\n+ access[]" { class: meta }
+  ext_authz -> deploy_api: "resolve → source_meta" { class: meta }
+}
+
+infra: Infra {
+  class: ext
+  llm: "LLM (API, vLLM)"
+  otel: "Observability (OTel)"
+  storage: Storage { class: db }
+  redis: Redis { class: db }
+  bundle_store: "Bundle Store\n(S3 / OCI)"
+  didim_rag_store: DidimRAG
+  pgvector: "postgres pgvector" { class: db }
+  didim_rag_store -> storage
+}
+
+# --- admin / register -----------------------------------------------------
+admin.admin_service -> runtime.deploy_api: "register\nsource_meta / user_meta"
+
+# --- DB access (Postgres touched only by auth & deploy-api) --------------
+runtime.auth -> runtime.postgres: "users,\nrefresh_tokens,\nuser_resource_access"
+runtime.deploy_api -> runtime.postgres: "source_meta,\nuser_meta\n(read-only)"
+
+# --- login -----------------------------------------------------------------
+user.bff -> runtime.auth: "POST /login → JWT"
+
+# --- agent data-plane: BFF → Envoy → pool --------------------------------
+user.bff -> runtime.envoy: "POST /v1/agents/invoke\n+ Bearer JWT"
+runtime.envoy -> runtime.agent_pools: "POST /invoke\n(id only, x-pod-addr)"
+runtime.agent_pools -> runtime.deploy_api: "resolve (re-fetch)" { class: meta }
+runtime.agent_pools -> infra.llm
+runtime.agent_pools -> infra.redis: "checkpointer\n(session state)" { class: meta }
+runtime.agent_pools -> infra.bundle_store: "bundle fetch" { class: meta }
+runtime.agent_pools -> infra.otel: telemetry { class: meta }
+
+# --- agent → MCP (tool call via Envoy internal route) --------------------
+runtime.agent_pools -> runtime.envoy: "POST /v1/mcp/invoke-internal\n+ JWT forward"
+runtime.envoy -> runtime.mcp_pools: "POST /invoke\n(id only, x-pod-addr)"
+runtime.mcp_pools -> runtime.deploy_api: "resolve (re-fetch)" { class: meta }
+
+# --- MCP → external infra -------------------------------------------------
+runtime.mcp_pools.didim_rag -> infra.didim_rag_store
+runtime.mcp_pools.t2sql -> infra.pgvector
+runtime.mcp_pools -> infra.bundle_store: "bundle fetch" { class: meta }
+runtime.mcp_pools -> infra.otel: telemetry { class: meta }

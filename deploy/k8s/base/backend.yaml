@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: agents-runtime/backend:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          envFrom:
+            - configMapRef:
+                name: runtime-env
+            - secretRef:
+                name: postgres-credentials
+            - secretRef:
+                name: s3-creds
+                optional: true
+          env:
+            - name: SERVICE_NAME
+              value: backend
+            - name: AUTH_URL
+              value: http://auth:8080
+            - name: BACKEND_SERVE_SPA
+              value: "true"
+            - name: BUNDLE_STORAGE_DIR
+              value: /data/bundles
+            # Pool pods fetch bundles via the loader's http scheme handler;
+            # without a public base URL, stored bundle_uri lacks a scheme
+            # and the loader rejects it ("unsupported bundle scheme: ").
+            - name: BUNDLE_PUBLIC_BASE_URL
+              value: http://backend.runtime.svc.cluster.local:8000/bundles
+            - name: INITIAL_ADMIN_PASSWORD_FILE
+              value: /run/secrets/initial-admin-password
+          volumeMounts:
+            - name: bundle-storage
+              mountPath: /data/bundles
+            - name: initial-admin-password
+              mountPath: /run/secrets/initial-admin-password
+              subPath: password
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+      volumes:
+        - name: bundle-storage
+          persistentVolumeClaim:
+            claimName: backend-bundle-pvc
+        - name: initial-admin-password
+          secret:
+            secretName: initial-admin-password
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: runtime
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-bundle-pvc
+  namespace: runtime
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

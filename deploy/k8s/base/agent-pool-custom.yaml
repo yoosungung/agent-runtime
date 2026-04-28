@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-pool-custom
+  namespace: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-pool
+      kind: custom
+  template:
+    metadata:
+      labels:
+        app: agent-pool
+        kind: custom
+    spec:
+      serviceAccountName: agent-pool
+      containers:
+        - name: agent
+          image: agents-runtime/agent-base:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+          envFrom:
+            - configMapRef:
+                name: runtime-env
+          env:
+            - name: SERVICE_NAME
+              value: agent-pool-custom
+            - name: RUNTIME_KIND
+              value: custom
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_PORT
+              value: "8080"
+            - name: MAX_CONCURRENT
+              value: "32"
+            - name: REGISTRY_HEARTBEAT_INTERVAL_SEC
+              value: "2"
+            - name: REGISTRY_TTL_SEC
+              value: "3"
+            - name: MCP_GATEWAY_URL
+              value: http://mcp-gateway.runtime.svc.cluster.local:8080
+          volumeMounts:
+            - name: bundles
+              mountPath: /var/cache/agent-bundles
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: bundles
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-pool-custom
+  namespace: runtime
+spec:
+  selector:
+    app: agent-pool
+    kind: custom
+  ports:
+    - port: 8080
+      targetPort: 8080

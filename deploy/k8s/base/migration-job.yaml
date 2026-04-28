@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-migrations
+  namespace: runtime
+# 소스 원본: backend/migrations/0001_init.sql — 수정 시 양쪽을 같이 업데이트.
+# (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
+data:
+  0001_init.sql: |
+    -- auth 도메인
+    CREATE TABLE IF NOT EXISTS users (
+        id                   BIGSERIAL PRIMARY KEY,
+        username             VARCHAR(128) NOT NULL,
+        password_hash        VARCHAR(256) NOT NULL,
+        tenant               VARCHAR(64),
+        disabled             BOOLEAN      NOT NULL DEFAULT FALSE,
+        is_admin             BOOLEAN      NOT NULL DEFAULT FALSE,
+        must_change_password BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        CONSTRAINT uq_users_username UNIQUE (username)
+    );
+    CREATE TABLE IF NOT EXISTS user_resource_access (
+        user_id    BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind       VARCHAR(16)  NOT NULL,
+        name       VARCHAR(128) NOT NULL,
+        created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, kind, name)
+    );
+    CREATE INDEX IF NOT EXISTS ix_ura_kind_name ON user_resource_access (kind, name);
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id          BIGSERIAL PRIMARY KEY,
+        user_id     BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash  VARCHAR(128) NOT NULL UNIQUE,
+        expires_at  TIMESTAMPTZ  NOT NULL,
+        revoked_at  TIMESTAMPTZ,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id         SERIAL       PRIMARY KEY,
+        key_hash   VARCHAR(128) UNIQUE NOT NULL,
+        name       VARCHAR(128) NOT NULL,
+        tenant     VARCHAR(64),
+        disabled   BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ
+    );
+
+    -- 번들 메타 도메인
+    CREATE TABLE IF NOT EXISTS source_meta (
+        id           BIGSERIAL PRIMARY KEY,
+        kind         VARCHAR(16)  NOT NULL,
+        name         VARCHAR(128) NOT NULL,
+        version      VARCHAR(64)  NOT NULL,
+        runtime_pool VARCHAR(64)  NOT NULL,
+        entrypoint   VARCHAR(256) NOT NULL,
+        bundle_uri   VARCHAR(512) NOT NULL,
+        checksum     VARCHAR(128),
+        sig_uri      VARCHAR(512),
+        config       JSONB        NOT NULL DEFAULT '{}'::jsonb,
+        retired      BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        CONSTRAINT uq_source_meta_nv UNIQUE (kind, name, version)
+    );
+    CREATE INDEX IF NOT EXISTS ix_source_meta_name ON source_meta (name);
+    CREATE INDEX IF NOT EXISTS ix_source_meta_kind_name_created ON source_meta (kind, name, created_at DESC);
+    CREATE INDEX IF NOT EXISTS ix_source_meta_checksum ON source_meta (checksum);
+    CREATE TABLE IF NOT EXISTS user_meta (
+        id             BIGSERIAL PRIMARY KEY,
+        source_meta_id BIGINT       NOT NULL REFERENCES source_meta(id) ON DELETE CASCADE,
+        principal_id   VARCHAR(128) NOT NULL,
+        config         JSONB        NOT NULL DEFAULT '{}'::jsonb,
+        secrets_ref    VARCHAR(512),
+        updated_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        CONSTRAINT uq_user_meta_source_principal UNIQUE (source_meta_id, principal_id)
+    );
+    CREATE INDEX IF NOT EXISTS ix_user_meta_principal ON user_meta (principal_id);
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: runtime
+  annotations:
+    # Re-run by bumping this value (or delete + re-apply the Job).
+    migration-version: "0001"
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      # TODO: backend 배포 도입 시 serviceAccountName 을 backend로 교체.
+      serviceAccountName: deploy-api
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: postgres:16-alpine
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Applying /migrations/0001_init.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0001_init.sql
+              echo "Migration applied."
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: db-migrations

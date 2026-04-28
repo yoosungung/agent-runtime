@@ -1,0 +1,7 @@
+{
+    "service_name": "s3",
+    "endpoint_url": "https://kr.object.ncloudstorage.com",
+    "region_name": "kr-standard",
+    "access_key": "YOUR_ACCESS_KEY",
+    "secret_key": "YOUR_SECRET_KEY"
+}

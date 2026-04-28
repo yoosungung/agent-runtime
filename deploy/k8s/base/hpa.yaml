@@ -1,0 +1,44 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: deploy-api-hpa
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploy-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# Agent/MCP pool HPAs are managed by KEDA ScaledObjects (keda.yaml) which
+# scale on pool_active_requests (an OTEL gauge from each pod).
+# The CPU-based HPA below is kept as a fallback for environments without KEDA.
+# When KEDA is active, HPA and ScaledObject coexist but ScaledObject wins
+# (KEDA creates its own HPA with higher priority).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agent-pool-compiled-graph-hpa
+  namespace: runtime
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agent-pool-compiled-graph
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

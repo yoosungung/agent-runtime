@@ -1,0 +1,15 @@
+node_modules
+frontend/node_modules
+frontend/dist
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.md
+.git
+.gitignore
+tests/

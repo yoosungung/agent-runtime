@@ -1,0 +1,177 @@
+# PgBouncer — connection pooling layer between deploy-api and Postgres.
+#
+# Two instances:
+#   pgbouncer-rw  →  primary postgres  (writes + reads that need strong consistency)
+#   pgbouncer-ro  →  read replica      (read-heavy /v1/resolve traffic)
+#
+# In dev both instances point to the same postgres pod.
+# In staging/prod override POSTGRESQL_HOST for pgbouncer-ro to the actual
+# read-replica endpoint (e.g. RDS reader endpoint or streaming replica).
+#
+# pool_mode = transaction: required for high-QPS workloads; asyncpg prepared
+# statements are disabled on the app side (POSTGRES_PGBOUNCER=true).
+
+# ─── pgbouncer-rw ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer-rw
+  namespace: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbouncer-rw
+  template:
+    metadata:
+      labels:
+        app: pgbouncer-rw
+    spec:
+      containers:
+        - name: pgbouncer
+          image: ghcr.io/bitnami/pgbouncer:1.23.1
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          env:
+            - name: POSTGRESQL_HOST
+              value: postgres.runtime.svc.cluster.local
+            - name: POSTGRESQL_PORT
+              value: "5432"
+            - name: POSTGRESQL_DATABASE
+              value: runtime
+            - name: POSTGRESQL_USERNAME
+              value: runtime
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: PGBOUNCER_AUTH_TYPE
+              value: trust
+            - name: PGBOUNCER_POOL_MODE
+              value: transaction
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "1000"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "25"
+            - name: PGBOUNCER_MIN_POOL_SIZE
+              value: "5"
+            - name: PGBOUNCER_RESERVE_POOL_SIZE
+              value: "5"
+            - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
+              value: extra_float_digits
+            - name: PGBOUNCER_SERVER_RESET_QUERY_ALWAYS
+              value: "no"
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer-rw
+  namespace: runtime
+spec:
+  selector:
+    app: pgbouncer-rw
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+# ─── pgbouncer-ro ────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer-ro
+  namespace: runtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pgbouncer-ro
+  template:
+    metadata:
+      labels:
+        app: pgbouncer-ro
+    spec:
+      containers:
+        - name: pgbouncer
+          image: ghcr.io/bitnami/pgbouncer:1.23.1
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          env:
+            # In staging/prod: override via kustomize patch with the read-replica host
+            - name: POSTGRESQL_HOST
+              value: postgres.runtime.svc.cluster.local
+            - name: POSTGRESQL_PORT
+              value: "5432"
+            - name: POSTGRESQL_DATABASE
+              value: runtime
+            - name: POSTGRESQL_USERNAME
+              value: runtime
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: PGBOUNCER_AUTH_TYPE
+              value: trust
+            - name: PGBOUNCER_POOL_MODE
+              value: transaction
+            # Larger pool for read-heavy /v1/resolve traffic
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "2000"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "50"
+            - name: PGBOUNCER_MIN_POOL_SIZE
+              value: "10"
+            - name: PGBOUNCER_RESERVE_POOL_SIZE
+              value: "10"
+            - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
+              value: extra_float_digits
+            - name: PGBOUNCER_SERVER_RESET_QUERY_ALWAYS
+              value: "no"
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer-ro
+  namespace: runtime
+spec:
+  selector:
+    app: pgbouncer-ro
+  ports:
+    - port: 5432
+      targetPort: 5432

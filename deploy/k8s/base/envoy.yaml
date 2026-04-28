@@ -1,0 +1,271 @@
+# Envoy data plane for Phase 2.
+# Fronts all /v1/agents and /v1/mcp traffic. ext_authz (HTTP) performs
+# auth + access + resolve + pod pick and returns x-pod-addr + x-principal
+# response headers. A Lua filter rewrites :authority to x-pod-addr; the
+# route table rewrites the path to /invoke (router matches on original
+# /v1/* path THEN rewrites — doing the rewrite in Lua before the router
+# would force re-match and fall into the catch-all 404). The
+# dynamic_forward_proxy cluster connects directly to the chosen pod.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-config
+  namespace: runtime
+data:
+  envoy.yaml: |
+    admin:
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 9901 }
+
+    static_resources:
+      listeners:
+        - name: listener_http
+          address:
+            socket_address: { address: 0.0.0.0, port_value: 8080 }
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ingress_http
+                    codec_type: AUTO
+                    # Streaming-friendly — response streams passthrough.
+                    stream_idle_timeout: 0s
+                    request_timeout: 0s
+                    access_log:
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                    http_filters:
+                      # 1) ext_authz — auth + access + resolve + pod pick
+                      - name: envoy.filters.http.ext_authz
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                          failure_mode_allow: false
+                          transport_api_version: V3
+                          with_request_body:
+                            max_request_bytes: 65536
+                            allow_partial_message: true
+                            pack_as_bytes: false
+                          http_service:
+                            server_uri:
+                              uri: http://ext-authz.runtime.svc.cluster.local:8080
+                              cluster: ext_authz_cluster
+                              timeout: 5s
+                            authorization_request:
+                              allowed_headers:
+                                patterns:
+                                  - exact: authorization
+                                  - exact: content-type
+                                  - exact: content-length
+                                  - prefix: x-
+                            authorization_response:
+                              allowed_upstream_headers:
+                                patterns:
+                                  - exact: x-pod-addr
+                                  - exact: x-pod-fallback-addr
+                                  - exact: x-principal
+                                  - exact: x-source-checksum
+                                  - exact: x-source-version
+                                  - exact: x-grace-applied
+                              allowed_client_headers:
+                                patterns:
+                                  - exact: content-type
+                                  - exact: www-authenticate
+
+                      # 2) Lua — rewrite :authority from x-pod-addr.
+                      # On retry (x-envoy-attempt-count > 1) switch to
+                      # x-pod-fallback-addr (pool Service URL) so a warm-pod
+                      # ConnectError falls back to the k8s Service.
+                      # (Path rewrite to /invoke is done in the route config
+                      # below so the router still matches on the original
+                      # /v1/* path; rewriting :path here would force the
+                      # router to re-match and fall into the 404 catch-all.)
+                      - name: envoy.filters.http.lua
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                          default_source_code:
+                            inline_string: |
+                              function envoy_on_request(h)
+                                local addr = h:headers():get("x-pod-addr")
+                                if addr and addr ~= "" then
+                                  local fallback = h:headers():get("x-pod-fallback-addr")
+                                  local attempt = tonumber(h:headers():get("x-envoy-attempt-count") or "1")
+                                  local target = (attempt > 1 and fallback and fallback ~= "") and fallback or addr
+                                  h:headers():replace(":authority", target)
+                                  h:headers():remove("x-pod-addr")
+                                  h:headers():remove("x-pod-fallback-addr")
+                                end
+                              end
+
+                      # 3) Dynamic forward proxy — resolves :authority and
+                      # populates the shared dns cache used by the DFP
+                      # cluster. Without this filter the DFP cluster has
+                      # no endpoints and Envoy returns 503 UH.
+                      - name: envoy.filters.http.dynamic_forward_proxy
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+                          dns_cache_config:
+                            name: pool_dns_cache
+                            dns_lookup_family: V4_ONLY
+                            host_ttl: 30s
+                            max_hosts: 1024
+
+                      # 4) Router — forward via dynamic_forward_proxy
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+                    route_config:
+                      name: main
+                      virtual_hosts:
+                        - name: agents_runtime
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/v1/agents/" }
+                              route:
+                                cluster: pool_dfp
+                                timeout: 0s
+                                regex_rewrite:
+                                  pattern: { google_re2: {}, regex: ".*" }
+                                  substitution: "/invoke"
+                                retry_policy:
+                                  retry_on: connect-failure,refused-stream
+                                  num_retries: 1
+                            # Discovery + stream routes go directly to ext-authz (no ext_authz filter).
+                            # Must be declared before the /v1/mcp/ prefix catch-all below.
+                            - match: { prefix: "/v1/mcp/servers" }
+                              route:
+                                cluster: ext_authz_direct
+                                timeout: 30s
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                            - match: { path: "/v1/mcp/stream" }
+                              route:
+                                cluster: ext_authz_direct
+                                timeout: 0s
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                            - match: { prefix: "/v1/mcp/" }
+                              route:
+                                cluster: pool_dfp
+                                timeout: 0s
+                                regex_rewrite:
+                                  pattern: { google_re2: {}, regex: ".*" }
+                                  substitution: "/invoke"
+                            - match: { path: "/healthz" }
+                              direct_response:
+                                status: 200
+                                body: { inline_string: "ok" }
+                            - match: { prefix: "/" }
+                              direct_response:
+                                status: 404
+                                body: { inline_string: "not found" }
+
+      clusters:
+        # ext_authz service — in-cluster DNS, HTTP/1.1.
+        - name: ext_authz_cluster
+          type: STRICT_DNS
+          connect_timeout: 2s
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: ext_authz_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: ext-authz.runtime.svc.cluster.local
+                          port_value: 8080
+
+        # Direct cluster for discovery + stream routes that bypass ext_authz filter
+        # and are handled by ext-authz itself.
+        - name: ext_authz_direct
+          type: STRICT_DNS
+          connect_timeout: 2s
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: ext_authz_direct
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: ext-authz.runtime.svc.cluster.local
+                          port_value: 8080
+
+        # Dynamic forward proxy — resolves :authority per request. After the
+        # Lua filter rewrites :authority to <pod_ip>:<port>, Envoy connects
+        # directly to that endpoint (no service-mesh sidecar assumed).
+        - name: pool_dfp
+          connect_timeout: 1s
+          lb_policy: CLUSTER_PROVIDED
+          cluster_type:
+            name: envoy.clusters.dynamic_forward_proxy
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
+              dns_cache_config:
+                name: pool_dns_cache
+                dns_lookup_family: V4_ONLY
+                # Short TTL so pod IPs that churn get refreshed quickly.
+                host_ttl: 30s
+                max_hosts: 1024
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy
+  namespace: runtime
+  labels: { app: envoy }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: envoy }
+  template:
+    metadata:
+      labels: { app: envoy }
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.31-latest
+          args:
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+            - "--service-cluster"
+            - "agents-runtime"
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: admin, containerPort: 9901 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/envoy, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /ready, port: 9901 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /ready, port: 9901 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: envoy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy
+  namespace: runtime
+  labels: { app: envoy }
+spec:
+  selector: { app: envoy }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

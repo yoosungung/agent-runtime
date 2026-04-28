@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-authz
+  namespace: runtime
+  labels: { app: ext-authz }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ext-authz }
+  template:
+    metadata:
+      labels: { app: ext-authz }
+    spec:
+      serviceAccountName: ext-authz
+      containers:
+        - name: ext-authz
+          image: agents-runtime/ext-authz:latest
+          ports:
+            - { containerPort: 8080 }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          envFrom:
+            - configMapRef: { name: runtime-env }
+            - secretRef:    { name: jwt-keys }
+          env:
+            - { name: SERVICE_NAME, value: ext-authz }
+            - { name: POOL_COMPILED_GRAPH_URL, value: http://agent-pool-compiled-graph.runtime.svc.cluster.local:8080 }
+            - { name: POOL_ADK_URL,            value: http://agent-pool-adk.runtime.svc.cluster.local:8080 }
+            - { name: POOL_CUSTOM_URL,         value: http://agent-pool-custom.runtime.svc.cluster.local:8080 }
+            - { name: POOL_FASTMCP_URL,        value: http://mcp-pool-fastmcp.runtime.svc.cluster.local:8080 }
+            - { name: POOL_MCP_SDK_URL,         value: http://mcp-pool-mcp-sdk.runtime.svc.cluster.local:8080 }
+            - { name: POOL_MCP_CUSTOM_URL,      value: http://mcp-pool-custom.runtime.svc.cluster.local:8080 }
+            - { name: MCP_INTERNAL_GRACE_SEC,  value: "300" }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-authz
+  namespace: runtime
+  labels: { app: ext-authz }
+spec:
+  selector: { app: ext-authz }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-pool-custom
+  namespace: runtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-pool
+      kind: custom
+  template:
+    metadata:
+      labels:
+        app: mcp-pool
+        kind: custom
+    spec:
+      serviceAccountName: mcp-pool
+      containers:
+        - name: mcp
+          image: agents-runtime/mcp-base:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+          envFrom:
+            - configMapRef:
+                name: runtime-env
+          env:
+            - name: SERVICE_NAME
+              value: mcp-pool-custom
+            - name: RUNTIME_KIND
+              value: custom
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_PORT
+              value: "8080"
+            - name: MAX_CONCURRENT
+              value: "32"
+            - name: REGISTRY_HEARTBEAT_INTERVAL_SEC
+              value: "2"
+            - name: REGISTRY_TTL_SEC
+              value: "3"
+          volumeMounts:
+            - name: bundles
+              mountPath: /var/cache/mcp-bundles
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: bundles
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-pool-custom
+  namespace: runtime
+spec:
+  selector:
+    app: mcp-pool
+    kind: custom
+  ports:
+    - port: 8080
+      targetPort: 8080
