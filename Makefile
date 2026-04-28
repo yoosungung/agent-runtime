@@ -12,6 +12,7 @@ KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts
         ext-authz-image auth-image deploy-api-image \
         agent-base-image mcp-base-image backend-image \
         k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
+        k8s-rollout-restart k8s-redeploy-dev \
         db-migrate \
         diagram diagram-png
 
@@ -111,6 +112,11 @@ k8s-apply-prod:
 
 k8s-delete-dev:
 	kubectl delete -k deploy/k8s/overlays/dev
+
+k8s-rollout-restart: ## rolling restart all Deployments in $(NAMESPACE) (picks up new :latest images)
+	kubectl -n $(NAMESPACE) rollout restart deployment
+
+k8s-redeploy-dev: images k8s-apply-dev k8s-rollout-restart ## build all images → apply dev → rollout restart
 
 # --- db -------------------------------------------------------------------
 

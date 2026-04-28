@@ -40,7 +40,6 @@ def _deployment_manifest(
     image_uri: str,
     image_digest: str | None,
     namespace: str,
-    replicas_max: int,
     resources: dict | None,
     image_pull_secret: str | None,
     env_vars: dict[str, str] | None,
@@ -205,7 +204,6 @@ class K8sPoolManager:
             image_uri=image_uri,
             image_digest=image_digest,
             namespace=self._ns,
-            replicas_max=replicas_max,
             resources=resources,
             image_pull_secret=image_pull_secret,
             env_vars=env_vars,
@@ -334,6 +332,45 @@ class K8sPoolManager:
                 plural="scaledobjects", name=name, body=so_patch,
                 _content_type="application/json-patch+json",
             )
+
+    async def list_managed_deployments(self) -> list[str]:
+        """Return names of all Deployments created by backend (label runtime/managed-by=backend)."""
+        result = await self._apps.list_namespaced_deployment(
+            self._ns,
+            label_selector="runtime/managed-by=backend",
+        )
+        return [dep.metadata.name for dep in result.items]
+
+    async def restart_all_pools(self) -> list[str]:
+        """Trigger rolling restart for all backend-managed pool Deployments.
+
+        Returns the list of deployment names that were restarted.
+        """
+        import datetime
+        from datetime import timezone
+
+        names = await self.list_managed_deployments()
+        now = datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        patch = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
+                    }
+                }
+            }
+        }
+        errors: list[str] = []
+        for name in names:
+            try:
+                await self._apps.patch_namespaced_deployment(name, self._ns, patch)
+                logger.info("k8s.restart_pool done", extra={"pool": name})
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+                logger.warning("k8s.restart_pool failed", extra={"pool": name, "error": str(exc)})
+        if errors:
+            logger.warning("k8s.restart_all_pools partial errors", extra={"errors": errors})
+        return names
 
     async def restart_pool(self, kind: str, slug: str) -> None:
         """Trigger a rolling restart by patching the restartedAt annotation."""
