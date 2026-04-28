@@ -4,100 +4,16 @@
 
 게이트웨이 통합(ext-authz + Envoy로 데이터플레인 일원화) 3단계가 완료되어 agent-gateway·mcp-gateway가 제거됐다. 완료된 내용은 [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [deploy/DESIGN.md](deploy/DESIGN.md), [backend/DESIGN.md](backend/DESIGN.md)에 합성됨.
 
+Image 모드(`custom` pool 의미 전환) 구현이 완료됐다. 스키마 확장·ext-authz 라우팅 분기·backend K8s admin path·관리 콘솔·정적 매니페스트 정리·테스트가 모두 완료됨. 완료된 내용은 [DESIGN.md](DESIGN.md), [deploy/DESIGN.md](deploy/DESIGN.md), [backend/DESIGN.md](backend/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md), [runtimes/mcp-base/DESIGN.md](runtimes/mcp-base/DESIGN.md)에 합성됨.
+
 ## 향후 계획
 
-### `custom` pool 의미 전환 — admin이 빌드한 base-image를 직접 운영하는 체계
+### Image 모드 Phase 2 (MVP 이후)
 
-> 현재 `agent-pool-custom` / `mcp-pool-custom`은 다른 pool과 동일한 **bundle 모드**(공용 base-image + 동적 번들 로드)다. 이를 **image 모드**로 의미를 바꾼다 — 플랫폼 운영자(admin)가 자기 코드를 박은 OCI 이미지를 빌드해 등록하면, backend가 K8s Deployment+Service를 동적으로 생성해 그 이미지가 곧 agent/MCP 노드가 된다. 두 체계는 **공존**한다.
-
-#### 두 체계 비교 (목표 상태)
-
-| 측면 | Bundle 모드 (`compiled_graph` / `adk` / `fastmcp` / `mcp_sdk`) | Image 모드 (`custom`) |
-|---|---|---|
-| 작성자 | end developer (사용자 팀) | platform admin |
-| 배포 단위 | tar.gz bundle, S3/OCI registry | Docker image, OCI registry |
-| Pool Deployment | kind당 1개, 여러 번들 호스팅 | image당 1개 (admin 등록 시 생성) |
-| 코드 적재 | 런타임 BundleLoader (cold-start 1회) | 빌드 타임 — image에 박혀 있음 |
-| `runtime_pool` 식별자 | `{kind}:{runtime_kind}` 예 `agent:compiled_graph` | `{kind}:custom:{slug}` 예 `agent:custom:summarizer` |
-| Service 이름 | `{kind}-pool-{runtime_kind}` (정적) | `{kind}-pool-custom-{slug}` (동적) |
-| warm-registry | 사용 (ring-hash by checksum) | 미사용 — 모든 pod 동일하므로 단순 LB |
-| K8s 리소스 | 정적 kustomize | backend가 K8s API로 동적 CRUD |
-| `cfg`/`secrets`/`user_meta` | 동일 (deploy-api `/v1/resolve`) | 동일 — image 안의 SDK가 호출 |
-| HPA/KEDA | pool-level metric | image-level metric (`service_name`별) |
-
-업계 reference: **Knative ksvc**(image + autoscaling을 CRD 한 단위로 묶는 패턴)에 가장 가깝지만, Knative 의존을 들이는 대신 backend의 admin path가 동일 책임을 직접 진다. **AWS Lambda Container Image**는 poll-based runtime API라 푸시-호출 모델인 우리와 contract가 다르다 — 단, "관리되는 base-image가 있고, 사용자는 거기에 layer를 얹는다"는 발상은 채택한다.
-
-#### Image contract — admin이 만들어야 하는 image의 약속
-
-- **HTTP**: `POST /invoke`, `GET /healthz`, `GET /readyz` (포트 8080). 요청 body는 `{Agent,Mcp}InvokeRequest`와 동일.
-- **k8s가 주입할 env**: `RUNTIME_POOL=agent:custom:{slug}`, `DEPLOY_API_URL`, `REDIS_URL`(optional), `POD_*`.
-- **principal 전달**: ext-authz가 이미 `x-principal` 헤더를 주입한다 — image는 그걸 신뢰.
-- **두 가지 작성법**:
-  1. **base-image extend (권장)** — `FROM agents-runtime/agent-base:latest` 후 자기 모듈을 `COPY`하고 `ENV BUNDLED_ENTRYPOINT=mypkg.app:factory`. base-image가 부팅 시 entrypoint를 import해서 factory를 메모리에 박아두고, 이후 `/invoke`는 BundleLoader 우회 + 기존 runner 재사용. → bundle 모드와 동일한 factory 시그니처(`(cfg, secrets) -> NativeObj`)를 그대로 쓰면 된다.
-  2. **raw contract** — 임의 언어/프레임워크. 위 HTTP 4개 endpoint와 `cfg` 머지 책임만 본인이 진다. `cfg`/`secrets_ref`는 image가 직접 deploy-api `/v1/resolve`를 호출하거나, ext-authz가 헤더로 첨부(아래 `cfg sidecar` 참조).
-
-#### 작업 항목
-
-##### 1) 스키마 / 식별자 확장
-
-- [ ] **`runtime_pool` 포맷 확장**: `{kind}:custom:{slug}` 허용. `runtime_common.schemas`에 `parse_runtime_pool` helper 추가 → `(kind, runtime_kind, slug?)` 파싱. 기존 bundle 식별자는 `slug=None`.
-- [ ] **`source_meta` 컬럼**: `deploy_mode VARCHAR(16) NOT NULL DEFAULT 'bundle'` (`'bundle'|'image'`), `image_uri VARCHAR(512)`, `image_digest VARCHAR(128)` 추가. 기존 `bundle_uri`/`entrypoint`/`checksum`은 `deploy_mode='image'`에서 NULL 허용. CHECK constraint로 mode별 필수 필드 강제.
-- [ ] **migration**: backend `0002_*.sql` — 컬럼 추가 + CHECK + 기존 row backfill `deploy_mode='bundle'`.
-- [ ] **deploy-api `/v1/resolve` 응답**: `SourceMeta`에 새 필드 노출. image 모드면 `bundle_uri=None`으로 응답 — 호출자가 mode를 보고 분기.
-
-##### 2) base-image의 image-mode 지원
-
-- [ ] **`BUNDLED_ENTRYPOINT` env**: 셋팅되면 부팅 시 1회 import해 `app.state.bundled_factory`에 보관. BundleLoader 경로 미사용.
-- [ ] **invoke 분기**: `bundled_factory`가 있으면 BundleLoader/checksum 캐시 스킵 — `/v1/resolve`는 cfg/user_meta만 가져와서 `instance_cache`에 키 `(image_digest, principal_id, user.updated_at)`로 격리.
-- [ ] **registry 미참여**: `RegistryPublisher`를 image 모드에서는 시작하지 않는다 (모든 pod 동일하므로 ring-hash 불필요). ext-authz가 Service URL로 직접 라우팅.
-- [ ] **healthz 의미 통일**: bundle/image 양쪽 같은 응답 schema (`{status, kind, mode}`) 유지.
-
-##### 3) ext-authz 라우팅 분기
-
-- [ ] **`*:custom:{slug}` 인식**: `mcp_pool_url`/`agent_pool_url`에 slug 들어오면 `{kind}-pool-custom-{slug}.runtime.svc.cluster.local:8080` derive. envvar 기반 매핑 테이블이 아니라 DNS 규칙으로 derive — admin 등록마다 ext-authz 재시작 안 시키기 위해.
-- [ ] **warm-registry 스킵**: image 모드는 `scheduler.pick`을 호출하지 않고 `x-pod-fallback-addr`만 Service URL로 채워서 응답. Lua filter가 fallback path로 그대로 라우팅.
-- [ ] **(옵션) cfg sidecar 헤더**: raw-contract image 편의용. ext-authz가 resolve 머지된 `cfg`를 base64-JSON으로 `x-runtime-cfg` 헤더에 실어 invoke로 전달. base-image-extend image는 무시 가능.
-
-##### 4) 동적 K8s 리소스 — backend admin path
-
-- [ ] **`POST /api/admin/custom-images`** (admin only):
-  payload `{kind, name, version, image_uri, image_digest, slug, replicas, resources, image_pull_secret?, env?}` →
-  (a) `source_meta` INSERT (`deploy_mode='image'`, `runtime_pool=f"{kind}:custom:{slug}"`)
-  (b) K8s `Deployment` + `Service` + `ScaledObject` + `PodDisruptionBudget` apply
-  (c) 실패 시 source_meta rollback (트랜잭션 outbox 또는 saga).
-- [ ] **`DELETE /api/admin/custom-images/{kind}/{slug}`**: source_meta retire + K8s 리소스 삭제 (orphan 방지).
-- [ ] **K8s client**: `kubernetes` async client (in-cluster service account). 매니페스트 템플릿은 backend 패키지에 Jinja 또는 Python dict로 보관 — kustomize 별도 파일 생성 X.
-- [ ] **RBAC**: backend SA에 `runtime` namespace 한정 `deployments`/`services`/`scaledobjects.keda.sh`/`poddisruptionbudgets` `create/update/delete/get/list` 권한. 새 Role+RoleBinding 매니페스트 추가.
-- [ ] **NetworkPolicy 갱신**: dynamically 생성되는 `agent-pool-custom-*` / `mcp-pool-custom-*` pod도 deploy-api·redis 접근 허용 — selector를 `app: agent-pool` (또는 label `runtime/mode: image`)로 일반화.
-- [ ] **drift 감지**: image_digest와 실제 Deployment의 image가 불일치하면 admin UI에 경고. 재배포는 admin 명시 액션으로만.
-
-##### 5) 관리 콘솔 (frontend + backend)
-
-- [ ] **목록**: 기존 source_meta 테이블에 `mode` 칼럼 추가 표시. 두 체계 한 화면.
-- [ ] **등록 폼**: image 모드 전용 — image_uri (또는 registry 선택 + repo + tag), digest 자동 조회 옵션, kind, slug, replicas, resources, env, image_pull_secret 선택.
-- [ ] **롤아웃 상태**: Deployment status (replicas ready/desired) + 최근 Pod 이벤트 표시.
-
-##### 6) 문서 / 예시
-
-- [ ] **`deploy/examples/custom-image/`** — base-image extend 예제 Dockerfile + factory.py. compiled_graph 번들을 그대로 image로 변환하는 가이드.
-- [ ] **루트 DESIGN.md / 각 컴포넌트 DESIGN.md**: 위 결정 합성. `runtime_pool` 포맷, source_meta 스키마 다이어그램, 라우팅 표 갱신.
-- [ ] **CLAUDE.md "꼭 알아야 할 내부 계약"**: bundle 모드와 image 모드의 식별자/책임 분리 명시. 새 kind 추가 시 4곳 업데이트 규칙은 bundle에만 적용 — image는 admin 등록 path가 대신.
-
-##### 7) 테스트
-
-- [ ] **단위**: `parse_runtime_pool` parse, source_meta CHECK constraint, ext-authz custom 분기.
-- [ ] **integration**: image 모드 e2e — 등록 → Deployment ready → invoke → resolve cfg 반영.
-- [ ] **공존**: 같은 cluster에 bundle pool + image pool 동시 운영, ring-hash와 직접 라우팅이 섞이지 않는지 확인.
-- [ ] **권한**: 비-admin이 `/api/admin/custom-images` 호출 시 403, K8s SA가 namespace 밖 자원 접근 시 거부.
-
-#### 결정 필요 (작업 시작 전)
-
-- [ ] **multi-version 운영**: 같은 slug의 v1/v2를 동시에 띄울 수 있게 할지(Service alias로 traffic split), 아니면 새 버전이 기존 Deployment의 image tag를 덮어쓸지. 후자가 단순. blue/green 필요 시 slug 자체를 버전 포함으로 약속(`summarizer-v2`).
-- [ ] **image signature 검증**: cosign/sigstore. MVP 미포함, nice-to-have.
-- [ ] **scale-to-zero 허용 여부**: KEDA의 `minReplicaCount: 0`. cold-start 비용(image pull) 때문에 디폴트 1 권장.
-- [ ] **현재 단일 `mcp-pool-custom.yaml` / `agent-pool-custom.yaml` 처리**: image 모드 도입 시 정적 yaml은 예시 제거 또는 "기본 placeholder Deployment(replica 0)"로 유지. 신규 작업 마무리 시점에 재논의.
-
-완료 후 위 내용을 [DESIGN.md](DESIGN.md), [deploy/DESIGN.md](deploy/DESIGN.md), [backend/DESIGN.md](backend/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md), [runtimes/mcp-base/DESIGN.md](runtimes/mcp-base/DESIGN.md)에 합성하고 ROADMAP에서 삭제.
+- [ ] **CSI Secret Store / Vault Agent Sidecar 도입** (리스크 C): MVP는 `secrets_ref` 헤더 패스스루로 image author가 vault 클라이언트를 직접 작성. Phase 2에서는 admin 등록 시 `secrets_mount: [{name, path, ref}]` 같은 필드를 받아 backend가 K8s 매니페스트에 [Secrets Store CSI](https://secrets-store-csi-driver.sigs.k8s.io/) 또는 Vault Agent sidecar를 주입 → image는 단순히 환경변수/볼륨 파일에서 읽기만 한다. raw contract 철학(SDK 의존 X)과 정합.
+- [ ] **유휴 image cold-storage** (리스크 D): backend reconciler가 N일(예: 14일) 호출 없는 `active` image를 감지 → `status='sleep'` + `replicas=0` patch. 첫 invoke 시 ext-authz가 `sleep` 상태를 발견하면 503 + admin 알림 (또는 작은 activator path를 도입해 자동 wake — 별도 결정 필요). 비용 누수 방지.
+- [ ] **cfg body fallback** (리스크 A 확장): cfg가 16KB를 초과해야 하는 케이스 발생 시, ext-authz가 헤더 대신 invoke body에 `_meta.cfg` 필드로 주입하는 옵션을 도입. body 변형은 image contract를 깨므로 admin이 명시적 opt-in.
+- [ ] **image signature 검증**: cosign + admission webhook. 신뢰 registry 화이트리스트 + 서명 검증.
 
 ### factory instance 캐싱 적용 (런타임 경로 통합)
 

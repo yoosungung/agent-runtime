@@ -55,6 +55,16 @@ const ChatPage = lazy(() =>
 const AuditLogPage = lazy(() =>
   import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })),
 );
+const CustomImageListPage = lazy(() =>
+  import("./pages/CustomImageListPage").then((m) => ({
+    default: m.CustomImageListPage,
+  })),
+);
+const CustomImageNewPage = lazy(() =>
+  import("./pages/CustomImageNewPage").then((m) => ({
+    default: m.CustomImageNewPage,
+  })),
+);
 
 function PageFallback() {
   return (
@@ -123,6 +133,22 @@ export function App() {
                     <Route path="/users/new" element={<UserNewPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
+                    <Route
+                      path="/custom-agents"
+                      element={<CustomImageListPage kind="agent" />}
+                    />
+                    <Route
+                      path="/custom-agents/new"
+                      element={<CustomImageNewPage kind="agent" />}
+                    />
+                    <Route
+                      path="/custom-mcp"
+                      element={<CustomImageListPage kind="mcp" />}
+                    />
+                    <Route
+                      path="/custom-mcp/new"
+                      element={<CustomImageNewPage kind="mcp" />}
+                    />
                   </Route>
                 </Route>
               </Route>

@@ -119,15 +119,21 @@ class ApiKeyRow(Base):
 
 class SourceMetaRow(Base):
     __tablename__ = "source_meta"
-    __table_args__ = (UniqueConstraint("kind", "name", "version", name="uq_source_meta_nv"),)
+    __table_args__ = (
+        UniqueConstraint("kind", "name", "version", name="uq_source_meta_nv"),
+        # Unique per (kind, slug) for image-mode pools; partial (slug IS NOT NULL)
+        # is not portable across DBs, so we use a nullable unique constraint and
+        # enforce non-null slugs at the application layer.
+        UniqueConstraint("kind", "slug", name="uq_source_meta_kind_slug"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
-    runtime_pool: Mapped[str] = mapped_column(String(64), nullable=False)
-    entrypoint: Mapped[str] = mapped_column(String(256), nullable=False)
-    bundle_uri: Mapped[str] = mapped_column(String(512), nullable=False)
+    runtime_pool: Mapped[str] = mapped_column(String(128), nullable=False)
+    entrypoint: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    bundle_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
     checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sig_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
     config: Mapped[dict[str, Any]] = mapped_column(
@@ -135,6 +141,16 @@ class SourceMetaRow(Base):
     )
     retired: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
+    )
+    # Image mode fields (added in migration 0002)
+    deploy_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="bundle", server_default="bundle"
+    )
+    image_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(63), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

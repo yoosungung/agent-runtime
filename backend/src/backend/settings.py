@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     # Envoy data-plane URL (routes /v1/agents/* and /v1/mcp/*)
     ENVOY_URL: str = "http://envoy.runtime.svc.cluster.local:8080"
 
+    # Deploy-API URL (used when building K8s Deployment env for custom image mode)
+    DEPLOY_API_URL: str = "http://deploy-api.runtime.svc.cluster.local:8080"
+
+    # Kubernetes (used for custom image mode dynamic deployments)
+    K8S_IN_CLUSTER: bool = True          # False = use kubeconfig (local dev)
+    K8S_RUNTIME_NAMESPACE: str = "runtime"
+    K8S_CLUSTER_DOMAIN: str = "cluster.local"
+    # Reconciler: how long a 'pending' row may stay before forced cleanup
+    K8S_PENDING_TIMEOUT_SEC: int = 300   # 5 minutes
+    # How long to wait for Deployment to become ready during POST
+    K8S_DEPLOY_READY_TIMEOUT_SEC: int = 60
+
     # Feature flags
     ALLOW_HARD_DELETE: bool = False
     BACKEND_SERVE_SPA: bool = True

@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from runtime_common.schemas import (
     AgentInvokeRequest,
     AgentRuntimeKind,
@@ -12,7 +14,77 @@ from runtime_common.schemas import (
     ResourceRef,
     SourceMeta,
     UserMeta,
+    image_mode_service_name,
+    parse_runtime_pool,
 )
+
+
+# ---------------------------------------------------------------------------
+# parse_runtime_pool
+# ---------------------------------------------------------------------------
+
+
+def test_parse_bundle_mode_agent():
+    pid = parse_runtime_pool("agent:compiled_graph")
+    assert pid.kind == "agent"
+    assert pid.runtime_kind == "compiled_graph"
+    assert pid.slug is None
+    assert not pid.is_image_mode
+    assert str(pid) == "agent:compiled_graph"
+
+
+def test_parse_bundle_mode_mcp():
+    pid = parse_runtime_pool("mcp:fastmcp")
+    assert pid.kind == "mcp"
+    assert pid.runtime_kind == "fastmcp"
+    assert pid.slug is None
+
+
+def test_parse_image_mode():
+    pid = parse_runtime_pool("agent:custom:summarizer-v1")
+    assert pid.kind == "agent"
+    assert pid.runtime_kind == "custom"
+    assert pid.slug == "summarizer-v1"
+    assert pid.is_image_mode
+    assert str(pid) == "agent:custom:summarizer-v1"
+
+
+def test_parse_image_mode_mcp():
+    pid = parse_runtime_pool("mcp:custom:my-mcp-v2-0")
+    assert pid.slug == "my-mcp-v2-0"
+    assert pid.is_image_mode
+
+
+def test_parse_invalid_format():
+    with pytest.raises(ValueError, match="invalid runtime_pool"):
+        parse_runtime_pool("agent")
+
+
+def test_parse_three_parts_non_custom():
+    with pytest.raises(ValueError, match="custom"):
+        parse_runtime_pool("agent:compiled_graph:something")
+
+
+def test_parse_slug_too_long():
+    slug = "a" * 46
+    with pytest.raises(ValueError, match="slug"):
+        parse_runtime_pool(f"agent:custom:{slug}")
+
+
+def test_parse_slug_invalid_chars():
+    with pytest.raises(ValueError, match="slug"):
+        parse_runtime_pool("agent:custom:MY_AGENT")
+
+
+def test_image_mode_service_name():
+    pid = parse_runtime_pool("agent:custom:summarizer-v1")
+    assert image_mode_service_name(pid) == "agent-pool-custom-summarizer-v1"
+
+
+def test_image_mode_service_name_requires_slug():
+    pid = parse_runtime_pool("agent:compiled_graph")
+    with pytest.raises(ValueError):
+        image_mode_service_name(pid)
 
 
 def test_source_meta_roundtrip():

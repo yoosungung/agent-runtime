@@ -50,6 +50,18 @@ export function Layout() {
                     Users
                   </Link>
                   <Link
+                    to="/custom-agents"
+                    className="text-sm hover:text-gray-300 transition-colors"
+                  >
+                    Custom Agents
+                  </Link>
+                  <Link
+                    to="/custom-mcp"
+                    className="text-sm hover:text-gray-300 transition-colors"
+                  >
+                    Custom MCP
+                  </Link>
+                  <Link
                     to="/audit"
                     className="text-sm hover:text-gray-300 transition-colors"
                   >

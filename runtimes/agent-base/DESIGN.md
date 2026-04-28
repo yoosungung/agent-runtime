@@ -2,6 +2,8 @@
 
 Agent-Pool의 베이스 이미지. AWS Lambda와 유사하게 **같은 이미지**가 장기 실행 pod로 떠 있다가, 요청이 오면 **deploy-api에서 자기 agent 코드 정의 + 사용자 메타를 조회해 와서** 엔트리포인트를 import 하고 호출한다.
 
+> **범위**: `RUNTIME_KIND ∈ {compiled_graph, adk}` — **Bundle 모드 전용**. Image 모드(`custom`) pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 agent-base와 무관. Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
+
 ## 설계
 
 - **이미지 1개, 하드웨어적 분리는 Deployment 단위**. 각 Deployment는 `RUNTIME_KIND` env로 자기 정체성을 정한다: `compiled_graph` / `adk` / `custom`.

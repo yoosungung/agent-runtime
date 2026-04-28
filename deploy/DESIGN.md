@@ -10,8 +10,9 @@
   - 메타데이터 DB: `postgres` StatefulSet + Service (PVC 5Gi). **auth / deploy-api만 접근.**
   - **Redis**: LangGraph 체크포인터 + ext-authz warm-registry 공용.
   - 서비스: `auth`, `deploy-api`, `ext-authz`, `envoy`, `backend`
-  - Agent pools (3): `agent-pool-compiled-graph` / `-adk` / `-custom` — 동일한 `agent-base:latest` 이미지, `RUNTIME_KIND` env만 다름
-  - MCP pools (4): `mcp-pool-fastmcp` / `-mcp-sdk` / `-didim-rag` / `-t2sql` — 동일 패턴
+  - Agent pools (2 정적): `agent-pool-compiled-graph` / `-adk` — 동일한 `agent-base:latest` 이미지, `RUNTIME_KIND` env만 다름
+  - MCP pools (4 정적): `mcp-pool-fastmcp` / `-mcp-sdk` / `-didim-rag` / `-t2sql` — 동일 패턴
+  - **Image 모드 pool (동적)**: admin이 `POST /api/admin/custom-images` 호출 시 backend가 K8s API로 생성. 네이밍 규칙 `{kind}-pool-custom-{slug}`. 정적 kustomize 파일 없음. (`agent-pool-custom.yaml` / `mcp-pool-custom.yaml` 삭제됨)
 
 ## Envoy 데이터플레인
 
@@ -55,17 +56,36 @@ ext-authz가 `x-pod-addr`(warm pod IP)과 함께 `x-pod-fallback-addr`(pool Serv
 ## env 배선
 
 - `POSTGRES_DSN`은 **auth / deploy-api에만** 주입. gateway·pool은 받지 않는다.
-- ext-authz에는 `DEPLOY_API_URL`, `AUTH_URL`, `REDIS_URL` + pool 서비스 URL 환경 변수.
+- ext-authz에는 `DEPLOY_API_URL`, `AUTH_URL`, `REDIS_URL` + bundle 모드 pool 서비스 URL 환경 변수. `POOL_CUSTOM_URL`/`POOL_MCP_CUSTOM_URL`은 삭제 — image 모드 URL은 slug에서 동적 derive.
 - pool에는 `DEPLOY_API_URL`, `REDIS_URL`, `POD_NAME`, `POD_IP`, `POD_PORT`, `MAX_CONCURRENT`, `REGISTRY_HEARTBEAT_INTERVAL_SEC=2`, `REGISTRY_TTL_SEC=3`.
 - backend(BFF)에는 `ENVOY_URL=http://envoy.runtime.svc.cluster.local:8080` — chat invoke 시 Envoy를 직접 호출.
+
+## RBAC
+
+`backend-k8s-rbac.yaml`에서 backend ServiceAccount(`backend-admin`)에 `runtime` 네임스페이스 한정 Role+RoleBinding 정의:
+
+- 대상 리소스: `deployments`, `services`, `scaledobjects.keda.sh`, `poddisruptionbudgets`
+- 권한: `create`, `update`, `delete`, `get`, `list`, `patch`
+
+backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용). ext-authz는 K8s 권한 불필요 — slug 기반 DNS derive로 동작.
 
 ## NetworkPolicy 요약
 
 | 수신자 | 허용 송신자 |
 |---|---|
 | postgres | auth, deploy-api, backend, pgbouncer, migration-job |
-| redis | agent-pool, mcp-pool, ext-authz |
-| deploy-api | agent-pool, mcp-pool, ext-authz + ingress-nginx |
+| redis | `runtime/role: pool` 라벨 pod (정적+동적 통합), ext-authz |
+| deploy-api | `runtime/role: pool` 라벨 pod, ext-authz + ingress-nginx |
 | auth | ext-authz, backend |
 | ext-authz | envoy만 |
 | envoy | 모든 클러스터 내 (포트 8080) |
+
+**`runtime/role: pool` 라벨**: 정적 bundle 모드 pool Deployment와 backend가 동적으로 생성하는 image 모드 pool pod 모두 이 라벨을 가진다. NetworkPolicy selector가 pod 이름 패턴이 아닌 라벨 기반이므로 신규 image pool 등록 시 NetworkPolicy 변경 불필요.
+
+## examples/
+
+`deploy/examples/custom-image/` — image 모드 raw contract를 만족하는 Dockerfile 예제:
+
+- `python-agent/` — FastAPI + `POST /invoke` + `/healthz` + `/readyz`
+- `python-mcp/` — 동일 구조, MCP 서버 역할
+- `go-agent/` — Go `net/http` 구현 예제 (멀티스테이지 빌드, alpine 최종 이미지)

@@ -33,7 +33,7 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 
 VALID_KINDS = {"agent", "mcp"}
-VALID_RUNTIME_POOLS = {f"agent:{k}" for k in AgentRuntimeKind} | {
+VALID_BUNDLE_RUNTIME_POOLS = {f"agent:{k}" for k in AgentRuntimeKind} | {
     f"mcp:{k}" for k in McpRuntimeKind
 }
 
@@ -43,8 +43,12 @@ RE_ENTRYPOINT = re.compile(r"^[\w.]+:[\w]+$")
 RE_CHECKSUM = re.compile(r"^sha256:[0-9a-f]{64}$")
 RE_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 RE_SECRETS_REF = re.compile(r"^(vault|env|aws-sm)://.+$")
+RE_SLUG = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+RE_IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
-MAX_CONFIG_BYTES = 64 * 1024  # 64KB
+# Merged config (source + user) must fit in Envoy header budget.
+# base64(16KB JSON) ≈ 21.8KB + other headers → safely within 64KB max_request_headers_kb.
+MAX_MERGED_CONFIG_BYTES = 16 * 1024  # 16KB
 
 
 def _validate_kind(kind: str) -> None:
@@ -53,15 +57,31 @@ def _validate_kind(kind: str) -> None:
 
 
 def _validate_runtime_pool(runtime_pool: str, kind: str) -> None:
-    if runtime_pool not in VALID_RUNTIME_POOLS:
+    if runtime_pool not in VALID_BUNDLE_RUNTIME_POOLS:
         raise HTTPException(
             status_code=400,
-            detail=f"runtime_pool must be one of {sorted(VALID_RUNTIME_POOLS)}",
+            detail=f"runtime_pool must be one of {sorted(VALID_BUNDLE_RUNTIME_POOLS)}",
         )
     if not runtime_pool.startswith(f"{kind}:"):
         raise HTTPException(
             status_code=400,
             detail=f"runtime_pool prefix must match kind '{kind}'",
+        )
+
+
+def _validate_slug(slug: str) -> None:
+    if not RE_SLUG.match(slug) or len(slug) > 45:
+        raise HTTPException(
+            status_code=400,
+            detail="slug must match [a-z0-9]([a-z0-9-]*[a-z0-9])? and be ≤ 45 chars",
+        )
+
+
+def _validate_image_digest(digest: str | None) -> None:
+    if digest is not None and not RE_IMAGE_DIGEST.match(digest):
+        raise HTTPException(
+            status_code=400,
+            detail="image_digest must match ^sha256:[0-9a-f]{64}$",
         )
 
 
@@ -103,8 +123,11 @@ def _validate_config(config: dict | None) -> None:
     import json
 
     serialized = json.dumps(config)
-    if len(serialized.encode()) > MAX_CONFIG_BYTES:
-        raise HTTPException(status_code=413, detail="config exceeds 64KB limit")
+    if len(serialized.encode()) > MAX_MERGED_CONFIG_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="config exceeds 16KB limit (merged source+user config must fit in Envoy headers)",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -118,12 +141,17 @@ class SourceMetaResponse(BaseModel):
     name: str
     version: str
     runtime_pool: str
-    entrypoint: str
-    bundle_uri: str
+    entrypoint: str | None
+    bundle_uri: str | None
     checksum: str | None
     sig_uri: str | None
     config: dict
     retired: bool
+    deploy_mode: str
+    image_uri: str | None
+    image_digest: str | None
+    slug: str | None
+    status: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

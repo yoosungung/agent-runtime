@@ -122,6 +122,9 @@ export function SourceMetaListPage({ kind }: Props) {
                       Created
                     </th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Mode
+                    </th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Status
                     </th>
                   </tr>
@@ -130,7 +133,7 @@ export function SourceMetaListPage({ kind }: Props) {
                   {data?.items.length === 0 && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-4 py-8 text-sm text-gray-500 text-center"
                       >
                         No {title.toLowerCase()} found.
@@ -157,6 +160,17 @@ export function SourceMetaListPage({ kind }: Props) {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {formatDate(item.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {item.deploy_mode === "image" ? (
+                          <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded">
+                            image
+                          </span>
+                        ) : (
+                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                            bundle
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {item.retired ? (

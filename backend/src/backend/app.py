@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +15,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.bootstrap import run_bootstrap
 from backend.bundle_storage import make_bundle_storage
+from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
 from backend.routers import auth as auth_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
+from backend.routers import custom_images as custom_images_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
@@ -149,7 +152,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with session_scope(app.state.session_factory) as session:
         await run_bootstrap(session, settings)
 
+    # K8s pool manager for custom image mode (optional — skipped if library unavailable)
+    app.state.k8s_pool_manager = None
+    try:
+        from backend.k8s_client import K8sPoolManager, make_api_client
+        api_client = await make_api_client(settings)
+        app.state.k8s_pool_manager = K8sPoolManager(api_client, settings)
+        logger.info("k8s_pool_manager initialised")
+    except Exception as exc:
+        logger.warning("k8s_pool_manager not available (local dev?): %s", exc)
+
+    # Background reconciler for image-mode state machine
+    reconciler_task = asyncio.create_task(run_reconciler(app))
+
     yield
+
+    reconciler_task.cancel()
+    try:
+        await reconciler_task
+    except asyncio.CancelledError:
+        pass
+
+    if app.state.k8s_pool_manager is not None:
+        await app.state.k8s_pool_manager.aclose()
 
     await app.state.auth_client.aclose()
     await engine.dispose()
@@ -195,6 +220,7 @@ app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password
 app.include_router(chat_router_module.router)  # /api/chat/*
 app.include_router(audit_router_module.router)  # /api/audit
+app.include_router(custom_images_router_module.router)  # /api/admin/custom-images/*
 
 # ---------------------------------------------------------------------------
 # Bundle serving (no auth)

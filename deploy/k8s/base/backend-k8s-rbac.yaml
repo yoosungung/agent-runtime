@@ -1,0 +1,34 @@
+# RBAC: backend ServiceAccount permissions for custom image mode dynamic deployments.
+# Scoped to the runtime namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backend-pool-manager
+  namespace: runtime
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "update", "delete", "get", "list", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "update", "delete", "get", "list", "patch"]
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects"]
+    verbs: ["create", "update", "delete", "get", "list", "patch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["create", "update", "delete", "get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-pool-manager
+  namespace: runtime
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: runtime
+roleRef:
+  kind: Role
+  name: backend-pool-manager
+  apiGroup: rbac.authorization.k8s.io

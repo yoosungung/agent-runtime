@@ -2,6 +2,8 @@
 
 MCP-Pool의 베이스 이미지. 구조는 agent-base와 평행 — 같은 Lambda 스타일 동적 로딩, 다만 호스팅하는 대상이 MCP 서버(FastMCP / MCP SDK / DidimRAG / T2SQL).
 
+> **범위**: `RUNTIME_KIND ∈ {fastmcp, mcp_sdk, didim_rag, t2sql}` — **Bundle 모드 전용**. Image 모드(`custom`) MCP pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 mcp-base와 무관. Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
+
 ## 설계
 
 - `RUNTIME_KIND` env가 pod 정체성을 정함: `fastmcp` / `mcp_sdk` / `didim_rag` / `t2sql`.

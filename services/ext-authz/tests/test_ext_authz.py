@@ -550,3 +550,114 @@ class TestAgentInvoke:
         assert r.status_code == 200
         assert r.headers["x-pod-addr"] == "10.1.2.3:8080"
         assert r.headers["x-pod-fallback-addr"] != r.headers["x-pod-addr"]
+
+
+# ---------------------------------------------------------------------------
+# Image mode routing tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeDeployImageMode(_FakeDeploy):
+    """Returns an image-mode SourceMeta with runtime_pool='agent:custom:summarizer-v1'."""
+
+    async def resolve(
+        self,
+        kind: str,
+        name: str,
+        version: str | None = None,
+        principal: str | None = None,  # noqa: ARG002
+    ) -> ResolveResponse:
+        from runtime_common.schemas import UserMeta
+
+        return ResolveResponse(
+            source=SourceMeta(
+                kind=kind,
+                name=name,
+                version=version or "v1",
+                runtime_pool=f"{kind}:custom:summarizer-v1",
+                entrypoint=None,
+                bundle_uri=None,
+                deploy_mode="image",
+                slug="summarizer-v1",
+                status="active",
+            ),
+            user=UserMeta(
+                principal_id="u_42",
+                config={"model": "claude-3"},
+                secrets_ref="vault://agents/u42",
+            ),
+        )
+
+
+@pytest.fixture
+def image_client() -> TestClient:
+    tc = TestClient(app_module.app)
+    tc.__enter__()
+
+    fake_auth = _FakeAuth()
+    fake_deploy = _FakeDeployImageMode()
+    fake_scheduler = _FakeScheduler(addr="http://10.9.9.9:8080")
+
+    app_module.app.state.auth = fake_auth
+    app_module.app.state.deploy = fake_deploy
+    app_module.app.state.agent_scheduler = fake_scheduler
+    app_module.app.state.mcp_scheduler = fake_scheduler
+    app_module.app.state.http = httpx.AsyncClient()
+    yield tc
+    tc.__exit__(None, None, None)
+
+
+def test_image_mode_routing_skips_warm_registry(image_client: TestClient) -> None:
+    """Image-mode invoke should NOT use warm-registry; addr is derived from slug."""
+    fake_scheduler: _FakeScheduler = app_module.app.state.agent_scheduler
+    fake_scheduler.calls.clear()
+
+    r = image_client.post(
+        "/v1/agents/invoke",
+        content=json.dumps({"agent": "hello", "input": {}}),
+        headers={
+            "Authorization": "Bearer good",
+            "Content-Type": "application/json",
+        },
+    )
+    assert r.status_code == 200, r.text
+    # Scheduler must NOT have been called for image-mode pools
+    assert len(fake_scheduler.calls) == 0, "warm-registry should be skipped for image mode"
+
+    # Address derived from slug: agent-pool-custom-summarizer-v1.runtime.svc.cluster.local:8080
+    expected_addr = "agent-pool-custom-summarizer-v1.runtime.svc.cluster.local:8080"
+    assert r.headers["x-pod-addr"] == expected_addr
+    assert r.headers["x-pod-fallback-addr"] == expected_addr
+
+
+def test_image_mode_cfg_header(image_client: TestClient) -> None:
+    """x-runtime-cfg must carry base64(JSON) of merged source+user config."""
+    r = image_client.post(
+        "/v1/agents/invoke",
+        content=json.dumps({"agent": "hello", "input": {}}),
+        headers={"Authorization": "Bearer good", "Content-Type": "application/json"},
+    )
+    assert r.status_code == 200, r.text
+    cfg_raw = base64.b64decode(r.headers["x-runtime-cfg"])
+    cfg = json.loads(cfg_raw)
+    assert cfg.get("model") == "claude-3"
+
+
+def test_image_mode_secrets_ref_header(image_client: TestClient) -> None:
+    """x-runtime-secrets-ref must passthrough user_meta.secrets_ref."""
+    r = image_client.post(
+        "/v1/agents/invoke",
+        content=json.dumps({"agent": "hello", "input": {}}),
+        headers={"Authorization": "Bearer good", "Content-Type": "application/json"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers.get("x-runtime-secrets-ref") == "vault://agents/u42"
+
+
+def test_bundle_mode_cfg_header(client: TestClient) -> None:
+    """Bundle mode also receives x-runtime-cfg (source config only, no user_meta here)."""
+    r = _post(client, "/v1/agents/invoke", {"agent": "hello", "input": {}})
+    assert r.status_code == 200, r.text
+    cfg_raw = base64.b64decode(r.headers["x-runtime-cfg"])
+    cfg = json.loads(cfg_raw)
+    assert isinstance(cfg, dict)

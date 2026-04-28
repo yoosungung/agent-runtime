@@ -118,6 +118,10 @@ spec:
         - podSelector:
             matchLabels:
               app: ext-authz
+        # image-mode pool pods carry runtime/role=pool; bundle-mode pools do too via their labels
+        - podSelector:
+            matchLabels:
+              runtime/role: pool
       ports:
         - port: 6379
 ---
@@ -144,6 +148,10 @@ spec:
         - podSelector:
             matchLabels:
               app: ext-authz
+        # image-mode pool pods need deploy-api for cfg/secrets resolution
+        - podSelector:
+            matchLabels:
+              runtime/role: pool
       ports:
         - port: 8080
     # Public Ingress routes /v1/source-meta and /v1/user-meta to deploy-api;

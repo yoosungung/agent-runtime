@@ -108,7 +108,10 @@ async def list_source_meta(
         stmt = select(SourceMetaRow).where(SourceMetaRow.kind == kind.value)
         if name:
             stmt = stmt.where(SourceMetaRow.name == name)
-        stmt = stmt.where(SourceMetaRow.retired == False)  # noqa: E712
+        stmt = stmt.where(
+            SourceMetaRow.retired == False,  # noqa: E712
+            SourceMetaRow.status != "pending",  # pending rows not yet routable
+        )
         stmt = stmt.order_by(SourceMetaRow.created_at.desc())
         result = await session.execute(stmt)
         rows = result.scalars().all()
@@ -193,11 +196,16 @@ async def resolve(
                 SourceMetaRow.kind == kind.value,
                 SourceMetaRow.name == name,
                 SourceMetaRow.version == version,
+                SourceMetaRow.status != "pending",  # pending rows are not routable
             )
         else:
             stmt = (
                 select(SourceMetaRow)
-                .where(SourceMetaRow.kind == kind.value, SourceMetaRow.name == name)
+                .where(
+                    SourceMetaRow.kind == kind.value,
+                    SourceMetaRow.name == name,
+                    SourceMetaRow.status != "pending",  # pending rows are not routable
+                )
                 .order_by(SourceMetaRow.created_at.desc())
                 .limit(1)
             )

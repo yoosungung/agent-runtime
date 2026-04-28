@@ -7,12 +7,17 @@ export interface SourceMeta {
   name: string;
   version: string;
   runtime_pool: string;
-  entrypoint: string;
+  entrypoint: string | null;
   bundle_uri: string | null;
   checksum: string | null;
   sig_uri: string | null;
   config: Record<string, unknown>;
   retired: boolean;
+  deploy_mode: "bundle" | "image";
+  image_uri: string | null;
+  image_digest: string | null;
+  slug: string | null;
+  status: "pending" | "active" | "failed" | "retired";
   created_at: string;
   updated_at: string;
 }

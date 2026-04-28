@@ -41,7 +41,7 @@ from runtime_common.logging import configure_logging, make_request_id_middleware
 from runtime_common.ratelimit import RateLimiter
 from runtime_common.registry import RegistryQuery, RegistrySubscriber
 from runtime_common.scheduling import Scheduler
-from runtime_common.schemas import Principal
+from runtime_common.schemas import Principal, parse_runtime_pool
 from runtime_common.telemetry import configure_metrics, configure_tracing
 
 logger = logging.getLogger(__name__)
@@ -440,12 +440,14 @@ async def check(path: str, request: Request) -> Response:
     if not app.state.resource_limiter.allow(rate_key):
         return _deny(429, f"rate limit exceeded for {kind}")
 
-    # Resolve source meta
+    # Resolve source meta + user config (pass principal.sub to fetch user_meta)
     with tracer.start_as_current_span("deploy.resolve") as span:
         span.set_attribute("kind", kind)
         span.set_attribute("name", name)
         try:
-            resolved = await app.state.deploy.resolve(kind=kind, name=name, version=version)
+            resolved = await app.state.deploy.resolve(
+                kind=kind, name=name, version=version, principal=principal.sub
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return _deny(404, f"{kind} not found: {name}")
@@ -456,25 +458,54 @@ async def check(path: str, request: Request) -> Response:
             return _deny(502, "deploy-api error")
 
     source = resolved.source
-    _, _, runtime_kind = source.runtime_pool.partition(":")
-    if not runtime_kind:
+    try:
+        pool_id = parse_runtime_pool(source.runtime_pool)
+    except ValueError:
         return _deny(502, f"invalid runtime_pool: {source.runtime_pool}")
 
-    # Pod pick: warm-registry → pull fallback → service URL
-    scheduler: Scheduler = app.state.agent_scheduler if kind == "agent" else app.state.mcp_scheduler
+    principal_b64 = base64.b64encode(principal.model_dump_json().encode("utf-8")).decode("ascii")
+
+    # Build merged config header (source.config + user.config, user wins).
+    user_config = resolved.user.config if resolved.user else {}
+    merged_cfg = {**source.config, **user_config}
+    cfg_b64 = base64.b64encode(
+        json.dumps(merged_cfg, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+
+    if pool_id.is_image_mode:
+        # Image mode: skip warm-registry, derive Service URL from slug.
+        pool_url = settings.image_mode_pool_url(pool_id.kind, pool_id.slug)
+        addr = _strip_scheme(pool_url)
+        resp_headers = {
+            "x-pod-addr": addr,
+            "x-pod-fallback-addr": addr,
+            "x-principal": principal_b64,
+            "x-source-version": source.version,
+            "x-runtime-cfg": cfg_b64,
+        }
+        if resolved.user and resolved.user.secrets_ref:
+            resp_headers["x-runtime-secrets-ref"] = resolved.user.secrets_ref
+        if grace_sec > 0 and principal.grace_applied:
+            resp_headers["x-grace-applied"] = "1"
+        return Response(status_code=200, headers=resp_headers)
+
+    # Bundle mode: warm-registry → ring-hash fallback → pool Service URL
+    scheduler: Scheduler = (
+        app.state.agent_scheduler if kind == "agent" else app.state.mcp_scheduler
+    )
     ring_key = f"{kind}:{name}:{version or ''}:{source.checksum or ''}"
     with tracer.start_as_current_span("scheduler.pick") as span:
         span.set_attribute("kind", kind)
         span.set_attribute("runtime.pool", source.runtime_pool)
         warm_url = await scheduler.pick(
-            runtime_kind=runtime_kind,
+            runtime_kind=pool_id.runtime_kind,
             checksum=source.checksum,
             ring_key=ring_key,
         )
 
-    pool_url = _pool_url(kind, runtime_kind, settings)
+    pool_url = _pool_url(kind, pool_id.runtime_kind, settings)
     if not pool_url:
-        return _deny(502, f"no pool for runtime_kind: {runtime_kind}")
+        return _deny(502, f"no pool for runtime_kind: {pool_id.runtime_kind}")
 
     # ext_authz returns only the host:port pair (no scheme). Envoy's Lua filter
     # replaces :authority with this value; the dynamic_forward_proxy cluster
@@ -482,15 +513,16 @@ async def check(path: str, request: Request) -> Response:
     # the Lua filter switches to x-pod-fallback-addr (pool Service URL).
     addr = _strip_scheme(warm_url) if warm_url else _strip_scheme(pool_url)
 
-    principal_b64 = base64.b64encode(principal.model_dump_json().encode("utf-8")).decode("ascii")
-
     resp_headers = {
         "x-pod-addr": addr,
         "x-pod-fallback-addr": _strip_scheme(pool_url),
         "x-principal": principal_b64,
         "x-source-checksum": source.checksum or "",
         "x-source-version": source.version,
+        "x-runtime-cfg": cfg_b64,
     }
+    if resolved.user and resolved.user.secrets_ref:
+        resp_headers["x-runtime-secrets-ref"] = resolved.user.secrets_ref
     if grace_sec > 0 and principal.grace_applied:
         resp_headers["x-grace-applied"] = "1"
         logger.info(

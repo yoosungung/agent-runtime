@@ -17,11 +17,10 @@ resources:
   - envoy.yaml
   - agent-pool-compiled-graph.yaml
   - agent-pool-adk.yaml
-  - agent-pool-custom.yaml
   - mcp-pool-fastmcp.yaml
   - mcp-pool-mcp-sdk.yaml
-  - mcp-pool-custom.yaml
   - network-policy.yaml
+  - backend-k8s-rbac.yaml
   - pdb.yaml
   - hpa.yaml
   - keda.yaml
