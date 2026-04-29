@@ -44,12 +44,6 @@ export function Layout() {
                     MCP Servers
                   </Link>
                   <Link
-                    to="/users"
-                    className="text-sm hover:text-gray-300 transition-colors"
-                  >
-                    Users
-                  </Link>
-                  <Link
                     to="/custom-agents"
                     className="text-sm hover:text-gray-300 transition-colors"
                   >
@@ -60,6 +54,12 @@ export function Layout() {
                     className="text-sm hover:text-gray-300 transition-colors"
                   >
                     Custom MCP
+                  </Link>
+                  <Link
+                    to="/users"
+                    className="text-sm hover:text-gray-300 transition-colors"
+                  >
+                    Users
                   </Link>
                   <Link
                     to="/audit"
