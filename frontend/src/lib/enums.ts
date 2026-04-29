@@ -7,8 +7,7 @@ export const AGENT_RUNTIME_KINDS = [
 export const MCP_RUNTIME_KINDS = [
   "mcp:fastmcp",
   "mcp:mcp_sdk",
-  "mcp:didim_rag",
-  "mcp:t2sql",
+  "mcp:custom",
 ] as const;
 
 export type AgentRuntimeKind = (typeof AGENT_RUNTIME_KINDS)[number];
