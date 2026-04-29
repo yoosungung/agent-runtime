@@ -28,10 +28,8 @@ spec:
             - { name: SERVICE_NAME, value: ext-authz }
             - { name: POOL_COMPILED_GRAPH_URL, value: http://agent-pool-compiled-graph.runtime.svc.cluster.local:8080 }
             - { name: POOL_ADK_URL,            value: http://agent-pool-adk.runtime.svc.cluster.local:8080 }
-            - { name: POOL_CUSTOM_URL,         value: http://agent-pool-custom.runtime.svc.cluster.local:8080 }
             - { name: POOL_FASTMCP_URL,        value: http://mcp-pool-fastmcp.runtime.svc.cluster.local:8080 }
-            - { name: POOL_MCP_SDK_URL,         value: http://mcp-pool-mcp-sdk.runtime.svc.cluster.local:8080 }
-            - { name: POOL_MCP_CUSTOM_URL,      value: http://mcp-pool-custom.runtime.svc.cluster.local:8080 }
+            - { name: POOL_MCP_SDK_URL,        value: http://mcp-pool-mcp-sdk.runtime.svc.cluster.local:8080 }
             - { name: MCP_INTERNAL_GRACE_SEC,  value: "300" }
           readinessProbe:
             httpGet: { path: /readyz, port: 8080 }

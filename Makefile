@@ -8,7 +8,7 @@ S3_BUCKET ?= agent-bundles
 KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts/kaniko-build.sh
 
 .PHONY: help sync lint typecheck test fmt \
-        images ncr-secret git-secret s3-secret jwt-secret \
+        images ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret \
         ext-authz-image auth-image deploy-api-image \
         agent-base-image mcp-base-image backend-image \
         k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
@@ -64,7 +64,7 @@ backend-image: ## build backend (admin console BFF + SPA) image via Kaniko
 
 images: ext-authz-image auth-image deploy-api-image agent-base-image mcp-base-image backend-image ## build all images via Kaniko
 
-jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret
+jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret (overwrites existing)
 	openssl genrsa -out /tmp/jwt.key 4096 2>/dev/null
 	openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub 2>/dev/null
 	kubectl create secret generic jwt-keys \
@@ -73,6 +73,11 @@ jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret
 		--from-file=JWT_PUBLIC_KEY=/tmp/jwt.pub \
 		--dry-run=client -o yaml | kubectl apply -f -
 	rm -f /tmp/jwt.key /tmp/jwt.pub
+
+ensure-jwt-secret: ## create jwt-keys secret only if it does not already exist (idempotent)
+	@kubectl -n $(NAMESPACE) get secret jwt-keys >/dev/null 2>&1 \
+		&& echo "jwt-keys already exists, skipping key generation" \
+		|| $(MAKE) jwt-secret
 
 git-secret: ## create/update GitHub token secret  (GIT_TOKEN=<token> make git-secret)
 	kubectl create secret generic git-creds \
@@ -101,13 +106,13 @@ s3-secret: ## create/update S3 credentials secret from .s3-config.json  (S3_BUCK
 
 # --- k8s ------------------------------------------------------------------
 
-k8s-apply-dev: ## apply dev overlay
+k8s-apply-dev: ensure-jwt-secret ## apply dev overlay (auto-generates jwt-keys if absent)
 	kubectl apply -k deploy/k8s/overlays/dev
 
-k8s-apply-stage:
+k8s-apply-stage: ensure-jwt-secret
 	kubectl apply -k deploy/k8s/overlays/stage
 
-k8s-apply-prod:
+k8s-apply-prod: ensure-jwt-secret
 	kubectl apply -k deploy/k8s/overlays/prod
 
 k8s-delete-dev:
