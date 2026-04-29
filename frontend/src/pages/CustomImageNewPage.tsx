@@ -22,41 +22,20 @@ export function CustomImageNewPage({ kind }: Props) {
     config: {},
     image_pull_secret: "",
   });
-  const [configStr, setConfigStr] = useState("{}");
-  const [configError, setConfigError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const backPath = kind === "agent" ? "/custom-agents" : "/custom-mcp";
   const title = kind === "agent" ? "Register Custom Agent Image" : "Register Custom MCP Image";
 
-  function handleConfigChange(val: string) {
-    setConfigStr(val);
-    try {
-      JSON.parse(val);
-      setConfigError(null);
-    } catch {
-      setConfigError("Invalid JSON");
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (configError) return;
-
-    let config: Record<string, unknown> = {};
-    try {
-      config = JSON.parse(configStr);
-    } catch {
-      setConfigError("Invalid JSON");
-      return;
-    }
 
     const body: CustomImageCreateBody = {
       kind: form.kind,
       name: form.name.trim(),
       version: form.version.trim(),
       image_uri: form.image_uri.trim(),
-      config,
+      config: form.config,
     };
     if (form.image_digest?.trim()) body.image_digest = form.image_digest.trim();
     if (form.slug?.trim()) body.slug = form.slug.trim();
@@ -173,10 +152,10 @@ export function CustomImageNewPage({ kind }: Props) {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Default Config <span className="text-gray-400 font-normal">(JSON, max 16KB)</span>
           </label>
-          <JsonEditor value={configStr} onChange={handleConfigChange} rows={6} />
-          {configError && (
-            <p className="text-xs text-red-500 mt-1">{configError}</p>
-          )}
+          <JsonEditor
+            value={form.config ?? {}}
+            onChange={(val) => setForm({ ...form, config: val })}
+          />
         </div>
 
         {submitError && (

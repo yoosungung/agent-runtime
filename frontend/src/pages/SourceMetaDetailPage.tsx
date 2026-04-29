@@ -66,7 +66,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
   const runtimeKinds = getRuntimeKinds(kind);
 
   if (!editInit && item) {
-    setEntrypoint(item.entrypoint);
+    setEntrypoint(item.entrypoint ?? "");
     setRuntimePool(item.runtime_pool);
     setSigUri(item.sig_uri ?? "");
     setConfig(item.config);
