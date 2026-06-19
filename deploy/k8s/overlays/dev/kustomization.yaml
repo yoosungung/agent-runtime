@@ -84,6 +84,11 @@ patches:
         value:
           name: POSTGRES_PGBOUNCER
           value: "false"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SESSION_COOKIE_SECURE
+          value: "false"
     target:
       kind: Deployment
       name: backend
