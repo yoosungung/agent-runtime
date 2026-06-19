@@ -10,13 +10,11 @@ test.describe("Agent lifecycle — register → detail → retire", () => {
   });
 
   test("create agent via URI tab, view detail, retire", async ({ page }) => {
-    // Navigate to agents list
-    await page.getByRole("link", { name: /agents/i }).first().click();
-    await page.waitForURL(/\/agents$/);
+    await page.getByRole("link", { name: "Bundle" }).click();
+    await page.waitForURL(/\/bundle\/agents$/);
 
-    // Click New Agent
-    await page.getByRole("link", { name: /new agent/i }).click();
-    await page.waitForURL(/\/agents\/new/);
+    await page.getByRole("button", { name: "+ New Agent" }).click();
+    await page.waitForURL(/\/bundle\/agents\/new/);
 
     // Fill URI tab form
     await page.getByPlaceholder("my-agent").fill(AGENT_NAME);

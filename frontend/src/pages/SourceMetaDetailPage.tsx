@@ -14,7 +14,7 @@ import { SignatureUploadDialog } from "../components/SignatureUploadDialog";
 import { AccessList } from "../components/AccessList";
 import { Paginator } from "../components/Paginator";
 import { usePagination } from "../hooks/usePagination";
-import { apiJson, type PageResponse } from "../lib/api";
+import { sourceMetaListPath } from "../lib/sourceMetaPaths";
 import type { SourceMeta } from "../hooks/useSourceMeta";
 import type { UserMeta } from "../hooks/useUserMeta";
 
@@ -30,7 +30,6 @@ export function SourceMetaDetailPage({ kind }: Props) {
   const { id } = useParams<{ id: string }>();
   const numId = Number(id);
   const navigate = useNavigate();
-  const basePath = kind === "agent" ? "/agents" : "/mcp-servers";
 
   const { data: item, isLoading, isError } = useSourceMetaById(numId);
   const patchMut = usePatchSourceMeta(numId);
@@ -127,9 +126,10 @@ export function SourceMetaDetailPage({ kind }: Props) {
   }
 
   async function handleDelete() {
+    const backPath = item ? sourceMetaListPath(item) : kind === "agent" ? "/agents" : "/bundle/mcp";
     try {
       await deleteMut.mutateAsync();
-      navigate(basePath, { replace: true });
+      navigate(backPath, { replace: true });
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Delete failed");
       setDeleteDialog(false);
@@ -140,14 +140,27 @@ export function SourceMetaDetailPage({ kind }: Props) {
   if (isError || !item)
     return <p className="p-4 text-sm text-red-500">Failed to load resource.</p>;
 
+  const listPath = sourceMetaListPath(item);
+  const detailBasePath = kind === "agent" ? "/agents" : "/mcp-servers";
+  const listLabel =
+    item.deploy_mode === "general"
+      ? "Agent"
+      : item.deploy_mode === "bundle"
+        ? item.kind === "agent"
+          ? "Bundle Agents"
+          : "Bundle MCP"
+        : item.kind === "agent"
+          ? "Container Agents"
+          : "Container MCP";
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex flex-wrap items-center gap-2 mb-6">
         <button
-          onClick={() => navigate(basePath)}
+          onClick={() => navigate(listPath)}
           className="text-sm text-blue-600 hover:underline"
         >
-          {kind === "agent" ? "Agents" : "MCP Servers"}
+          {listLabel}
         </button>
         <span className="text-gray-400">/</span>
         <h1 className="text-2xl font-bold text-gray-900">{item.name}</h1>
@@ -166,7 +179,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
           </h2>
 
           {/* Readonly fields */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             {[
               ["ID", String(item.id)],
               ["Kind", item.kind],
@@ -372,7 +385,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
                           key={um.principal_id}
                           onClick={() =>
                             navigate(
-                              `${basePath}/${numId}/user-meta/${encodeURIComponent(um.principal_id)}`,
+                              `${detailBasePath}/${numId}/user-meta/${encodeURIComponent(um.principal_id)}`,
                             )
                           }
                           className="hover:bg-gray-50 cursor-pointer"

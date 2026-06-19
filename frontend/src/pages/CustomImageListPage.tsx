@@ -7,9 +7,12 @@ import {
   type CustomImage,
 } from "../hooks/useCustomImages";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PageHeader } from "../components/PageHeader";
+import { listNewImageButtonLabel } from "../lib/uiLabels";
 
 interface Props {
   kind: "agent" | "mcp";
+  embedded?: boolean;
 }
 
 function statusBadge(status: CustomImage["status"]) {
@@ -32,7 +35,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
-export function CustomImageListPage({ kind }: Props) {
+export function CustomImageListPage({ kind, embedded = false }: Props) {
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useCustomImageList(kind);
   const deleteMut = useDeleteCustomImage();
@@ -40,8 +43,8 @@ export function CustomImageListPage({ kind }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<CustomImage | null>(null);
   const [restartTarget, setRestartTarget] = useState<CustomImage | null>(null);
 
-  const title = kind === "agent" ? "Custom Agent Images" : "Custom MCP Images";
-  const newPath = kind === "agent" ? "/custom-agents/new" : "/custom-mcp/new";
+  const newPath =
+    kind === "agent" ? "/container/agents/new" : "/container/mcp/new";
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -58,15 +61,22 @@ export function CustomImageListPage({ kind }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+      <PageHeader
+        title={
+          embedded
+            ? undefined
+            : kind === "agent"
+              ? "Container Agents"
+              : "Container MCP"
+        }
+      >
         <button
           onClick={() => navigate(newPath)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium w-full sm:w-auto"
         >
-          + Register Image
+          {listNewImageButtonLabel(kind)}
         </button>
-      </div>
+      </PageHeader>
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
         {isLoading && <p className="p-4 text-sm text-gray-500">Loading...</p>}
@@ -124,7 +134,7 @@ export function CustomImageListPage({ kind }: Props) {
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDate(item.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-sm flex gap-3">
+                    <td className="px-4 py-3 text-sm flex flex-wrap gap-3">
                       {item.status === "active" && (
                         <button
                           onClick={() => setRestartTarget(item)}

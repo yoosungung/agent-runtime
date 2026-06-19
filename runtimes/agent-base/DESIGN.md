@@ -2,7 +2,14 @@
 
 Agent-Pool의 베이스 이미지. AWS Lambda와 유사하게 **같은 이미지**가 장기 실행 pod로 떠 있다가, 요청이 오면 **deploy-api에서 자기 agent 코드 정의 + 사용자 메타를 조회해 와서** 엔트리포인트를 import 하고 호출한다.
 
-> **범위**: `RUNTIME_KIND ∈ {compiled_graph, adk}` — **Bundle 모드 전용**. Image 모드(`custom`) pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 agent-base와 무관. Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
+> **범위**: `RUNTIME_KIND ∈ {compiled_graph, adk}` — **Bundle + General 모드** 전용. Image 모드(`custom`) pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 agent-base와 무관. Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
+
+### General tier (`deploy_mode='general'`)
+
+ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/invoke` 시 `source.deploy_mode == 'general'`이면 `BundleLoader`를 건너뛰고 `agent_base.general_agent.build_general_agent()`를 호출한다.
+
+- **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`)
+- **VFS**: `CompositeBackend` — `/` → `StateBackend`, `/agent/` → `vfs_agent_files` (`kind`,`name` 키), `/user/` → `vfs_user_files` (`user_id` 키). DSN: `VFS_DSN` env.
 
 ## 설계
 

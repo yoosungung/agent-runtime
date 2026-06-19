@@ -11,7 +11,7 @@ test.describe("User lifecycle — create → access grant → reverse lookup", (
 
   test("create user, grant agent access, verify access appears on agent detail", async ({ page }) => {
     // ── 1. Create a new user ──────────────────────────────────────────────
-    await page.getByRole("link", { name: /users/i }).click();
+    await page.getByRole("link", { name: "User" }).click();
     await page.waitForURL(/\/users$/);
     await page.getByRole("link", { name: /new user/i }).click();
     await page.waitForURL(/\/users\/new/);
@@ -25,8 +25,8 @@ test.describe("User lifecycle — create → access grant → reverse lookup", (
     await expect(page.getByText(TEST_USERNAME)).toBeVisible();
 
     // ── 2. Go to agents list and pick the first agent ─────────────────────
-    await page.getByRole("link", { name: /agents/i }).first().click();
-    await page.waitForURL(/\/agents$/);
+    await page.getByRole("link", { name: "Bundle" }).click();
+    await page.waitForURL(/\/bundle\/agents$/);
 
     const firstAgentRow = page.getByRole("row").nth(1);
     const agentName = await firstAgentRow.getByRole("cell").first().innerText();
@@ -47,7 +47,7 @@ test.describe("User lifecycle — create → access grant → reverse lookup", (
     await expect(page.getByText(/user meta/i)).toBeVisible({ timeout: 5_000 });
 
     // ── 4. Back to user detail — verify access entry exists ──────────────
-    await page.getByRole("link", { name: /users/i }).click();
+    await page.getByRole("link", { name: "User" }).click();
     await page.waitForURL(/\/users$/);
     await page.getByRole("row", { name: new RegExp(TEST_USERNAME, "i") }).getByRole("link").click();
     await page.waitForURL(/\/users\/\d+/);

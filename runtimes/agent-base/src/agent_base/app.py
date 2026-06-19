@@ -5,7 +5,6 @@ import base64
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
 from typing import Annotated
 
 from fastapi import FastAPI, Header, HTTPException
@@ -13,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from opentelemetry.metrics import Observation
 from pydantic import BaseModel
 
+from agent_base.context import reset_current_token, set_current_token
+from agent_base.general_agent import build_general_agent
 from agent_base.runner import run, run_stream
 from agent_base.settings import Settings
 from runtime_common.deploy_client import DeployApiClient
@@ -26,9 +27,6 @@ from runtime_common.secrets import EnvSecretResolver
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
 
 logger = logging.getLogger(__name__)
-
-# Request-scoped bearer token for JWT forwarding to mcp-gateway
-_current_token: ContextVar[str | None] = ContextVar("current_token", default=None)
 
 
 class InvokeRequest(BaseModel):
@@ -69,6 +67,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     counter = ActiveCounter(settings.max_concurrent)
     deploy_client = DeployApiClient(settings.deploy_api_url)
 
+    vfs_pool = None
+    if settings.vfs_dsn:
+        from runtime_common.vfs.store import create_asyncpg_pool
+
+        dsn = settings.vfs_dsn.replace("postgresql+asyncpg://", "postgresql://")
+        vfs_pool = await create_asyncpg_pool(dsn)
+
     # Expose active_requests as an OTEL gauge so Prometheus/KEDA can scale on it.
     meter = get_meter("agent_base")
     meter.create_observable_gauge(
@@ -95,6 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.counter = counter
     app.state.deploy = deploy_client
     app.state.publisher = publisher
+    app.state.vfs_pool = vfs_pool
 
     await publisher.start()
 
@@ -112,6 +118,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         await publisher.stop()
         await deploy_client.aclose()
+        if vfs_pool is not None:
+            await vfs_pool.close()
 
 
 app = FastAPI(title="agent-base", lifespan=lifespan)
@@ -153,7 +161,7 @@ async def invoke(
     token = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
-    tok_token = _current_token.set(token)
+    tok_token = set_current_token(token)
 
     try:
         # Re-resolve: pool fetches meta itself (trust boundary at deploy-api)
@@ -179,17 +187,43 @@ async def invoke(
         merged_cfg = merge_configs(source.config, user_cfg)
         secrets = EnvSecretResolver()
 
-        # Load bundle and get factory
-        try:
-            factory = loader.load(source)
-        except BundleFetchError as exc:
-            raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
-        except BundleImportError as exc:
-            logger.error("bundle_import_failed", extra={"agent": req.agent, "error": str(exc)})
-            raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
+        deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
+        if deploy_mode == "general":
+            if not principal.user_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="general agent invoke requires principal.user_id",
+                )
+            vfs_pool = getattr(app.state, "vfs_pool", None)
+            if vfs_pool is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="VFS pool not configured (set VFS_DSN)",
+                )
+            try:
+                instance = build_general_agent(
+                    merged_cfg,
+                    secrets,
+                    kind=source.kind,
+                    agent_name=source.name,
+                    user_id=principal.user_id,
+                    vfs_pool=vfs_pool,
+                    mcp_gateway_url=settings.mcp_gateway_url,
+                )
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=500, detail=f"general agent build failed: {exc}") from exc
+        else:
+            # Load bundle and get factory
+            try:
+                factory = loader.load(source)
+            except BundleFetchError as exc:
+                raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
+            except BundleImportError as exc:
+                logger.error("bundle_import_failed", extra={"agent": req.agent, "error": str(exc)})
+                raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
 
-        # Instantiate via factory (supports zero-arg, (cfg,), (cfg, secrets))
-        instance = call_factory(factory, merged_cfg, secrets)
+            # Instantiate via factory (supports zero-arg, (cfg,), (cfg, secrets))
+            instance = call_factory(factory, merged_cfg, secrets)
 
         user_id = str(principal.user_id) if principal.user_id else principal.sub
         opik_meta = {"version": req.version or "latest", "runtime_kind": settings.runtime_kind}
@@ -216,7 +250,7 @@ async def invoke(
                             ):
                                 yield chunk
                     finally:
-                        _current_token.reset(_saved_tok)
+                        reset_current_token(_saved_tok)
 
             tok_token = None  # type: ignore[assignment]  # generator owns reset; skip outer finally
             return StreamingResponse(
@@ -252,9 +286,11 @@ async def invoke(
         return result
     finally:
         if tok_token is not None:
-            _current_token.reset(tok_token)
+            reset_current_token(tok_token)
 
 
 def get_current_token() -> str | None:
     """Return the JWT for the current request (for MCP JWT forwarding)."""
-    return _current_token.get()
+    from agent_base.context import get_current_token as _get
+
+    return _get()

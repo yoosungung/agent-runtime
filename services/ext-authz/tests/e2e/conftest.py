@@ -36,7 +36,7 @@ _PRINCIPAL_JSON = json.dumps(
         "tenant": None,
         "access": [],
         "grace_applied": False,
-        "is_admin": False,
+        "role": "user",
         "must_change_password": False,
     }
 )

@@ -13,6 +13,7 @@ from backend.deps import get_auth_client, get_db, get_principal, get_settings
 from backend.settings import Settings
 from runtime_common.auth import AuthClient
 from runtime_common.db.models import UserRow
+from runtime_common.roles import UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     username: str
-    is_admin: bool
+    role: UserRole
     must_change_password: bool
     user_id: int
     tenant: str | None
@@ -36,7 +37,7 @@ class MeResponse(BaseModel):
     user_id: int
     username: str
     tenant: str | None
-    is_admin: bool
+    role: UserRole
     must_change_password: bool
 
 
@@ -111,7 +112,7 @@ async def login(
             UserRow.id,
             UserRow.username,
             UserRow.tenant,
-            UserRow.is_admin,
+            UserRow.role,
             UserRow.must_change_password,
         ).where(UserRow.username == body.username)
     )
@@ -121,7 +122,7 @@ async def login(
 
     return LoginResponse(
         username=row.username,
-        is_admin=bool(row.is_admin),
+        role=UserRole(row.role),
         must_change_password=bool(row.must_change_password),
         user_id=row.id,
         tenant=row.tenant,
@@ -160,7 +161,7 @@ async def me(
             UserRow.id,
             UserRow.username,
             UserRow.tenant,
-            UserRow.is_admin,
+            UserRow.role,
             UserRow.must_change_password,
         ).where(UserRow.id == principal.user_id)
     )
@@ -172,6 +173,6 @@ async def me(
         user_id=row.id,
         username=row.username,
         tenant=row.tenant,
-        is_admin=bool(row.is_admin),
+        role=UserRole(row.role),
         must_change_password=bool(row.must_change_password),
     )

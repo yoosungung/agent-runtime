@@ -7,7 +7,9 @@ CSRF validation is bypassed via monkeypatching validate_csrf.
 
 from __future__ import annotations
 
+import pytest
 import pytest_asyncio
+import respx
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -23,7 +25,7 @@ _ADMIN_PRINCIPAL = {
     "tenant": None,
     "access": [],
     "grace_applied": False,
-    "is_admin": True,
+    "role": "admin",
     "must_change_password": False,
 }
 
@@ -155,7 +157,11 @@ async def _insert_source(app_state, overrides: dict | None = None) -> SourceMeta
         return row
 
 
-async def _insert_user(app_state, username: str = "alice", is_admin: bool = False) -> UserRow:
+async def _insert_user(
+    app_state,
+    username: str = "alice",
+    role: str = "user",
+) -> UserRow:
     from backend.app import app
     from backend.passwords import hash_password
 
@@ -165,7 +171,7 @@ async def _insert_user(app_state, username: str = "alice", is_admin: bool = Fals
             password_hash=hash_password("TestPass123!"),
             tenant=None,
             disabled=False,
-            is_admin=is_admin,
+            role=role,
             must_change_password=False,
         )
         session.add(row)
@@ -264,6 +270,35 @@ async def test_list_source_meta_filter_kind(client: AsyncClient):
     assert resp.status_code == 200
     items = resp.json()["items"]
     assert all(item["kind"] == "mcp" for item in items)
+
+
+async def test_list_source_meta_filter_deploy_mode(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(app.state, {"name": "bundle-bot", "deploy_mode": "bundle"})
+    await _insert_source(
+        app.state,
+        {
+            "name": "general-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:general",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": {"system_prompt": "hi", "mcp_servers": []},
+        },
+    )
+    resp = await client.get(
+        "/api/source-meta",
+        params={"deploy_mode": "general"},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) >= 1
+    assert all(item["deploy_mode"] == "general" for item in items)
+    assert any(item["name"] == "general-bot" for item in items)
+    assert all(item["name"] != "bundle-bot" for item in items)
 
 
 async def test_get_source_meta_by_id(client: AsyncClient):
@@ -405,14 +440,14 @@ async def test_create_user_201(client: AsyncClient):
         json={
             "username": "bob",
             "password": "StrongPassword123!",
-            "is_admin": False,
+            "role": "user",
         },
         headers=_csrf_headers(),
     )
     assert resp.status_code == 201
     data = resp.json()
     assert data["username"] == "bob"
-    assert data["is_admin"] is False
+    assert data["role"] == "user"
 
 
 async def test_create_user_weak_password_400(client: AsyncClient):
@@ -425,7 +460,7 @@ async def test_create_user_weak_password_400(client: AsyncClient):
 
 
 async def test_create_user_duplicate_409(client: AsyncClient):
-    body = {"username": "dave", "password": "StrongPassword123!", "is_admin": False}
+    body = {"username": "dave", "password": "StrongPassword123!", "role": "user"}
     await client.post("/api/users", json=body, headers=_csrf_headers())
     resp = await client.post("/api/users", json=body, headers=_csrf_headers())
     assert resp.status_code == 409
@@ -562,7 +597,7 @@ async def test_delete_user(client: AsyncClient):
     # SQLite auto-increments from 1. The mock principal has user_id=1, so the
     # first user inserted would collide ("Cannot delete your own account").
     # Insert a placeholder user first so the target gets a higher id.
-    await _insert_user(app.state, "placeholder-admin", is_admin=True)
+    await _insert_user(app.state, "placeholder-admin", role="admin")
     target = await _insert_user(app.state, "delete-target")
 
     resp = await client.delete(f"/api/users/{target.id}", headers=_csrf_headers())
@@ -987,7 +1022,7 @@ async def test_get_me(client: AsyncClient):
 
     # The mock auth returns user_id=1; insert a user so id=1 exists.
     # SQLite auto-increments from 1 on first insert.
-    user = await _insert_user(app.state, "me-user", is_admin=True)
+    user = await _insert_user(app.state, "me-user", role="admin")
     # user.id should be 1 if the table is empty, but may differ in shared state.
     # Patch the mock to return the actual user id so /api/me can find it.
     from unittest.mock import AsyncMock
@@ -1142,3 +1177,74 @@ async def test_dashboard_summary_resource_counts(client: AsyncClient):
 
     assert data["pools"]["available"] is False
     assert data["pools"]["error"] == "REDIS_URL not configured"
+
+
+# ---------------------------------------------------------------------------
+# General agent tier (POST /api/source-meta/general)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_general_agent_201(client: AsyncClient):
+    from backend.deps import get_settings
+
+    settings = get_settings()
+
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/search-server/tools").mock(
+        return_value=Response(
+            200,
+            json={
+                "tools": [
+                    {"name": "naver_search", "description": "Search"},
+                    {"name": "fetch_url", "description": "Fetch"},
+                ]
+            },
+        )
+    )
+
+    resp = await client.post(
+        "/api/source-meta/general",
+        headers=_csrf_headers(),
+        json={
+            "name": "research-bot",
+            "version": "v1",
+            "system_prompt": "You are a researcher.",
+            "mcp_servers": ["search-server"],
+            "config": {"langgraph": {"model": "anthropic:claude-sonnet-4-6"}},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["deploy_mode"] == "general"
+    assert data["runtime_pool"] == "agent:compiled_graph"
+    assert data["entrypoint"] is None
+    assert data["bundle_uri"] is None
+    assert data["config"]["general"]["system_prompt"] == "You are a researcher."
+    assert len(data["config"]["general"]["mcp_tools"]) == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_general_agent_duplicate_409(client: AsyncClient):
+    from backend.deps import get_settings
+
+    settings = get_settings()
+
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/tools").mock(
+        return_value=Response(200, json={"tools": [{"name": "t", "description": ""}]})
+    )
+    payload = {
+        "name": "dup-bot",
+        "version": "v1",
+        "system_prompt": "Hi",
+        "mcp_servers": ["s"],
+    }
+    r1 = await client.post(
+        "/api/source-meta/general", headers=_csrf_headers(), json=payload
+    )
+    assert r1.status_code == 201
+    r2 = await client.post(
+        "/api/source-meta/general", headers=_csrf_headers(), json=payload
+    )
+    assert r2.status_code == 409

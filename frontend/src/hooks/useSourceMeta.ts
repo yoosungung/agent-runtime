@@ -13,7 +13,7 @@ export interface SourceMeta {
   sig_uri: string | null;
   config: Record<string, unknown>;
   retired: boolean;
-  deploy_mode: "bundle" | "image";
+  deploy_mode: "general" | "bundle" | "image";
   image_uri: string | null;
   image_digest: string | null;
   slug: string | null;
@@ -31,6 +31,7 @@ export interface AccessEntry {
 
 export interface SourceMetaListParams {
   kind?: "agent" | "mcp";
+  deploy_mode?: "general" | "bundle" | "image";
   name?: string;
   retired?: boolean;
   limit?: number;
@@ -74,6 +75,26 @@ export function useSourceMetaAccess(id: number | undefined, params?: { limit?: n
         `/api/source-meta/${id}/access${buildQuery((params ?? {}) as Record<string, unknown>)}`,
       ),
     enabled: id !== undefined,
+  });
+}
+
+export function useCreateGeneralAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      version: string;
+      system_prompt: string;
+      mcp_servers: string[];
+      config?: Record<string, unknown>;
+    }) =>
+      apiJson<SourceMeta>("/api/source-meta/general", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["source-meta", "list"] });
+    },
   });
 }
 

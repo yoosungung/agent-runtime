@@ -48,10 +48,10 @@ login() {
     "$AGENTS_HOST/api/auth/login") \
     || fail "login failed: $body"
 
-  local user_id is_admin csrf access
+  local user_id role csrf access
   user_id=$(jq -r .user_id <<<"$body")
-  is_admin=$(jq -r .is_admin <<<"$body")
-  [ "$is_admin" = "true" ] || fail "logged-in user is not admin"
+  role=$(jq -r .role <<<"$body")
+  [ "$role" = "admin" ] || fail "logged-in user is not admin"
 
   csrf=$(awk '/csrf_token/ {print $7}' "$COOKIE_JAR" | tail -n1)
   access=$(awk '/access_token/ {print $7}' "$COOKIE_JAR" | tail -n1)

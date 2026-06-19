@@ -40,7 +40,7 @@ A web UI (`/`) served by the backend BFF at the same origin as the API. Features
 | Page | Path | Access |
 |---|---|---|
 | Dashboard | `/` | Admin |
-| Agents | `/agents` | Admin |
+| Agents | `/agents` | Admin — **General** (config-only), **Bundle** (ZIP), **Custom** (OCI image) |
 | MCP Servers | `/mcp-servers` | Admin |
 | Users | `/users` | Admin |
 | Audit Log | `/audit` | Admin |
@@ -48,7 +48,8 @@ A web UI (`/`) served by the backend BFF at the same origin as the API. Features
 | My Profile | `/me` | All authenticated |
 
 **Key flows**
-- Register a new agent/MCP bundle via ZIP upload (in-browser sha256, decompressed-size hint) or external URI (s3://, oci://)
+- Register agents via three tiers: **General** (system prompt + MCP servers, no code), **Bundle** (ZIP/URI + factory), or **Custom** (OCI image)
+- Register MCP servers via **Bundle** or **Custom** only
 - Verify bundle integrity (`POST /api/source-meta/{id}/verify` — sha256 recompute + signature recheck)
 - Manage user accounts, reset passwords, grant/revoke access per agent or MCP server (bulk revoke)
 - Audit log: every create/update/delete/retire/login event is recorded atomically alongside the operation
@@ -105,7 +106,7 @@ gh release create v0.1.0 --title "dev 0.1.0" --target main
 
 # 2. Wait for Actions workflow to finish, then deploy
 make k8s-apply-dev     # dev overlay (GHCR images, Ingress: agents.k8s-test)
-make db-migrate-all    # apply 0001 + 0002 SQL migrations
+make db-migrate-all    # apply 0001 + 0002 + 0003 SQL migrations (K8s postgres pod)
 make k8s-rollout-restart   # pull new :latest images
 
 # Emergency rebuild without a release: Actions → "Build and push images" → Run workflow

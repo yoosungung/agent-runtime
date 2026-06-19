@@ -4,7 +4,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { userCreateSchema } from "../lib/schemas";
+import type { UserRole } from "../lib/roles";
 import { useCreateUser } from "../hooks/useUsers";
+import { createUserPendingLabel, createUserSubmitLabel } from "../lib/uiLabels";
 
 type FormValues = z.infer<typeof userCreateSchema>;
 
@@ -21,7 +23,7 @@ export function UserNewPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(userCreateSchema),
     defaultValues: {
-      is_admin: false,
+      role: "user" as UserRole,
     },
   });
 
@@ -34,7 +36,7 @@ export function UserNewPage() {
         username: values.username,
         password: values.password,
         tenant: values.tenant || undefined,
-        is_admin: values.is_admin,
+        role: values.role,
       });
       navigate(`/users/${user.id}`);
     } catch (e: unknown) {
@@ -124,19 +126,18 @@ export function UserNewPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              {...register("is_admin")}
-              type="checkbox"
-              id="is_admin"
-              className="w-4 h-4 text-blue-600 rounded border-gray-300"
-            />
-            <label
-              htmlFor="is_admin"
-              className="text-sm font-medium text-gray-700"
-            >
-              Admin user
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Role
             </label>
+            <select
+              {...register("role")}
+              className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="user">User</option>
+              <option value="developer">Developer</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
 
           <div className="flex gap-3 pt-2">
@@ -146,8 +147,8 @@ export function UserNewPage() {
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
             >
               {isSubmitting || createMut.isPending
-                ? "Creating..."
-                : "Create User"}
+                ? createUserPendingLabel
+                : createUserSubmitLabel}
             </button>
             <button
               type="button"

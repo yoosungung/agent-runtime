@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useUsersList } from "../hooks/useUsers";
 import { Paginator } from "../components/Paginator";
 import { usePagination } from "../hooks/usePagination";
+import { PageHeader } from "../components/PageHeader";
+import { listNewUserButtonLabel } from "../lib/uiLabels";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -34,18 +36,16 @@ export function UsersListPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Users</h1>
+      <PageHeader title="Users">
         <button
           onClick={() => navigate("/users/new")}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium w-full sm:w-auto"
         >
-          + New User
+          {listNewUserButtonLabel}
         </button>
-      </div>
+      </PageHeader>
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-4 mb-4 flex gap-4 items-end flex-wrap">
+      <div className="bg-white shadow rounded-lg p-4 mb-4 flex flex-col sm:flex-row gap-4 sm:items-end flex-wrap">
         <div>
           <label className="block text-xs text-gray-500 mb-1">
             Username prefix
@@ -55,7 +55,7 @@ export function UsersListPage() {
             value={usernameFilter}
             onChange={(e) => setUsernameFilter(e.target.value)}
             placeholder="Filter by username..."
-            className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-auto border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
@@ -73,7 +73,7 @@ export function UsersListPage() {
               setDisabledFilter(v === "" ? undefined : v === "true");
               reset();
             }}
-            className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-auto border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All</option>
             <option value="false">Active</option>
@@ -136,11 +136,9 @@ export function UsersListPage() {
                         {user.tenant ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {user.is_admin && (
-                          <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded">
-                            Admin
-                          </span>
-                        )}
+                        <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-0.5 rounded capitalize">
+                          {user.role}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {user.disabled ? (

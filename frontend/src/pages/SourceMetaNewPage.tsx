@@ -9,6 +9,20 @@ import { getRuntimeKinds } from "../lib/enums";
 import { useCreateSourceMeta, useUploadBundle } from "../hooks/useSourceMeta";
 import { JsonEditor } from "../components/JsonEditor";
 import { FileDropZone } from "../components/FileDropZone";
+import {
+  FormActions,
+  FormError,
+  FormPageLayout,
+  formPrimaryButtonClassName,
+  formSecondaryButtonClassName,
+} from "../components/FormPageLayout";
+import {
+  createSubmitLabel,
+  createSubmitPendingLabel,
+  newPageTitle,
+  uploadSubmitLabel,
+  uploadSubmitPendingLabel,
+} from "../lib/uiLabels";
 
 const DECOMPRESSED_WARN_MB = 500;
 
@@ -45,8 +59,8 @@ type FormValues = z.infer<typeof sourceMetaCreateSchema>;
 
 export function SourceMetaNewPage({ kind }: Props) {
   const navigate = useNavigate();
-  const basePath = kind === "agent" ? "/agents" : "/mcp-servers";
-  const title = kind === "agent" ? "New Agent" : "New MCP Server";
+  const listPath = kind === "agent" ? "/bundle/agents" : "/bundle/mcp";
+  const title = newPageTitle("bundle", kind);
 
   const [tab, setTab] = useState<"uri" | "zip">("uri");
   const [config, setConfig] = useState<Record<string, unknown>>({});
@@ -99,7 +113,7 @@ export function SourceMetaNewPage({ kind }: Props) {
       const payload = { ...values, config };
       if (!requiresChecksum) delete payload.checksum;
       const result = await createMut.mutateAsync(payload);
-      navigate(`${basePath}/${result.id}`);
+      navigate(kind === "agent" ? `/agents/${result.id}` : `/mcp-servers/${result.id}`);
     } catch (e: unknown) {
       setGlobalError(e instanceof Error ? e.message : "Failed to create");
     }
@@ -138,7 +152,7 @@ export function SourceMetaNewPage({ kind }: Props) {
 
     try {
       const result = await uploadMut.mutateAsync(fd);
-      navigate(`${basePath}/${result.id}`);
+      navigate(kind === "agent" ? `/agents/${result.id}` : `/mcp-servers/${result.id}`);
     } catch (e: unknown) {
       const status = (e as { status?: number })?.status;
       if (status === 413) setGlobalError("File too large");
@@ -149,12 +163,8 @@ export function SourceMetaNewPage({ kind }: Props) {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">{title}</h1>
-
-      <div className="bg-white shadow rounded-lg p-6">
-        {/* Tabs */}
-        <div className="flex gap-4 border-b border-gray-200 mb-6">
+    <FormPageLayout title={title}>
+        <div className="flex gap-4 border-b border-gray-200 mb-6 overflow-x-auto">
           <button
             onClick={() => setTab("uri")}
             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
@@ -177,11 +187,7 @@ export function SourceMetaNewPage({ kind }: Props) {
           </button>
         </div>
 
-        {globalError && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded px-4 py-3 text-sm text-red-700">
-            {globalError}
-          </div>
-        )}
+        {globalError && <FormError message={globalError} />}
 
         {tab === "uri" && (
           <form onSubmit={handleSubmit(onSubmitUri)} className="space-y-5">
@@ -309,22 +315,24 @@ export function SourceMetaNewPage({ kind }: Props) {
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={isSubmitting || createMut.isPending}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isSubmitting || createMut.isPending ? "Creating..." : "Create"}
-              </button>
+            <FormActions>
               <button
                 type="button"
-                onClick={() => navigate(basePath)}
-                className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
+                onClick={() => navigate(listPath)}
+                className={formSecondaryButtonClassName}
               >
                 Cancel
               </button>
-            </div>
+              <button
+                type="submit"
+                disabled={isSubmitting || createMut.isPending}
+                className={formPrimaryButtonClassName}
+              >
+                {isSubmitting || createMut.isPending
+                  ? createSubmitPendingLabel(kind)
+                  : createSubmitLabel(kind)}
+              </button>
+            </FormActions>
           </form>
         )}
 
@@ -438,26 +446,27 @@ export function SourceMetaNewPage({ kind }: Props) {
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <FormActions>
+              <button
+                type="button"
+                onClick={() => navigate(listPath)}
+                className={formSecondaryButtonClassName}
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 onClick={onSubmitZip}
                 disabled={uploadMut.isPending}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                className={formPrimaryButtonClassName}
               >
-                {uploadMut.isPending ? "Uploading..." : "Upload & Create"}
+                {uploadMut.isPending
+                  ? uploadSubmitPendingLabel(kind)
+                  : uploadSubmitLabel(kind)}
               </button>
-              <button
-                type="button"
-                onClick={() => navigate(basePath)}
-                className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
+            </FormActions>
           </div>
         )}
-      </div>
-    </div>
+    </FormPageLayout>
   );
 }

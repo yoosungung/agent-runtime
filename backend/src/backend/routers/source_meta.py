@@ -15,24 +15,105 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.audit import log_event, make_audit_row
 from backend.bundle_storage import BundleStorage, bundle_path
-from backend.deps import check_csrf, get_db, get_settings, require_admin
+from backend.deps import check_csrf, get_db, get_principal, get_settings, require_admin, require_developer
 from backend.settings import Settings
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
-from runtime_common.schemas import AgentRuntimeKind, McpRuntimeKind
+from runtime_common.roles import UserRole, role_at_least
+from runtime_common.schemas import AgentRuntimeKind, McpRuntimeKind, Principal
+from runtime_common.config_schema import GeneralAgentSourceConfig, McpToolManifestEntry
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/source-meta",
     tags=["source-meta"],
-    dependencies=[Depends(require_admin), Depends(check_csrf)],
+    dependencies=[Depends(get_principal), Depends(check_csrf)],
 )
 
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+def _ensure_can_read_source_meta(row: SourceMetaRow, principal: Principal) -> None:
+    if row.deploy_mode != "general" and not role_at_least(principal.role, UserRole.DEVELOPER):
+        raise HTTPException(status_code=403, detail="Developer access required")
+
+
+def _ensure_can_write_source_meta(row: SourceMetaRow, principal: Principal) -> None:
+    _ensure_can_read_source_meta(row, principal)
+
+
+def _apply_role_list_filter(
+    principal: Principal,
+    q,
+    count_q,
+):
+    if role_at_least(principal.role, UserRole.DEVELOPER):
+        return q, count_q
+    q = q.where(SourceMetaRow.deploy_mode == "general")
+    count_q = count_q.where(SourceMetaRow.deploy_mode == "general")
+    return q, count_q
+GENERAL_RUNTIME_POOL = "agent:compiled_graph"
+MAX_MCP_TOOLS = 32
+
+
+async def _discover_mcp_tools(
+    settings: Settings,
+    access_token: str,
+    mcp_servers: list[str],
+) -> list[McpToolManifestEntry]:
+    """Fetch tool manifests from ext-authz via Envoy for each MCP server."""
+    tools: list[McpToolManifestEntry] = []
+    base = settings.ENVOY_URL.rstrip("/")
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for server in mcp_servers:
+            try:
+                resp = await client.get(
+                    f"{base}/v1/mcp/servers/{server}/tools",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"MCP tool discovery failed for server '{server}': {exc}",
+                ) from exc
+            payload = resp.json()
+            for raw in payload.get("tools") or []:
+                if not isinstance(raw, dict) or not raw.get("name"):
+                    continue
+                tools.append(
+                    McpToolManifestEntry(
+                        server=server,
+                        name=str(raw["name"]),
+                        description=str(raw.get("description") or ""),
+                    )
+                )
+                if len(tools) >= MAX_MCP_TOOLS:
+                    return tools
+    return tools
+
+
+def _build_general_config(
+    system_prompt: str,
+    mcp_servers: list[str],
+    mcp_tools: list[McpToolManifestEntry],
+    extra_config: dict | None,
+) -> dict:
+    general = GeneralAgentSourceConfig(
+        system_prompt=system_prompt,
+        mcp_servers=mcp_servers,
+        mcp_tools=mcp_tools,
+    )
+    config = dict(extra_config or {})
+    config["general"] = general.model_dump()
+    return config
+
+
 VALID_KINDS = {"agent", "mcp"}
+VALID_DEPLOY_MODES = {"bundle", "general", "image"}
 VALID_BUNDLE_RUNTIME_POOLS = {f"agent:{k}" for k in AgentRuntimeKind} | {
     f"mcp:{k}" for k in McpRuntimeKind
 }
@@ -54,6 +135,14 @@ MAX_MERGED_CONFIG_BYTES = 16 * 1024  # 16KB
 def _validate_kind(kind: str) -> None:
     if kind not in VALID_KINDS:
         raise HTTPException(status_code=400, detail=f"kind must be one of {VALID_KINDS}")
+
+
+def _validate_deploy_mode(deploy_mode: str) -> None:
+    if deploy_mode not in VALID_DEPLOY_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"deploy_mode must be one of {sorted(VALID_DEPLOY_MODES)}",
+        )
 
 
 def _validate_runtime_pool(runtime_pool: str, kind: str) -> None:
@@ -196,19 +285,29 @@ class AccessListResponse(BaseModel):
 @router.get("", response_model=SourceMetaListResponse)
 async def list_source_meta(
     kind: str | None = Query(None),
+    deploy_mode: str | None = Query(None),
     name: str | None = Query(None, description="Name prefix filter"),
     retired: bool | None = Query(None),
     limit: int = Query(50, ge=1),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
 ) -> SourceMetaListResponse:
     limit = min(limit, 100)
+    if deploy_mode is not None:
+        _validate_deploy_mode(deploy_mode)
+        if deploy_mode != "general" and not role_at_least(principal.role, UserRole.DEVELOPER):
+            raise HTTPException(status_code=403, detail="Developer access required")
     q = select(SourceMetaRow)
     count_q = select(func.count()).select_from(SourceMetaRow)
+    q, count_q = _apply_role_list_filter(principal, q, count_q)
 
     if kind is not None:
         q = q.where(SourceMetaRow.kind == kind)
         count_q = count_q.where(SourceMetaRow.kind == kind)
+    if deploy_mode is not None:
+        q = q.where(SourceMetaRow.deploy_mode == deploy_mode)
+        count_q = count_q.where(SourceMetaRow.deploy_mode == deploy_mode)
     if name is not None:
         q = q.where(SourceMetaRow.name.like(f"{name}%"))
         count_q = count_q.where(SourceMetaRow.name.like(f"{name}%"))
@@ -240,11 +339,13 @@ async def list_source_meta(
 async def get_source_meta(
     id: int,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
 ) -> SourceMetaResponse:
     result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="source_meta not found")
+    _ensure_can_read_source_meta(row, principal)
     return _row_to_response(row)
 
 
@@ -261,7 +362,7 @@ async def upload_bundle(
     meta: str = Form(..., description="JSON: {kind,name,version,runtime_pool,entrypoint,config?}"),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> SourceMetaResponse:
     import json
 
@@ -345,6 +446,98 @@ async def upload_bundle(
 
 
 # ---------------------------------------------------------------------------
+# POST /api/source-meta/general  (config-only agent — no bundle)
+# ---------------------------------------------------------------------------
+
+
+class GeneralAgentCreateRequest(BaseModel):
+    name: str
+    version: str
+    system_prompt: str
+    mcp_servers: list[str]
+    config: dict = {}
+
+
+@router.post("/general", response_model=SourceMetaResponse, status_code=201)
+async def create_general_agent(
+    request: Request,
+    body: GeneralAgentCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(get_principal),
+) -> SourceMetaResponse:
+    _validate_name(body.name)
+    _validate_version(body.version)
+    if not body.system_prompt.strip():
+        raise HTTPException(status_code=400, detail="system_prompt is required")
+    if not body.mcp_servers:
+        raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+
+    access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="access token required for MCP discovery")
+
+    mcp_tools = await _discover_mcp_tools(settings, access_token, body.mcp_servers)
+    config = _build_general_config(
+        body.system_prompt.strip(),
+        body.mcp_servers,
+        mcp_tools,
+        body.config,
+    )
+    _validate_config(config)
+
+    row = SourceMetaRow(
+        kind="agent",
+        name=body.name,
+        version=body.version,
+        runtime_pool=GENERAL_RUNTIME_POOL,
+        entrypoint=None,
+        bundle_uri=None,
+        checksum=None,
+        sig_uri=None,
+        config=config,
+        retired=False,
+        deploy_mode="general",
+        image_uri=None,
+        image_digest=None,
+        slug=None,
+        status="active",
+    )
+    db.add(row)
+    db.add(
+        make_audit_row(
+            "source_meta.create_general",
+            principal.user_id,
+            principal.sub,
+            kind="agent",
+            name=body.name,
+            version=body.version,
+        )
+    )
+    try:
+        await db.flush()
+        await db.commit()
+        await db.refresh(row)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"source_meta (kind=agent, name={body.name}, version={body.version}) already exists",
+        ) from exc
+
+    log_event(
+        "source_meta.create_general",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        source_meta_id=row.id,
+        name=body.name,
+        version=body.version,
+        mcp_tool_count=len(mcp_tools),
+    )
+    return _row_to_response(row)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/source-meta  (URI registration)
 # ---------------------------------------------------------------------------
 
@@ -366,7 +559,7 @@ async def create_source_meta(
     body: SourceMetaCreateRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> SourceMetaResponse:
     _validate_kind(body.kind)
     _validate_name(body.name)
@@ -543,12 +736,13 @@ async def patch_source_meta(
     id: int,
     body: SourceMetaPatchRequest,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_admin),
+    principal: Principal = Depends(get_principal),
 ) -> SourceMetaResponse:
     result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="source_meta not found")
+    _ensure_can_write_source_meta(row, principal)
 
     update_data = body.model_dump(exclude_none=True)
 
@@ -595,12 +789,13 @@ async def patch_source_meta(
 async def retire_source_meta(
     id: int,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_admin),
+    principal: Principal = Depends(get_principal),
 ) -> SourceMetaResponse:
     result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="source_meta not found")
+    _ensure_can_write_source_meta(row, principal)
 
     row.retired = True
     db.add(make_audit_row("source_meta.retire", principal.user_id, principal.sub, id=id))
@@ -629,7 +824,7 @@ async def delete_source_meta(
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    principal=Depends(require_admin),
+    principal: Principal = Depends(get_principal),
 ) -> None:
     if not settings.ALLOW_HARD_DELETE:
         raise HTTPException(
@@ -640,6 +835,7 @@ async def delete_source_meta(
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="source_meta not found")
+    _ensure_can_write_source_meta(row, principal)
 
     checksum = row.checksum
     sha256_hex: str | None = None
@@ -686,6 +882,7 @@ async def get_source_meta_access(
     limit: int = Query(50, ge=1),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    _principal: Principal = Depends(require_admin),
 ) -> AccessListResponse:
     limit = min(limit, 100)
 

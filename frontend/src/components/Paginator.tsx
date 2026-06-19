@@ -12,11 +12,11 @@ export function Paginator({ total, limit, offset, onOffsetChange }: Props) {
   const to = Math.min(offset + limit, total);
 
   return (
-    <div className="flex items-center justify-between py-3 px-1">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3 px-1">
       <p className="text-sm text-gray-600">
         Showing {from}–{to} of {total}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between sm:justify-end gap-2">
         <button
           onClick={() => onOffsetChange(Math.max(0, offset - limit))}
           disabled={page === 0}

@@ -8,6 +8,8 @@ import {
 } from "../hooks/useUsers";
 import { AccessList } from "../components/AccessList";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { UserRole } from "../lib/roles";
+import { roleAtLeast } from "../lib/roles";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -25,7 +27,7 @@ export function UserDetailPage() {
 
   // Editable fields
   const [tenant, setTenant] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<UserRole>("user");
   const [disabled, setDisabled] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -35,9 +37,9 @@ export function UserDetailPage() {
   // Dialogs
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [disableConfirmDialog, setDisableConfirmDialog] = useState(false);
-  const [adminConfirmDialog, setAdminConfirmDialog] = useState(false);
+  const [roleConfirmDialog, setRoleConfirmDialog] = useState(false);
   const [pendingDisabled, setPendingDisabled] = useState<boolean | null>(null);
-  const [pendingIsAdmin, setPendingIsAdmin] = useState<boolean | null>(null);
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
 
   // Password reset
   const [passwordDialog, setPasswordDialog] = useState(false);
@@ -47,7 +49,7 @@ export function UserDetailPage() {
   useEffect(() => {
     if (!initialized && user) {
       setTenant(user.tenant ?? "");
-      setIsAdmin(user.is_admin);
+      setRole(user.role);
       setDisabled(user.disabled);
       setInitialized(true);
     }
@@ -60,9 +62,17 @@ export function UserDetailPage() {
     }
   }
 
-  function handleAdminToggle(val: boolean) {
-    setPendingIsAdmin(val);
-    setAdminConfirmDialog(true);
+  function handleRoleChange(nextRole: UserRole) {
+    if (nextRole === role) return;
+    setPendingRole(nextRole);
+    setRoleConfirmDialog(true);
+  }
+
+  async function confirmRoleChange() {
+    if (pendingRole === null) return;
+    setRole(pendingRole);
+    setRoleConfirmDialog(false);
+    setPendingRole(null);
   }
 
   async function confirmDisabledChange() {
@@ -72,13 +82,6 @@ export function UserDetailPage() {
     setPendingDisabled(null);
   }
 
-  async function confirmAdminChange() {
-    if (pendingIsAdmin === null) return;
-    setIsAdmin(pendingIsAdmin);
-    setAdminConfirmDialog(false);
-    setPendingIsAdmin(null);
-  }
-
   async function handleSave() {
     setSaveError(null);
     setSaveSuccess(false);
@@ -86,7 +89,7 @@ export function UserDetailPage() {
       await patchMut.mutateAsync({
         tenant: tenant || undefined,
         disabled,
-        is_admin: isAdmin,
+        role,
       });
       setSaveSuccess(true);
     } catch (e: unknown) {
@@ -156,7 +159,7 @@ export function UserDetailPage() {
           </h2>
 
           {/* Readonly fields */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             {[
               ["ID", String(user.id)],
               ["Username", user.username],
@@ -184,37 +187,35 @@ export function UserDetailPage() {
               />
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_admin_toggle"
-                  checked={isAdmin}
-                  onChange={(e) => handleAdminToggle(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                />
-                <label
-                  htmlFor="is_admin_toggle"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  Admin
-                </label>
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                <input
-                  type="checkbox"
-                  id="disabled_toggle"
-                  checked={disabled}
-                  onChange={(e) => handleDisabledToggle(e.target.checked)}
-                  className="w-4 h-4 text-red-600 rounded border-gray-300"
-                />
-                <label
-                  htmlFor="disabled_toggle"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  Disabled
-                </label>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role
+              </label>
+              <select
+                value={role}
+                onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+                className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="user">User</option>
+                <option value="developer">Developer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="disabled_toggle"
+                checked={disabled}
+                onChange={(e) => handleDisabledToggle(e.target.checked)}
+                className="w-4 h-4 text-red-600 rounded border-gray-300"
+              />
+              <label
+                htmlFor="disabled_toggle"
+                className="text-sm font-medium text-gray-700"
+              >
+                Disabled
+              </label>
             </div>
 
             {saveError && (
@@ -301,19 +302,19 @@ export function UserDetailPage() {
         }}
       />
       <ConfirmDialog
-        open={adminConfirmDialog}
-        title={pendingIsAdmin ? "Grant admin" : "Revoke admin"}
+        open={roleConfirmDialog}
+        title="Change role"
         description={
-          pendingIsAdmin
-            ? `Grant admin privileges to "${user.username}"?`
-            : `Revoke admin privileges from "${user.username}"? This will immediately log them out.`
+          pendingRole && !roleAtLeast(pendingRole, role)
+            ? `Lower "${user.username}" role to ${pendingRole}? This will immediately log them out.`
+            : `Change "${user.username}" role to ${pendingRole ?? role}?`
         }
-        confirmLabel={pendingIsAdmin ? "Grant" : "Revoke"}
-        destructive={!pendingIsAdmin}
-        onConfirm={confirmAdminChange}
+        confirmLabel="Change role"
+        destructive={pendingRole !== null && !roleAtLeast(pendingRole, role)}
+        onConfirm={confirmRoleChange}
         onCancel={() => {
-          setAdminConfirmDialog(false);
-          setPendingIsAdmin(null);
+          setRoleConfirmDialog(false);
+          setPendingRole(null);
         }}
       />
 

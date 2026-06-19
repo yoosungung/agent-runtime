@@ -2,10 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiJson } from "../lib/api";
 
+import { isAdminRole, isDeveloperRole } from "../lib/roles";
+import type { UserRole } from "../lib/roles";
+
 interface LoginResponse {
   user_id: number;
   username: string;
-  is_admin: boolean;
+  role: UserRole;
   must_change_password: boolean;
 }
 
@@ -27,10 +30,12 @@ export function LoginPage() {
       });
       if (data.must_change_password) {
         navigate("/me", { replace: true });
-      } else if (data.is_admin) {
+      } else if (isAdminRole(data.role)) {
         navigate("/", { replace: true });
+      } else if (isDeveloperRole(data.role)) {
+        navigate("/bundle/agents", { replace: true });
       } else {
-        navigate("/me", { replace: true });
+        navigate("/agents", { replace: true });
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Login failed");

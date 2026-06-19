@@ -20,11 +20,13 @@ from backend.deps import (
     get_principal,
     get_settings,
     require_admin,
+    require_developer,
 )
 from backend.passwords import check_policy, hash_password, verify_password
 from backend.settings import Settings
 from runtime_common.auth import AuthClient
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
+from runtime_common.roles import UserRole, role_at_least
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class UserResponse(BaseModel):
     username: str
     tenant: str | None
     disabled: bool
-    is_admin: bool
+    role: UserRole
     must_change_password: bool
     created_at: datetime
     updated_at: datetime
@@ -90,7 +92,7 @@ async def _count_active_admins(db: AsyncSession) -> int:
     result = await db.execute(
         select(func.count())
         .select_from(UserRow)
-        .where(UserRow.is_admin == True, UserRow.disabled == False)  # noqa: E712
+        .where(UserRow.role == UserRole.ADMIN, UserRow.disabled == False)  # noqa: E712
     )
     return result.scalar_one()
 
@@ -195,7 +197,7 @@ class UserCreateRequest(BaseModel):
     username: str
     password: str
     tenant: str | None = None
-    is_admin: bool = False
+    role: UserRole = UserRole.USER
 
 
 @router.post(
@@ -226,7 +228,7 @@ async def create_user(
         password_hash=hashed,
         tenant=body.tenant,
         disabled=False,
-        is_admin=body.is_admin,
+        role=body.role.value,
         must_change_password=False,
     )
     db.add(row)
@@ -262,7 +264,7 @@ class UserPatchRequest(BaseModel):
 
     tenant: str | None = None
     disabled: bool | None = None
-    is_admin: bool | None = None
+    role: UserRole | None = None
 
 
 @router.patch(
@@ -305,15 +307,19 @@ async def patch_user(
 
     # Self-lockout protection
     if id == principal.user_id:
-        if body.is_admin is False:
-            raise HTTPException(status_code=400, detail="Cannot revoke your own admin privileges")
+        if body.role is not None and not role_at_least(body.role, UserRole.ADMIN):
+            raise HTTPException(status_code=400, detail="Cannot demote your own admin role")
         if body.disabled is True:
             raise HTTPException(status_code=400, detail="Cannot disable your own account")
 
     # Last admin protection
-    is_admin_revoke = body.is_admin is False and row.is_admin
+    is_admin_revoke = (
+        body.role is not None
+        and row.role == UserRole.ADMIN
+        and not role_at_least(body.role, UserRole.ADMIN)
+    )
     is_disabling = body.disabled is True and not row.disabled
-    if is_admin_revoke or (is_disabling and row.is_admin):
+    if is_admin_revoke or (is_disabling and row.role == UserRole.ADMIN):
         active_admin_count = await _count_active_admins(db)
         if active_admin_count <= 1:
             raise HTTPException(
@@ -325,10 +331,12 @@ async def patch_user(
     needs_revoke = False
     if body.disabled is True and not row.disabled:
         needs_revoke = True
-    if body.is_admin is False and row.is_admin:
+    if body.role is not None and body.role != row.role:
         needs_revoke = True
 
     update_data = body.model_dump(exclude_none=True)
+    if "role" in update_data:
+        update_data["role"] = update_data["role"].value
     for field, value in update_data.items():
         setattr(row, field, value)
 
@@ -506,7 +514,7 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Last admin protection
-    if row.is_admin and not row.disabled:
+    if row.role == UserRole.ADMIN and not row.disabled:
         active_admin_count = await _count_active_admins(db)
         if active_admin_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last active admin")

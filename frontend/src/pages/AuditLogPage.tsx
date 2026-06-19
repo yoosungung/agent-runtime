@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiJson, type PageResponse } from "../lib/api";
 import { Paginator } from "../components/Paginator";
 import { usePagination } from "../hooks/usePagination";
+import { PageHeader } from "../components/PageHeader";
 
 interface AuditLogEntry {
   id: number;
@@ -61,12 +62,9 @@ export function AuditLogPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
-      </div>
+      <PageHeader title="Audit Log" />
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-4 mb-4 flex gap-4 items-end flex-wrap">
+      <div className="bg-white shadow rounded-lg p-4 mb-4 flex flex-col sm:flex-row gap-4 sm:items-end flex-wrap">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Actor ID</label>
           <input

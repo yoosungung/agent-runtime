@@ -69,6 +69,7 @@ function ResourceAccessList({
         />
       </div>
       {addError && <p className="text-sm text-red-600 mb-2">{addError}</p>}
+      <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead>
           <tr>
@@ -109,6 +110,7 @@ function ResourceAccessList({
           ))}
         </tbody>
       </table>
+      </div>
       {data && (
         <Paginator
           total={data.total}
@@ -277,6 +279,7 @@ function UserAccessList({ userId }: { userId: number }) {
           </button>
         </div>
       )}
+      <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead>
           <tr>
@@ -347,6 +350,7 @@ function UserAccessList({ userId }: { userId: number }) {
           })}
         </tbody>
       </table>
+      </div>
       {data && (
         <Paginator
           total={data.total}

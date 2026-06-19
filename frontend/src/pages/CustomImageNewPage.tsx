@@ -2,6 +2,19 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreateCustomImage, type CustomImageCreateBody } from "../hooks/useCustomImages";
 import { JsonEditor } from "../components/JsonEditor";
+import {
+  FormActions,
+  FormError,
+  FormPageLayout,
+  formInputClassName,
+  formPrimaryButtonClassName,
+  formSecondaryButtonClassName,
+} from "../components/FormPageLayout";
+import {
+  deployImagePendingLabel,
+  deployImageSubmitLabel,
+  newPageTitle,
+} from "../lib/uiLabels";
 
 interface Props {
   kind: "agent" | "mcp";
@@ -24,8 +37,8 @@ export function CustomImageNewPage({ kind }: Props) {
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const backPath = kind === "agent" ? "/custom-agents" : "/custom-mcp";
-  const title = kind === "agent" ? "Register Custom Agent Image" : "Register Custom MCP Image";
+  const backPath = kind === "agent" ? "/container/agents" : "/container/mcp";
+  const title = newPageTitle("container", kind);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,10 +66,9 @@ export function CustomImageNewPage({ kind }: Props) {
   }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">{title}</h1>
-      <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-5">
-        <div className="grid grid-cols-2 gap-4">
+    <FormPageLayout title={title}>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
             <input
@@ -65,7 +77,7 @@ export function CustomImageNewPage({ kind }: Props) {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               pattern="^[a-z0-9][a-z0-9-]{0,127}$"
               title="lowercase letters, numbers, hyphens"
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={formInputClassName}
               placeholder="my-agent"
             />
           </div>
@@ -75,7 +87,7 @@ export function CustomImageNewPage({ kind }: Props) {
               required
               value={form.version}
               onChange={(e) => setForm({ ...form, version: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={formInputClassName}
               placeholder="v1.0.0"
             />
           </div>
@@ -87,7 +99,7 @@ export function CustomImageNewPage({ kind }: Props) {
             required
             value={form.image_uri}
             onChange={(e) => setForm({ ...form, image_uri: e.target.value })}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={formInputClassName}
             placeholder="registry.example.com/my-agent:v1.0.0"
           />
         </div>
@@ -101,12 +113,12 @@ export function CustomImageNewPage({ kind }: Props) {
             onChange={(e) => setForm({ ...form, image_digest: e.target.value })}
             pattern="(^$|^sha256:[0-9a-f]{64}$)"
             title="sha256:... hex digest or leave empty"
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`${formInputClassName} font-mono`}
             placeholder="sha256:abc123..."
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Slug <span className="text-gray-400 font-normal">(auto-derived if empty)</span>
@@ -117,7 +129,7 @@ export function CustomImageNewPage({ kind }: Props) {
               pattern="(^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?$)"
               maxLength={45}
               title="lowercase letters, numbers, hyphens, ≤ 45 chars"
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`${formInputClassName} font-mono`}
               placeholder="my-agent-v1-0-0"
             />
           </div>
@@ -131,7 +143,7 @@ export function CustomImageNewPage({ kind }: Props) {
               max={100}
               value={form.replicas_max ?? 5}
               onChange={(e) => setForm({ ...form, replicas_max: Number(e.target.value) })}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={formInputClassName}
             />
           </div>
         </div>
@@ -143,7 +155,7 @@ export function CustomImageNewPage({ kind }: Props) {
           <input
             value={form.image_pull_secret ?? ""}
             onChange={(e) => setForm({ ...form, image_pull_secret: e.target.value })}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={formInputClassName}
             placeholder="registry-creds"
           />
         </div>
@@ -158,29 +170,25 @@ export function CustomImageNewPage({ kind }: Props) {
           />
         </div>
 
-        {submitError && (
-          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
-            {submitError}
-          </div>
-        )}
+        {submitError && <FormError message={submitError} />}
 
-        <div className="flex justify-end gap-3 pt-2">
+        <FormActions>
           <button
             type="button"
             onClick={() => navigate(backPath)}
-            className="px-4 py-2 rounded border border-gray-300 text-sm hover:bg-gray-50"
+            className={formSecondaryButtonClassName}
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={createMut.isPending}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+            className={formPrimaryButtonClassName}
           >
-            {createMut.isPending ? "Deploying..." : "Deploy Image"}
+            {createMut.isPending ? deployImagePendingLabel : deployImageSubmitLabel}
           </button>
-        </div>
+        </FormActions>
       </form>
-    </div>
+    </FormPageLayout>
   );
 }

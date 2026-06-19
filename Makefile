@@ -136,9 +136,11 @@ db-migrate: ## apply 0001_init.sql to dev postgres
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0001_init.sql
 
-db-migrate-all: db-migrate ## apply 0001 + 0002 migrations
+db-migrate-all: db-migrate ## apply 0001 + 0002 + 0003 migrations
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0002_custom_image_mode.sql
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0003_general_and_vfs.sql
 
 # --- docs -----------------------------------------------------------------
 

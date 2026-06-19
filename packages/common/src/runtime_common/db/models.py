@@ -52,8 +52,8 @@ class UserRow(Base):
     disabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    is_admin: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="user", server_default="user"
     )
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"

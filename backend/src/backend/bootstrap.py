@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.passwords import hash_password
 from runtime_common.db.models import UserRow
+from runtime_common.roles import UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ async def run_bootstrap(session: AsyncSession, settings) -> None:
         password_hash=hashed,
         tenant=None,
         disabled=False,
-        is_admin=True,
+        role=UserRole.ADMIN.value,
         must_change_password=True,
     )
     session.add(admin)

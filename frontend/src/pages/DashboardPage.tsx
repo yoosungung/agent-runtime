@@ -6,6 +6,7 @@ import {
   type PoolRuntimeStatus,
   type RecentIssue,
 } from "../hooks/useDashboardSummary";
+import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 
 function StatusPill({
   label,
@@ -124,11 +125,7 @@ function RecentIssuesList({ issues }: { issues: RecentIssue[] }) {
       {issues.map((issue) => (
         <li key={issue.id} className="py-3 first:pt-0 last:pb-0">
           <Link
-            to={
-              issue.kind === "agent"
-                ? `/agents/${issue.id}`
-                : `/mcp-servers/${issue.id}`
-            }
+            to={sourceMetaDetailPath(issue)}
             className="flex items-center justify-between gap-4 hover:text-blue-700"
           >
             <div>
@@ -179,7 +176,7 @@ export function DashboardPage() {
       </div>
 
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Status Monitoring</h2>
           {summary && (
             <span className="text-xs text-gray-500">Auto-refreshes every 30s</span>
@@ -204,7 +201,7 @@ export function DashboardPage() {
               <ResourceStatusPanel
                 title="MCP Resources"
                 counts={summary.resources.mcp}
-                detailPath="/mcp-servers"
+                detailPath="/bundle/mcp"
               />
             </div>
 

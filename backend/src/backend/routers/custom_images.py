@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.audit import log_event, make_audit_row
-from backend.deps import check_csrf, get_db, get_settings, require_admin
+from backend.deps import check_csrf, get_db, get_settings, require_developer
 from backend.settings import Settings
 from runtime_common.db.models import SourceMetaRow
 from runtime_common.schemas import parse_runtime_pool
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/admin/custom-images",
     tags=["custom-images"],
-    dependencies=[Depends(require_admin), Depends(check_csrf)],
+    dependencies=[Depends(require_developer), Depends(check_csrf)],
 )
 
 _RE_SLUG = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -165,7 +165,7 @@ async def create_custom_image(
     body: CustomImageCreateRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> CustomImageResponse:
     if body.kind not in ("agent", "mcp"):
         raise HTTPException(status_code=400, detail="kind must be 'agent' or 'mcp'")
@@ -301,7 +301,7 @@ async def delete_custom_image(
     slug: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> None:
     if kind not in ("agent", "mcp"):
         raise HTTPException(status_code=400, detail="kind must be 'agent' or 'mcp'")
@@ -356,7 +356,7 @@ async def patch_custom_image(
     body: CustomImagePatchRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> CustomImageResponse:
     if kind not in ("agent", "mcp"):
         raise HTTPException(status_code=400, detail="kind must be 'agent' or 'mcp'")
@@ -428,7 +428,7 @@ async def restart_custom_image(
     slug: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_admin),
+    principal=Depends(require_developer),
 ) -> None:
     if kind not in ("agent", "mcp"):
         raise HTTPException(status_code=400, detail="kind must be 'agent' or 'mcp'")

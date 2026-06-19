@@ -6,7 +6,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 
 vi.mock("../hooks/useSession", () => ({
   useSession: () => ({
-    data: { username: "admin", tenant: "acme", is_admin: true },
+    data: { username: "admin", tenant: "acme", role: "admin" as const, user_id: 1, must_change_password: false },
   }),
 }));
 

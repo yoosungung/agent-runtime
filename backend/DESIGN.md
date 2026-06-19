@@ -89,7 +89,14 @@
 | `GET` | **`/bundles/{sha256}.sig`** | 서명 파일 서빙 (있을 때만) | 위와 동일 경로 규칙 |
 | `POST` | `/api/chat/invoke` | Envoy → agent-pool 스트리밍 프록시 + SSE 정규화 | 아래 "Chat invoke" 참조 |
 
-**Bundle 모드 vs Image 모드 분류**: `POST /api/source-meta` 계열은 **bundle 모드** 전용 (entrypoint + bundle_uri 필수). `POST /api/admin/custom-images`는 **image 모드** 전용 (image_uri 필수, entrypoint/bundle_uri 불필요). 두 체계는 `source_meta` 테이블에 공존 — `deploy_mode` 컬럼으로 구분.
+**Bundle 모드 vs General vs Image 모드 분류**:
+- `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)
+- `POST /api/source-meta/general` — **general 모드** (config-only agent: `system_prompt` + `mcp_servers`, ZIP 불필요, `deploy_mode='general'`)
+- `POST /api/admin/custom-images` — **image 모드** (OCI image 필수)
+
+세 체계는 `source_meta` 테이블에 공존 — `deploy_mode ∈ {bundle, general, image}`.
+
+**General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/tools`로 tool manifest를 조회해 `config.general.mcp_tools`에 캐시. 런타임은 agent-base 내장 factory + VFS(`vfs_agent_files`, `vfs_user_files`).
 
 **불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config` 오기재 수정 정도만 허용(감사 로그에 before/after 기록).
 

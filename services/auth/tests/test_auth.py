@@ -81,7 +81,7 @@ def alice_user() -> MagicMock:
             "password_hash",
             "tenant",
             "disabled",
-            "is_admin",
+            "role",
             "must_change_password",
         ]
     )
@@ -90,7 +90,7 @@ def alice_user() -> MagicMock:
     u.password_hash = _ph.hash(CORRECT_PASSWORD)
     u.tenant = "acme"
     u.disabled = False
-    u.is_admin = False
+    u.role = "user"
     u.must_change_password = False
     return u
 

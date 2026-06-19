@@ -10,7 +10,7 @@ from backend.csrf import validate_csrf
 from backend.settings import Settings
 from backend.settings import get_settings as _get_settings
 from runtime_common.auth import AuthClient
-from runtime_common.schemas import Principal
+from runtime_common.roles import UserRole, role_at_least
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,14 @@ async def get_principal(
     return principal
 
 
+async def require_developer(principal: Principal = Depends(get_principal)) -> Principal:  # noqa: B008
+    if not role_at_least(principal.role, UserRole.DEVELOPER):
+        raise HTTPException(status_code=403, detail="Developer access required")
+    return principal
+
+
 async def require_admin(principal: Principal = Depends(get_principal)) -> Principal:  # noqa: B008
-    if not principal.is_admin:
+    if not role_at_least(principal.role, UserRole.ADMIN):
         raise HTTPException(status_code=403, detail="Admin access required")
     return principal
 

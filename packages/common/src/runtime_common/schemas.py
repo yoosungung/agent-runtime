@@ -4,9 +4,10 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from runtime_common.roles import UserRole, parse_role, role_at_least, role_from_legacy_is_admin
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 if TYPE_CHECKING:
     from runtime_common.db.models import SourceMetaRow, UserMetaRow
@@ -113,7 +114,7 @@ class SourceMeta(BaseModel):
         description="Bundle-default config. Runtime merges with user_meta.config (user wins).",
     )
     # Image mode fields
-    deploy_mode: str = Field(default="bundle", description="'bundle' | 'image'")
+    deploy_mode: str = Field(default="bundle", description="'general' | 'bundle' | 'image'")
     image_uri: str | None = Field(default=None, description="OCI image URI for image mode")
     image_digest: str | None = Field(default=None, description="OCI image digest for image mode")
     slug: str | None = Field(default=None, description="URL-safe slug for image mode, e.g. 'summarizer-v1'")
@@ -175,8 +176,26 @@ class Principal(BaseModel):
     tenant: str | None = None
     access: list[ResourceRef] = Field(default_factory=list)
     grace_applied: bool = False
-    is_admin: bool = False
+    role: UserRole = UserRole.USER
     must_change_password: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_is_admin(cls, data: object) -> object:
+        if isinstance(data, dict) and "role" not in data and "is_admin" in data:
+            data = {
+                **data,
+                "role": role_from_legacy_is_admin(bool(data["is_admin"])).value,
+            }
+        return data
+
+    @property
+    def is_admin(self) -> bool:
+        return role_at_least(self.role, UserRole.ADMIN)
+
+    @property
+    def is_developer(self) -> bool:
+        return role_at_least(self.role, UserRole.DEVELOPER)
 
     def can_access(self, kind: str, name: str) -> bool:
         return any(r.kind == kind and r.name == name for r in self.access)

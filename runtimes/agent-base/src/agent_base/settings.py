@@ -16,6 +16,10 @@ class Settings(BaseRuntimeSettings):
         default="http://mcp-gateway.runtime.svc.cluster.local:8080",
         description="MCP gateway URL for internal tool calls",
     )
+    vfs_dsn: str = Field(
+        default="",
+        description="Postgres DSN for VFS tables (asyncpg). Empty = VFS disabled.",
+    )
     warmup_agents: list[str] = Field(
         default_factory=list,
         description="Agent names to preload at startup (comma-separated via WARMUP_AGENTS env).",

@@ -183,6 +183,53 @@ class McpSdkSourceConfig(BaseModel):
     )
 
 
+# ── General Agent (deploy_mode: general) ─────────────────────────────────────
+
+class GeneralVfsConfig(BaseModel):
+    """VFS routing is platform-fixed (/, /agent/, /user/). Minimal user config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+
+
+class McpToolManifestEntry(BaseModel):
+    """Cached tool descriptor from MCP discovery at registration time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    server: str
+    name: str
+    description: str = ""
+
+
+class GeneralAgentSourceConfig(BaseModel):
+    """source_meta.config['general'] — config-only agent (no bundle)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str = Field(..., min_length=1)
+    mcp_servers: list[str] = Field(..., min_length=1)
+    mcp_tools: list[McpToolManifestEntry] = Field(
+        default_factory=list,
+        description="Populated at registration via MCP tool discovery.",
+    )
+    vfs: GeneralVfsConfig = Field(default_factory=GeneralVfsConfig)
+    subagents: list[dict] | None = Field(
+        default=None,
+        description="Optional deepagents subagent specs.",
+    )
+
+
+class GeneralAgentUserConfig(BaseModel):
+    """user_meta.config['general'] — per-principal overrides for general agents."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str | None = None
+    langgraph: LangGraphUserConfig | None = None
+
+
 # ── Root config models ────────────────────────────────────────────────────────
 
 class SourceConfig(BaseModel):
@@ -206,6 +253,7 @@ class SourceConfig(BaseModel):
     adk: AdkSourceConfig = Field(default_factory=AdkSourceConfig)
     fastmcp: FastMcpSourceConfig = Field(default_factory=FastMcpSourceConfig)
     mcp: McpSdkSourceConfig = Field(default_factory=McpSdkSourceConfig)
+    general: GeneralAgentSourceConfig | None = None
 
 
 class UserConfig(BaseModel):
@@ -222,4 +270,5 @@ class UserConfig(BaseModel):
 
     langgraph: LangGraphUserConfig | None = None
     adk: AdkUserConfig | None = None
+    general: GeneralAgentUserConfig | None = None
     # fastmcp / mcp: no per-principal overrides

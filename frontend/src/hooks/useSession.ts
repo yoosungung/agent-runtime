@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiJson } from "../lib/api";
+import type { UserRole } from "../lib/roles";
 
 export interface Session {
   user_id: number;
   username: string;
   tenant: string | null;
-  is_admin: boolean;
+  role: UserRole;
   must_change_password: boolean;
 }
 

@@ -1,19 +1,19 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { queryClient } from "./lib/queryClient";
 import { Layout } from "./components/Layout";
+import { BundleSectionLayout } from "./components/BundleSectionLayout";
+import { ContainerSectionLayout } from "./components/ContainerSectionLayout";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireNotForcedChangePassword } from "./components/RequireNotForcedChangePassword";
-import { RequireAdmin } from "./components/RequireAdmin";
+import { RequireRole } from "./components/RequireRole";
+import { HomeRedirect } from "./components/HomeRedirect";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
-);
-const DashboardPage = lazy(() =>
-  import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
 );
 const SourceMetaListPage = lazy(() =>
   import("./pages/SourceMetaListPage").then((m) => ({
@@ -55,6 +55,11 @@ const ChatPage = lazy(() =>
 const AuditLogPage = lazy(() =>
   import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })),
 );
+const GeneralAgentNewPage = lazy(() =>
+  import("./pages/GeneralAgentNewPage").then((m) => ({
+    default: m.GeneralAgentNewPage,
+  })),
+);
 const CustomImageListPage = lazy(() =>
   import("./pages/CustomImageListPage").then((m) => ({
     default: m.CustomImageListPage,
@@ -93,32 +98,61 @@ export function App() {
                 <Route path="/me" element={<MePage />} />
                 <Route path="/chat" element={<ChatPage />} />
 
-                {/* All admin routes require no forced-password-change + admin role */}
                 <Route element={<RequireNotForcedChangePassword />}>
-                  <Route element={<RequireAdmin />}>
-                    <Route path="/" element={<DashboardPage />} />
+                  <Route path="/" element={<HomeRedirect />} />
+                  <Route
+                    path="/agents"
+                    element={
+                      <SourceMetaListPage kind="agent" deployMode="general" />
+                    }
+                  />
+                  <Route
+                    path="/agents/new/general"
+                    element={<GeneralAgentNewPage />}
+                  />
+                  <Route
+                    path="/agents/new"
+                    element={<Navigate to="/bundle/agents/new" replace />}
+                  />
+                  <Route
+                    path="/agents/:id"
+                    element={<SourceMetaDetailPage kind="agent" />}
+                  />
+                  <Route
+                    path="/agents/:sourceMetaId/user-meta/:principal"
+                    element={<UserMetaEditPage />}
+                  />
+
+                  <Route element={<RequireRole min="developer" />}>
+                    <Route path="/bundle" element={<Navigate to="/bundle/agents" replace />} />
+                    <Route element={<BundleSectionLayout />}>
+                      <Route
+                        path="/bundle/agents"
+                        element={
+                          <SourceMetaListPage
+                            kind="agent"
+                            deployMode="bundle"
+                            embedded
+                          />
+                        }
+                      />
+                      <Route
+                        path="/bundle/mcp"
+                        element={
+                          <SourceMetaListPage
+                            kind="mcp"
+                            deployMode="bundle"
+                            embedded
+                          />
+                        }
+                      />
+                    </Route>
                     <Route
-                      path="/agents"
-                      element={<SourceMetaListPage kind="agent" />}
-                    />
-                    <Route
-                      path="/agents/new"
+                      path="/bundle/agents/new"
                       element={<SourceMetaNewPage kind="agent" />}
                     />
                     <Route
-                      path="/agents/:id"
-                      element={<SourceMetaDetailPage kind="agent" />}
-                    />
-                    <Route
-                      path="/agents/:sourceMetaId/user-meta/:principal"
-                      element={<UserMetaEditPage />}
-                    />
-                    <Route
-                      path="/mcp-servers"
-                      element={<SourceMetaListPage kind="mcp" />}
-                    />
-                    <Route
-                      path="/mcp-servers/new"
+                      path="/bundle/mcp/new"
                       element={<SourceMetaNewPage kind="mcp" />}
                     />
                     <Route
@@ -129,26 +163,40 @@ export function App() {
                       path="/mcp-servers/:sourceMetaId/user-meta/:principal"
                       element={<UserMetaEditPage />}
                     />
+
+                    <Route path="/container" element={<Navigate to="/container/agents" replace />} />
+                    <Route element={<ContainerSectionLayout />}>
+                      <Route
+                        path="/container/agents"
+                        element={<CustomImageListPage kind="agent" embedded />}
+                      />
+                      <Route
+                        path="/container/mcp"
+                        element={<CustomImageListPage kind="mcp" embedded />}
+                      />
+                    </Route>
+                    <Route
+                      path="/container/agents/new"
+                      element={<CustomImageNewPage kind="agent" />}
+                    />
+                    <Route
+                      path="/container/mcp/new"
+                      element={<CustomImageNewPage kind="mcp" />}
+                    />
+
+                    <Route path="/mcp-servers" element={<Navigate to="/bundle/mcp" replace />} />
+                    <Route path="/mcp-servers/new" element={<Navigate to="/bundle/mcp/new" replace />} />
+                    <Route path="/custom-agents" element={<Navigate to="/container/agents" replace />} />
+                    <Route path="/custom-agents/new" element={<Navigate to="/container/agents/new" replace />} />
+                    <Route path="/custom-mcp" element={<Navigate to="/container/mcp" replace />} />
+                    <Route path="/custom-mcp/new" element={<Navigate to="/container/mcp/new" replace />} />
+                  </Route>
+
+                  <Route element={<RequireRole min="admin" />}>
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<UserNewPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
-                    <Route
-                      path="/custom-agents"
-                      element={<CustomImageListPage kind="agent" />}
-                    />
-                    <Route
-                      path="/custom-agents/new"
-                      element={<CustomImageNewPage kind="agent" />}
-                    />
-                    <Route
-                      path="/custom-mcp"
-                      element={<CustomImageListPage kind="mcp" />}
-                    />
-                    <Route
-                      path="/custom-mcp/new"
-                      element={<CustomImageNewPage kind="mcp" />}
-                    />
                   </Route>
                 </Route>
               </Route>

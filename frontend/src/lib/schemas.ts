@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const userRoleSchema = z.enum(["user", "developer", "admin"]);
+
 export const nameSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]{0,127}$/, "lowercase letters, numbers, hyphens");
@@ -25,7 +27,7 @@ export const userCreateSchema = z.object({
   username: usernameSchema,
   password: z.string().min(12, "Minimum 12 characters"),
   tenant: z.string().optional(),
-  is_admin: z.boolean(),
+  role: userRoleSchema,
 });
 
 export const passwordSchema = z.string().min(12, "Minimum 12 characters");

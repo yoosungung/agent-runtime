@@ -78,15 +78,9 @@ export function MePage() {
             <div>
               <p className="text-xs text-gray-500">Role</p>
               <p className="text-sm">
-                {session?.is_admin ? (
-                  <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded">
-                    Admin
-                  </span>
-                ) : (
-                  <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded">
-                    User
-                  </span>
-                )}
+                <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded capitalize">
+                  {session?.role ?? "user"}
+                </span>
               </p>
             </div>
           </div>

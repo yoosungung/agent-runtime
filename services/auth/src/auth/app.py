@@ -25,6 +25,7 @@ from auth.settings import Settings
 from runtime_common.db import make_engine, make_session_factory, session_scope
 from runtime_common.db.models import ApiKeyRow, RefreshTokenRow, UserResourceAccessRow, UserRow
 from runtime_common.logging import configure_logging
+from runtime_common.roles import parse_role, role_from_legacy_is_admin
 from runtime_common.schemas import Principal, ResourceRef
 
 logger = logging.getLogger(__name__)
@@ -223,7 +224,7 @@ async def login(req: LoginRequest, request: Request) -> LoginResponse:
         "sub": user.username,
         "user_id": user.id,
         "tenant": user.tenant,
-        "is_admin": user.is_admin,
+        "role": user.role,
         "must_change_password": user.must_change_password,
         "iss": settings.jwt_issuer,
         "iat": now,
@@ -294,7 +295,7 @@ async def refresh(req: RefreshRequest) -> LoginResponse:
         "iat": now,
         "exp": now + expires_in,
     }
-    claims["is_admin"] = user.is_admin
+    claims["role"] = user.role
     claims["must_change_password"] = user.must_change_password
     new_access_token = jwt.encode(claims, settings.jwt_private_key, algorithm="RS256")
 
@@ -402,11 +403,17 @@ async def verify(req: VerifyRequest) -> Principal:
         access = await _fetch_access(user_id)
         cache.set(user_id, access)
 
+    role_claim = claims.get("role")
+    if role_claim is None:
+        role = role_from_legacy_is_admin(bool(claims.get("is_admin", False)))
+    else:
+        role = parse_role(role_claim)
+
     return Principal(
         sub=claims["sub"],
         user_id=user_id,
         tenant=claims.get("tenant"),
-        is_admin=bool(claims.get("is_admin", False)),
+        role=role,
         must_change_password=bool(claims.get("must_change_password", False)),
         access=access,
         grace_applied=grace_applied,

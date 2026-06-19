@@ -3,9 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { useSourceMetaList } from "../hooks/useSourceMeta";
 import { Paginator } from "../components/Paginator";
 import { usePagination } from "../hooks/usePagination";
+import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
+import { PageHeader } from "../components/PageHeader";
+import { listNewButtonLabel } from "../lib/uiLabels";
 
 interface Props {
   kind: "agent" | "mcp";
+  deployMode: "general" | "bundle";
+  embedded?: boolean;
 }
 
 function formatChecksum(checksum: string | null): string {
@@ -17,7 +22,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-export function SourceMetaListPage({ kind }: Props) {
+export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props) {
   const navigate = useNavigate();
   const { limit, offset, setOffset, reset } = usePagination(50);
   const [nameFilter, setNameFilter] = useState("");
@@ -36,29 +41,44 @@ export function SourceMetaListPage({ kind }: Props) {
 
   const { data, isLoading, isError } = useSourceMetaList({
     kind,
+    deploy_mode: deployMode,
     name: debouncedName || undefined,
     retired: retiredFilter,
     limit,
     offset,
   });
 
-  const basePath = kind === "agent" ? "/agents" : "/mcp-servers";
-  const title = kind === "agent" ? "Agents" : "MCP Servers";
+  const newPath =
+    deployMode === "general"
+      ? "/agents/new/general"
+      : kind === "agent"
+        ? "/bundle/agents/new"
+        : "/bundle/mcp/new";
+  const title =
+    deployMode === "general"
+      ? "Agent"
+      : kind === "agent"
+        ? "Bundle Agents"
+        : "Bundle MCP";
+  const emptyLabel =
+    deployMode === "general"
+      ? "agents"
+      : kind === "agent"
+        ? "bundle agents"
+        : "bundle MCP servers";
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+      <PageHeader title={embedded ? undefined : title}>
         <button
-          onClick={() => navigate(`${basePath}/new`)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium"
+          onClick={() => navigate(newPath)}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium w-full sm:w-auto"
         >
-          + New
+          {listNewButtonLabel(kind)}
         </button>
-      </div>
+      </PageHeader>
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-4 mb-4 flex gap-4 items-end flex-wrap">
+      <div className="bg-white shadow rounded-lg p-4 mb-4 flex flex-col sm:flex-row gap-4 sm:items-end flex-wrap">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Name prefix</label>
           <input
@@ -66,7 +86,7 @@ export function SourceMetaListPage({ kind }: Props) {
             value={nameFilter}
             onChange={(e) => setNameFilter(e.target.value)}
             placeholder="Filter by name..."
-            className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-auto border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
@@ -84,7 +104,7 @@ export function SourceMetaListPage({ kind }: Props) {
               setRetiredFilter(v === "" ? undefined : v === "true");
               reset();
             }}
-            className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-auto border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All</option>
             <option value="false">Active</option>
@@ -121,9 +141,11 @@ export function SourceMetaListPage({ kind }: Props) {
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Created
                     </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Mode
-                    </th>
+                    {deployMode !== "general" && (
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Mode
+                      </th>
+                    )}
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Status
                     </th>
@@ -133,17 +155,19 @@ export function SourceMetaListPage({ kind }: Props) {
                   {data?.items.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={deployMode === "general" ? 6 : 7}
                         className="px-4 py-8 text-sm text-gray-500 text-center"
                       >
-                        No {title.toLowerCase()} found.
+                        No {emptyLabel} found.
                       </td>
                     </tr>
                   )}
                   {data?.items.map((item) => (
                     <tr
                       key={item.id}
-                      onClick={() => navigate(`${basePath}/${item.id}`)}
+                      onClick={() =>
+                        navigate(sourceMetaDetailPath(item))
+                      }
                       className="hover:bg-gray-50 cursor-pointer"
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
@@ -161,17 +185,13 @@ export function SourceMetaListPage({ kind }: Props) {
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {formatDate(item.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-sm">
-                        {item.deploy_mode === "image" ? (
-                          <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded">
-                            image
-                          </span>
-                        ) : (
+                      {deployMode !== "general" && (
+                        <td className="px-4 py-3 text-sm">
                           <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
                             bundle
                           </span>
-                        )}
-                      </td>
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-sm">
                         {item.retired ? (
                           <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-0.5 rounded">

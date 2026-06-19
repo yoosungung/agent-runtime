@@ -17,7 +17,7 @@ _ADMIN_PRINCIPAL = {
     "tenant": None,
     "access": [],
     "grace_applied": False,
-    "is_admin": True,
+    "role": "admin",
     "must_change_password": False,
 }
 _CSRF = "test-csrf"

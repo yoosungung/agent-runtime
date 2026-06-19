@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiJson, apiFetch, type PageResponse } from "../lib/api";
+import type { UserRole } from "../lib/roles";
 
 export interface User {
   id: number;
   username: string;
   tenant: string | null;
-  is_admin: boolean;
+  role: UserRole;
   disabled: boolean;
   must_change_password: boolean;
   created_at: string;
@@ -76,7 +77,7 @@ export function useCreateUser() {
       username: string;
       password: string;
       tenant?: string;
-      is_admin: boolean;
+      role: UserRole;
     }) =>
       apiJson<User>("/api/users", {
         method: "POST",
@@ -92,7 +93,7 @@ export function usePatchUser(id: number, updatedAt?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (
-      data: Partial<Pick<User, "tenant" | "disabled" | "is_admin">>,
+      data: Partial<Pick<User, "tenant" | "disabled" | "role">>,
     ) => {
       const headers: Record<string, string> = {};
       if (updatedAt) {

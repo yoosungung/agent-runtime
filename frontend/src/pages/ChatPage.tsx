@@ -164,17 +164,16 @@ export function ChatPage() {
   const agents = agentList?.items ?? [];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Chat</h1>
-        <div className="flex-1" />
-        <select
-          value={selectedAgent}
-          onChange={(e) => setSelectedAgent(e.target.value)}
-          className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={agentsLoading || isStreaming}
-        >
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Chat</h1>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center w-full sm:w-auto">
+          <select
+            value={selectedAgent}
+            onChange={(e) => setSelectedAgent(e.target.value)}
+            className="w-full sm:min-w-[12rem] border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={agentsLoading || isStreaming}
+          >
           <option value="">
             {agentsLoading ? "Loading agents..." : "Select agent..."}
           </option>
@@ -183,17 +182,17 @@ export function ChatPage() {
               {a.name} ({a.version})
             </option>
           ))}
-        </select>
-        <button
-          onClick={handleNewChat}
-          className="text-sm px-3 py-2 border border-gray-300 rounded hover:bg-gray-50"
-        >
-          New Chat
-        </button>
+          </select>
+          <button
+            onClick={handleNewChat}
+            className="text-sm px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 w-full sm:w-auto"
+          >
+            New Chat
+          </button>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-white shadow rounded-lg p-4 space-y-4 mb-4">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-white shadow rounded-lg p-4 space-y-4 mb-4">
         {messages.length === 0 && (
           <p className="text-sm text-gray-400 text-center mt-8">
             {selectedAgent
@@ -207,7 +206,7 @@ export function ChatPage() {
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words ${
+              className={`max-w-full sm:max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words ${
                 msg.role === "user"
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-900"
@@ -228,8 +227,7 @@ export function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="bg-white shadow rounded-lg p-3 flex gap-3 items-end">
+      <div className="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row gap-3 sm:items-end shrink-0">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -242,7 +240,7 @@ export function ChatPage() {
         <button
           onClick={handleSend}
           disabled={!selectedAgent || !input.trim() || isStreaming}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium h-fit"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium h-fit w-full sm:w-auto"
         >
           {isStreaming ? "..." : "Send"}
         </button>
