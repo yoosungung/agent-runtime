@@ -11,6 +11,7 @@ export interface CustomImage {
   image_uri: string | null;
   image_digest: string | null;
   config: Record<string, unknown>;
+  env: Record<string, string>;
   status: "pending" | "active" | "failed" | "retired";
   deploy_mode: "image";
   created_at: string;

@@ -39,6 +39,7 @@ router = APIRouter(
 _RE_SLUG = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 _RE_IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MAX_MERGED_CONFIG_BYTES = 16 * 1024  # 16KB
+_RESERVED_POOL_ENV = frozenset({"RUNTIME_POOL", "DEPLOY_API_URL", "POD_NAME", "POD_IP", "POD_PORT"})
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,18 @@ def _validate_config(config: dict) -> None:
         )
 
 
+def _validate_env(env: dict[str, str] | None) -> dict[str, str]:
+    if not env:
+        return {}
+    for key in env:
+        if key in _RESERVED_POOL_ENV:
+            raise HTTPException(
+                status_code=400,
+                detail=f"env key {key!r} is reserved by the platform",
+            )
+    return env
+
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -122,6 +135,7 @@ class CustomImageResponse(BaseModel):
     image_uri: str | None
     image_digest: str | None
     config: dict
+    env: dict[str, str] = Field(default_factory=dict)
     status: str
     deploy_mode: str
     created_at: datetime
@@ -130,7 +144,8 @@ class CustomImageResponse(BaseModel):
 
 
 def _row_to_response(row: SourceMetaRow) -> CustomImageResponse:
-    return CustomImageResponse.model_validate(row)
+    data = CustomImageResponse.model_validate(row)
+    return data.model_copy(update={"env": dict(row.pool_env or {})})
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +189,7 @@ async def create_custom_image(
         raise HTTPException(status_code=400, detail="image_digest must match sha256:[0-9a-f]{64}")
 
     _validate_config(body.config)
+    pool_env = _validate_env(body.env)
 
     # Derive or validate slug
     slug = body.slug or _derive_slug(body.name, body.version)
@@ -200,6 +216,7 @@ async def create_custom_image(
         checksum=None,
         sig_uri=None,
         config=body.config,
+        pool_env=pool_env,
         retired=False,
         deploy_mode="image",
         image_uri=body.image_uri,
@@ -252,7 +269,7 @@ async def create_custom_image(
             replicas_max=body.replicas_max,
             resources=body.resources,
             image_pull_secret=body.image_pull_secret,
-            env_vars=body.env,
+            env_vars=pool_env,
             deploy_api_url=deploy_api_url,
         )
     except Exception as exc:
@@ -378,6 +395,9 @@ async def patch_custom_image(
         _validate_config(body.config)
         row.config = body.config
 
+    if body.env is not None:
+        row.pool_env = _validate_env(body.env)
+
     db.add(
         make_audit_row(
             "custom_image.patch",
@@ -393,14 +413,14 @@ async def patch_custom_image(
 
     # Apply K8s changes
     k8s: Any = getattr(request.app.state, "k8s_pool_manager", None)
-    if k8s is not None and (body.replicas_max or body.resources or body.env):
+    if k8s is not None and (body.replicas_max or body.resources or body.env is not None):
         try:
             await k8s.patch_deployment(
                 kind=kind,
                 slug=slug,
                 replicas_max=body.replicas_max,
                 resources=body.resources,
-                env_vars=body.env,
+                env_vars=row.pool_env if body.env is not None else None,
             )
         except Exception as exc:
             logger.error(

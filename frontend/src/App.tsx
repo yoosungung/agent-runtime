@@ -70,6 +70,11 @@ const CustomImageNewPage = lazy(() =>
     default: m.CustomImageNewPage,
   })),
 );
+const CustomImageEditPage = lazy(() =>
+  import("./pages/CustomImageEditPage").then((m) => ({
+    default: m.CustomImageEditPage,
+  })),
+);
 
 function PageFallback() {
   return (
@@ -182,6 +187,14 @@ export function App() {
                     <Route
                       path="/container/mcp/new"
                       element={<CustomImageNewPage kind="mcp" />}
+                    />
+                    <Route
+                      path="/container/agents/:slug/edit"
+                      element={<CustomImageEditPage kind="agent" />}
+                    />
+                    <Route
+                      path="/container/mcp/:slug/edit"
+                      element={<CustomImageEditPage kind="mcp" />}
                     />
 
                     <Route path="/mcp-servers" element={<Navigate to="/bundle/mcp" replace />} />

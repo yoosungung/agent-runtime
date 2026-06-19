@@ -139,6 +139,9 @@ class SourceMetaRow(Base):
     config: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    pool_env: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     retired: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )

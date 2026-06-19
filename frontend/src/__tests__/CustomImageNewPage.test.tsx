@@ -1,0 +1,32 @@
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+import { CustomImageNewPage } from "../pages/CustomImageNewPage";
+
+vi.mock("../hooks/useCustomImages", () => ({
+  useCreateCustomImage: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+function renderPage(kind: "agent" | "mcp" = "mcp") {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <CustomImageNewPage kind={kind} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("CustomImageNewPage", () => {
+  it("renders environment variables editor for container image", () => {
+    renderPage("mcp");
+    expect(screen.getByText("New MCP Image")).toBeInTheDocument();
+    expect(screen.getByText(/Environment variables/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Add variable" })).toBeInTheDocument();
+  });
+});

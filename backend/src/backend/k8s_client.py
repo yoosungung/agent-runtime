@@ -34,6 +34,28 @@ async def make_api_client(settings: Settings) -> ApiClient:
     return ApiClient()
 
 
+_RESERVED_POOL_ENV = frozenset({"RUNTIME_POOL", "DEPLOY_API_URL", "POD_NAME", "POD_IP", "POD_PORT"})
+
+
+def _build_container_env(
+    kind: str,
+    slug: str,
+    deploy_api_url: str,
+    pool_env: dict[str, str] | None,
+) -> list[dict[str, Any]]:
+    container_env: list[dict[str, Any]] = [
+        {"name": "RUNTIME_POOL", "value": f"{kind}:custom:{slug}"},
+        {"name": "DEPLOY_API_URL", "value": deploy_api_url},
+        {"name": "POD_NAME", "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}}},
+        {"name": "POD_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}},
+        {"name": "POD_PORT", "value": "8080"},
+    ]
+    if pool_env:
+        for k, v in pool_env.items():
+            container_env.append({"name": k, "value": v})
+    return container_env
+
+
 def _deployment_manifest(
     kind: str,
     slug: str,
@@ -48,16 +70,7 @@ def _deployment_manifest(
     image_ref = f"{image_uri}@{image_digest}" if image_digest else image_uri
     name = f"{kind}-pool-custom-{slug}"
 
-    container_env = [
-        {"name": "RUNTIME_POOL", "value": f"{kind}:custom:{slug}"},
-        {"name": "DEPLOY_API_URL", "value": deploy_api_url},
-        {"name": "POD_NAME", "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}}},
-        {"name": "POD_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}},
-        {"name": "POD_PORT", "value": "8080"},
-    ]
-    if env_vars:
-        for k, v in env_vars.items():
-            container_env.append({"name": k, "value": v})
+    container_env = _build_container_env(kind, slug, deploy_api_url, env_vars)
 
     container: dict[str, Any] = {
         "name": "pool",
@@ -311,12 +324,11 @@ class K8sPoolManager:
             })
 
         if env_vars is not None:
-            # Merge new env into existing (simple list patch replaces the segment)
-            new_env = [{"name": k, "value": v} for k, v in env_vars.items()]
+            deploy_api_url = self._settings.DEPLOY_API_URL
             patches.append({
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/env/-",
-                "value": new_env,
+                "op": "replace",
+                "path": "/spec/template/spec/containers/0/env",
+                "value": _build_container_env(kind, slug, deploy_api_url, env_vars),
             })
 
         if patches:

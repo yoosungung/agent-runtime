@@ -136,13 +136,27 @@ export function CustomImageListPage({ kind, embedded = false }: Props) {
                     </td>
                     <td className="px-4 py-3 text-sm flex flex-wrap gap-3">
                       {item.status === "active" && (
-                        <button
-                          onClick={() => setRestartTarget(item)}
-                          disabled={restartMut.isPending}
-                          className="text-blue-600 hover:underline text-xs disabled:opacity-50"
-                        >
-                          Restart
-                        </button>
+                        <>
+                          <button
+                            onClick={() =>
+                              navigate(
+                                kind === "agent"
+                                  ? `/container/agents/${item.slug}/edit`
+                                  : `/container/mcp/${item.slug}/edit`,
+                              )
+                            }
+                            className="text-blue-600 hover:underline text-xs"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setRestartTarget(item)}
+                            disabled={restartMut.isPending}
+                            className="text-blue-600 hover:underline text-xs disabled:opacity-50"
+                          >
+                            Restart
+                          </button>
+                        </>
                       )}
                       {item.status !== "retired" && (
                         <button

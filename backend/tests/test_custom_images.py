@@ -293,6 +293,37 @@ async def test_delete_nonexistent_404(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
+async def test_create_custom_image_with_env(client: AsyncClient):
+    r = await client.post(
+        "/api/admin/custom-images",
+        json={
+            "kind": "mcp",
+            "name": "env-test",
+            "version": "v1",
+            "image_uri": "registry.example.com/env-test:v1",
+            "env": {"LOG_LEVEL": "debug", "API_URL": "http://api"},
+        },
+        headers=_headers(),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["env"] == {"LOG_LEVEL": "debug", "API_URL": "http://api"}
+
+
+async def test_create_custom_image_reserved_env_400(client: AsyncClient):
+    r = await client.post(
+        "/api/admin/custom-images",
+        json={
+            "kind": "mcp",
+            "name": "bad-env",
+            "version": "v1",
+            "image_uri": "registry.example.com/bad:v1",
+            "env": {"RUNTIME_POOL": "hijack"},
+        },
+        headers=_headers(),
+    )
+    assert r.status_code == 400
+
+
 async def test_patch_custom_image_config(client: AsyncClient):
     create_r = await client.post(
         "/api/admin/custom-images",

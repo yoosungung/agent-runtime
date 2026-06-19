@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreateCustomImage, type CustomImageCreateBody } from "../hooks/useCustomImages";
 import { JsonEditor } from "../components/JsonEditor";
+import { EnvVarEditor } from "../components/EnvVarEditor";
 import {
   FormActions,
   FormError,
@@ -33,6 +34,7 @@ export function CustomImageNewPage({ kind }: Props) {
     slug: "",
     replicas_max: 5,
     config: {},
+    env: {},
     image_pull_secret: "",
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export function CustomImageNewPage({ kind }: Props) {
       image_uri: form.image_uri.trim(),
       config: form.config,
     };
+    if (form.env && Object.keys(form.env).length > 0) body.env = form.env;
     if (form.image_digest?.trim()) body.image_digest = form.image_digest.trim();
     if (form.slug?.trim()) body.slug = form.slug.trim();
     if (form.replicas_max) body.replicas_max = form.replicas_max;
@@ -158,6 +161,21 @@ export function CustomImageNewPage({ kind }: Props) {
             className={formInputClassName}
             placeholder="registry-creds"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Environment variables{" "}
+            <span className="text-gray-400 font-normal">(optional, K8s Deployment env)</span>
+          </label>
+          <EnvVarEditor
+            value={form.env ?? {}}
+            onChange={(env) => setForm({ ...form, env })}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Pod startup env (e.g. LOG_LEVEL). Default Config below is passed per invoke via
+            x-runtime-cfg.
+          </p>
         </div>
 
         <div>
