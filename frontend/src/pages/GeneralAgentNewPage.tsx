@@ -27,7 +27,6 @@ export function GeneralAgentNewPage() {
   const navigate = useNavigate();
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [configError, setConfigError] = useState<string | undefined>();
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const { data: mcpList } = useSourceMetaList({
@@ -60,7 +59,6 @@ export function GeneralAgentNewPage() {
 
   async function onSubmit(values: FormValues) {
     setGlobalError(null);
-    if (configError) return;
     if (mcpServers.length === 0) {
       setGlobalError("MCP 서버를 하나 이상 선택하세요.");
       return;
@@ -176,16 +174,7 @@ export function GeneralAgentNewPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Extra config (langgraph, API keys, …)
           </label>
-          <JsonEditor
-            value={config}
-            onChange={(v, err) => {
-              setConfig(v);
-              setConfigError(err);
-            }}
-          />
-          {configError && (
-            <p className="text-red-600 text-xs mt-1">{configError}</p>
-          )}
+          <JsonEditor value={config} onChange={setConfig} />
         </div>
 
         {globalError && <FormError message={globalError} />}

@@ -16,7 +16,7 @@ export interface ResourceSummary {
 
 export interface RecentIssue {
   id: number;
-  kind: string;
+  kind: "agent" | "mcp";
   name: string;
   version: string;
   status: string;
