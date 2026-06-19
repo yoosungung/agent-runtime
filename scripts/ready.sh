@@ -18,7 +18,14 @@ fi
 
 if ! lsof -i :8090 -sTCP:LISTEN &>/dev/null; then
   echo "Starting port-forward for Opik backend (8090->8080, 3003)..."
-  kubectl port-forward services/opik-backend 8090:8080 3003:3003 -n opik-ax1 &
+  kubectl port-forward services/opik-backend 8090:8080 3003:3003 -n opik &
 else
   echo "Port 8090 already in use, skipping Opik backend port-forward."
+fi
+
+if ! lsof -i :6379 -sTCP:LISTEN &>/dev/null; then
+  echo "Starting port-forward for Redis (6379)..."
+  kubectl port-forward services/redis 6379:6379 -n runtime &
+else
+  echo "Port 6379 already in use, skipping Redis port-forward."
 fi

@@ -1087,3 +1087,58 @@ async def test_admin_force_password_change_weak_400(client: AsyncClient):
         headers=_csrf_headers(),
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Dashboard summary
+# ---------------------------------------------------------------------------
+
+
+async def test_dashboard_summary_resource_counts(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(app.state, {"name": "active-agent", "status": "active"})
+    await _insert_source(
+        app.state,
+        {
+            "name": "pending-agent",
+            "checksum": "sha256:" + "d" * 64,
+            "status": "pending",
+        },
+    )
+    await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "failed-mcp",
+            "runtime_pool": "mcp:fastmcp",
+            "checksum": "sha256:" + "e" * 64,
+            "status": "failed",
+        },
+    )
+    await _insert_source(
+        app.state,
+        {
+            "name": "retired-agent",
+            "checksum": "sha256:" + "f" * 64,
+            "retired": True,
+        },
+    )
+
+    resp = await client.get("/api/dashboard/summary", headers=_csrf_headers())
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["resources"]["agent"]["total"] == 3
+    assert data["resources"]["agent"]["active"] == 1
+    assert data["resources"]["agent"]["pending"] == 1
+    assert data["resources"]["agent"]["retired"] == 1
+    assert data["resources"]["mcp"]["total"] == 1
+    assert data["resources"]["mcp"]["failed"] == 1
+
+    assert len(data["recent_issues"]) == 2
+    issue_names = {item["name"] for item in data["recent_issues"]}
+    assert issue_names == {"pending-agent", "failed-mcp"}
+
+    assert data["pools"]["available"] is False
+    assert data["pools"]["error"] == "REDIS_URL not configured"

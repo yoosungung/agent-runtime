@@ -18,6 +18,7 @@ from backend.bundle_storage import make_bundle_storage
 from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
 from backend.routers import auth as auth_router_module
+from backend.routers import dashboard as dashboard_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
 from backend.routers import custom_images as custom_images_router_module
@@ -214,6 +215,7 @@ app.add_middleware(
 
 app.include_router(auth_router_module.router)  # /api/auth/*
 app.include_router(auth_router_module.me_router)  # /api/me
+app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
 app.include_router(user_meta_router_module.router)  # /api/user-meta/*
 app.include_router(users_router_module.router)  # /api/users/*
