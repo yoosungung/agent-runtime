@@ -25,7 +25,8 @@
 
 | overlay | 외부 호스트 | 용도 |
 |---------|------------|------|
-| dev | `agents.k8s-test` | admin SPA, `/api/*`, `/v1/agents/*` (agent call) |
+| dev | `http://agents.k8s-test` (HTTP only, no TLS) | admin SPA, `/api/*`, `/v1/agents/*` (agent call) |
+| stage/prod (base) | `https://agents.didim365.app` | 동일 + Let's Encrypt |
 | stage/prod (base) | `agents.didim365.app` | 동일 라우팅 |
 
 Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend chat (`ENVOY_URL`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음.

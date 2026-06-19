@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-: "${AGENTS_HOST:=https://agents.k8s-test}"
+: "${AGENTS_HOST:=http://agents.k8s-test}"
 : "${ADMIN_USER:=admin}"
 : "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set (initial admin password seeded into backend)}"
 

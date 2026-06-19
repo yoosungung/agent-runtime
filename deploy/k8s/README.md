@@ -53,7 +53,7 @@ GITHUB_USER=yoosungung GITHUB_PAT=<token> make registry-secret
 
 | Setting | dev | stage/prod (base) |
 |---------|-----|-------------------|
-| Ingress host | `agents.k8s-test` | `agents.didim365.app` |
+| Ingress | `agents.k8s-test`, **HTTP only** (no TLS) | `agents.didim365.app` + Let's Encrypt |
 | Image registry | GHCR (`ghcr.io/yoosungung/agent-runtime/...`) | base names (overlay-specific) |
 | Replicas | 1 (all Deployments) | HPA/KEDA defaults |
 | KEDA ScaledObject | removed | enabled |
@@ -64,8 +64,8 @@ GITHUB_USER=yoosungung GITHUB_PAT=<token> make registry-secret
 
 | Purpose | URL |
 |---------|-----|
-| Browser / admin SPA / `/api/*` | `https://agents.k8s-test/` (dev) |
-| External agent invoke | `https://agents.k8s-test/v1/agents/...` |
+| Browser / admin SPA / `/api/*` | `http://agents.k8s-test/` (dev, `/etc/hosts`) |
+| External agent invoke | `http://agents.k8s-test/v1/agents/...` |
 | Pod-to-pod MCP (`MCP_GATEWAY_URL`) | `http://envoy.runtime.svc.cluster.local:8080` |
 | Backend chat invoke (`ENVOY_URL`) | same internal envoy |
 
