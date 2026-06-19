@@ -132,6 +132,27 @@ patches:
       name: deploy-api
   - patch: |-
       - op: replace
+        path: /stringData/VFS_DSN
+        value: "postgresql://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+    target:
+      kind: Secret
+      name: postgres-credentials
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/10/value
+        value: "false"
+    target:
+      kind: Deployment
+      name: agent-pool-compiled-graph
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/10/value
+        value: "false"
+    target:
+      kind: Deployment
+      name: agent-pool-adk
+  - patch: |-
+      - op: replace
         path: /spec/minReplicas
         value: 1
     target:

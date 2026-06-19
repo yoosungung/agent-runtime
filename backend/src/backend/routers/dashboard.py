@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.deps import check_csrf, get_db, get_settings, require_admin
+from backend.deps import check_csrf, get_db, get_principal, get_settings
 from backend.pool_status import PoolRuntimeStatus, fetch_pool_summary
 from backend.settings import Settings
 from runtime_common.db.models import SourceMetaRow
@@ -15,7 +15,7 @@ from runtime_common.db.models import SourceMetaRow
 router = APIRouter(
     prefix="/api/dashboard",
     tags=["dashboard"],
-    dependencies=[Depends(require_admin), Depends(check_csrf)],
+    dependencies=[Depends(get_principal), Depends(check_csrf)],
 )
 
 

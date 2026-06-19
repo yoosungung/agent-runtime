@@ -9,5 +9,5 @@ export async function login(page: Page, username = ADMIN_USERNAME, password = AD
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /login/i }).click();
   // Wait for redirect to dashboard
-  await page.waitForURL(/^\/(agents|$)/, { timeout: 10_000 });
+  await page.waitForURL(/^\/($|\?)/, { timeout: 10_000 });
 }

@@ -251,7 +251,21 @@ class AsyncpgUserVfsStore(UserVfsStore):
             )
 
 
-async def create_asyncpg_pool(dsn: str) -> Any:
+def asyncpg_pool_kwargs(dsn: str, *, pgbouncer: bool = False) -> tuple[str, dict[str, Any]]:
+    """Return (clean_dsn, connect kwargs) for asyncpg.create_pool."""
+    from runtime_common.db.engine import _strip_sslmode
+
+    clean_dsn, sslmode = _strip_sslmode(dsn)
+    kwargs: dict[str, Any] = {}
+    if sslmode == "disable":
+        kwargs["ssl"] = False
+    if pgbouncer:
+        kwargs["statement_cache_size"] = 0
+    return clean_dsn, kwargs
+
+
+async def create_asyncpg_pool(dsn: str, *, pgbouncer: bool = False) -> Any:
     import asyncpg
 
-    return await asyncpg.create_pool(dsn)
+    clean_dsn, connect_kwargs = asyncpg_pool_kwargs(dsn, pgbouncer=pgbouncer)
+    return await asyncpg.create_pool(clean_dsn, **connect_kwargs)

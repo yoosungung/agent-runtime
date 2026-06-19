@@ -1,9 +1,10 @@
 # NetworkPolicy: enforce the trust boundary rules from DESIGN.md.
-# - postgres: only auth + deploy-api + backend ingress allowed
+# - postgres: auth + deploy-api + backend + agent-pool (VFS) ingress allowed
+# - pgbouncer-rw: deploy-api + auth + backend + agent-pool (VFS) ingress
 # - redis:    gateways + pools + ext-authz ingress (not auth/deploy-api)
 # - deploy-api: gateways + pools + ext-authz + admin ingress
 # - auth: agent-gateway + ext-authz + admin ingress
-# - pool egress: deploy-api, redis, external only (no postgres/auth direct)
+# - pool egress: deploy-api, redis, postgres/pgbouncer (VFS), external
 # - envoy: external ingress via controller; routes pools directly.
 #   The /v1/mcp/invoke-internal path is exposed on the *same* listener; only
 #   agent-pod egress may reach Envoy on 8080, enforced below.
@@ -32,6 +33,9 @@ spec:
         - podSelector:
             matchLabels:
               app: backend
+        - podSelector:
+            matchLabels:
+              app: agent-pool
         # pgbouncer pools connect to postgres on behalf of services
         - podSelector:
             matchLabels:
@@ -69,6 +73,9 @@ spec:
         - podSelector:
             matchLabels:
               app: backend
+        - podSelector:
+            matchLabels:
+              app: agent-pool
       ports:
         - port: 5432
 ---

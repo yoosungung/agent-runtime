@@ -6,7 +6,28 @@ import pytest
 
 from runtime_common.vfs.composite import build_general_vfs
 from runtime_common.vfs.database_backend import AgentDatabaseBackend, UserDatabaseBackend
-from runtime_common.vfs.store import MemoryAgentVfsStore, MemoryUserVfsStore
+from runtime_common.vfs.store import (
+    MemoryAgentVfsStore,
+    MemoryUserVfsStore,
+    asyncpg_pool_kwargs,
+)
+
+
+def test_asyncpg_pool_kwargs_strips_sslmode_disable():
+    dsn, kwargs = asyncpg_pool_kwargs(
+        "postgresql://u:p@postgres:5432/db?sslmode=disable&connect_timeout=10"
+    )
+    assert dsn == "postgresql://u:p@postgres:5432/db?connect_timeout=10"
+    assert kwargs == {"ssl": False}
+
+
+def test_asyncpg_pool_kwargs_pgbouncer_disables_statement_cache():
+    dsn, kwargs = asyncpg_pool_kwargs(
+        "postgresql://u:p@pgbouncer-rw:5432/db",
+        pgbouncer=True,
+    )
+    assert dsn == "postgresql://u:p@pgbouncer-rw:5432/db"
+    assert kwargs == {"statement_cache_size": 0}
 
 
 @pytest.fixture

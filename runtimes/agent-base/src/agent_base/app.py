@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from runtime_common.vfs.store import create_asyncpg_pool
 
         dsn = settings.vfs_dsn.replace("postgresql+asyncpg://", "postgresql://")
-        vfs_pool = await create_asyncpg_pool(dsn)
+        vfs_pool = await create_asyncpg_pool(dsn, pgbouncer=settings.vfs_pgbouncer)
 
     # Expose active_requests as an OTEL gauge so Prometheus/KEDA can scale on it.
     meter = get_meter("agent_base")

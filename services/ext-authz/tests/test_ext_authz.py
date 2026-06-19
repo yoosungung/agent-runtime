@@ -77,9 +77,21 @@ class _FakeScheduler:
         self.addr = addr
         self.calls: list[dict[str, Any]] = []
 
-    async def pick(self, runtime_kind: str, checksum: str | None, ring_key: str) -> str | None:
+    async def pick(
+        self,
+        runtime_kind: str,
+        checksum: str | None,
+        ring_key: str,
+        *,
+        pool_fallback_url: str | None = None,
+    ) -> str | None:
         self.calls.append(
-            {"runtime_kind": runtime_kind, "checksum": checksum, "ring_key": ring_key}
+            {
+                "runtime_kind": runtime_kind,
+                "checksum": checksum,
+                "ring_key": ring_key,
+                "pool_fallback_url": pool_fallback_url,
+            }
         )
         return self.addr
 

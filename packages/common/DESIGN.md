@@ -97,9 +97,10 @@
       - 상태: `rt:warm:{agent,mcp}_{runtime_kind}:{checksum}` (SET, TTL 3s), `rt:load:{pod_id}` (HASH `{active, max, addr}`, TTL 3s).
       - 이벤트: `rt:events:{agent,mcp}_{runtime_kind}` (Pub/Sub, JSON payload).
     - `make_redis_saver(url)` 헬퍼: LangGraph `RedisSaver` 팩토리 — 번들 factory가 동일 구성을 반복하지 않도록. 체크포인터 key는 `rt:ckpt:*` prefix.
-  - **`scheduling.py`** — gateway 공용 스케줄러. `Scheduler(subscriber, kind, ring_fallback, query=None)`의 `pick(runtime_kind, checksum, endpoints) -> Endpoint`:
+  - **`scheduling.py`** — ext-authz 스케줄러. `Scheduler(subscriber, kind, query=None)`의 `pick(..., pool_fallback_url=)`:
     1. `subscriber.healthy()` → `subscriber.snapshot()` 에서 warm pod 집합 + load 조회 → p2c.
-    2. subscriber unhealthy → `query`가 있으면 pull로 폴백, 없거나 역시 실패면 `ring_fallback.pick(key=(kind,name,version,checksum))`.
+    2. subscriber unhealthy → `query` pull 폴백.
+    3. warm miss → `pool_fallback_url`(해당 runtime_kind의 ClusterIP Service). headless/EDS 미사용.
     - agent-gateway/mcp-gateway가 공유.
   - **`active_counter.py`** (또는 `registry.ActiveCounter`) — `asyncio.Semaphore`를 감싸 `active`/`max` 노출. warm-registry publisher가 읽고, pool 런타임이 진입/종료에서 갱신.
 

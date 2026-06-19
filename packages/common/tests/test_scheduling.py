@@ -95,41 +95,43 @@ async def test_scheduler_warm_hit():
             {"pod_id": "pod-1", "checksum": "sha256:abc", "active": 0, "max": 10},
         ]
     )
-    scheduler = Scheduler(kind="agent", ring_fallback_endpoints=["http://svc:8080"], subscriber=sub)
+    scheduler = Scheduler(kind="agent", subscriber=sub)
     addr = await scheduler.pick(
-        runtime_kind="compiled_graph", checksum="sha256:abc", ring_key="key"
+        runtime_kind="compiled_graph",
+        checksum="sha256:abc",
+        ring_key="key",
+        pool_fallback_url="http://agent-pool-compiled-graph:8080",
     )
     assert addr == "http://pod-1:8080"
 
 
 @pytest.mark.asyncio
-async def test_scheduler_warm_miss_falls_back_to_ring():
+async def test_scheduler_warm_miss_falls_back_to_pool_service():
     sub = _make_subscriber_with_pods([])  # no warm pods
-    scheduler = Scheduler(
-        kind="agent",
-        ring_fallback_endpoints=["http://svc:8080"],
-        subscriber=sub,
-    )
+    scheduler = Scheduler(kind="agent", subscriber=sub)
     addr = await scheduler.pick(
-        runtime_kind="compiled_graph", checksum="sha256:xyz", ring_key="key"
+        runtime_kind="compiled_graph",
+        checksum="sha256:xyz",
+        ring_key="key",
+        pool_fallback_url="http://agent-pool-compiled-graph:8080",
     )
-    assert addr == "http://svc:8080"
+    assert addr == "http://agent-pool-compiled-graph:8080"
 
 
 @pytest.mark.asyncio
-async def test_scheduler_no_subscriber_falls_back_to_ring():
-    scheduler = Scheduler(
-        kind="agent",
-        ring_fallback_endpoints=["http://fallback:8080"],
-    )
+async def test_scheduler_no_subscriber_falls_back_to_pool_service():
+    scheduler = Scheduler(kind="agent")
     addr = await scheduler.pick(
-        runtime_kind="compiled_graph", checksum="sha256:abc", ring_key="key"
+        runtime_kind="compiled_graph",
+        checksum="sha256:abc",
+        ring_key="key",
+        pool_fallback_url="http://agent-pool-compiled-graph:8080",
     )
-    assert addr == "http://fallback:8080"
+    assert addr == "http://agent-pool-compiled-graph:8080"
 
 
 @pytest.mark.asyncio
-async def test_scheduler_unhealthy_subscriber_uses_ring():
+async def test_scheduler_unhealthy_subscriber_uses_pool_service():
     sub = _make_subscriber_with_pods(
         [
             {"pod_id": "pod-1", "checksum": "sha256:abc"},
@@ -137,15 +139,14 @@ async def test_scheduler_unhealthy_subscriber_uses_ring():
     )
     sub._healthy = False  # simulate unhealthy
 
-    scheduler = Scheduler(
-        kind="agent",
-        ring_fallback_endpoints=["http://svc:8080"],
-        subscriber=sub,
-    )
+    scheduler = Scheduler(kind="agent", subscriber=sub)
     addr = await scheduler.pick(
-        runtime_kind="compiled_graph", checksum="sha256:abc", ring_key="key"
+        runtime_kind="compiled_graph",
+        checksum="sha256:abc",
+        ring_key="key",
+        pool_fallback_url="http://agent-pool-compiled-graph:8080",
     )
-    assert addr == "http://svc:8080"
+    assert addr == "http://agent-pool-compiled-graph:8080"
 
 
 @pytest.mark.asyncio
@@ -155,18 +156,19 @@ async def test_scheduler_no_checksum_skips_warm():
             {"pod_id": "pod-1", "checksum": "sha256:abc"},
         ]
     )
-    scheduler = Scheduler(
-        kind="agent",
-        ring_fallback_endpoints=["http://svc:8080"],
-        subscriber=sub,
-    )
+    scheduler = Scheduler(kind="agent", subscriber=sub)
     # checksum=None → skip warm path entirely
-    addr = await scheduler.pick(runtime_kind="compiled_graph", checksum=None, ring_key="key")
-    assert addr == "http://svc:8080"
+    addr = await scheduler.pick(
+        runtime_kind="compiled_graph",
+        checksum=None,
+        ring_key="key",
+        pool_fallback_url="http://agent-pool-compiled-graph:8080",
+    )
+    assert addr == "http://agent-pool-compiled-graph:8080"
 
 
 @pytest.mark.asyncio
-async def test_scheduler_ring_empty_endpoints():
-    scheduler = Scheduler(kind="agent", ring_fallback_endpoints=[])
+async def test_scheduler_no_pool_fallback_returns_none():
+    scheduler = Scheduler(kind="agent")
     addr = await scheduler.pick(runtime_kind="compiled_graph", checksum=None, ring_key="key")
     assert addr is None

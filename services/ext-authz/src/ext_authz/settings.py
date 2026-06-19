@@ -6,7 +6,7 @@ from runtime_common.settings import BaseRuntimeSettings
 class Settings(BaseRuntimeSettings):
     service_name: str = Field(default="ext-authz")
 
-    # Agent pool service URLs — used as ring-hash fallback when warm-registry miss.
+    # Agent pool ClusterIP Service URLs — cold-start fallback when warm-registry miss.
     # 'custom' is omitted: image-mode pools are derived from slug at runtime.
     pool_compiled_graph_url: str = Field(
         default="http://agent-pool-compiled-graph.runtime.svc.cluster.local:8080"

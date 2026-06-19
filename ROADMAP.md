@@ -45,7 +45,8 @@ Image 모드(`custom` pool 의미 전환) 구현이 완료됐다. 스키마 확�
 ### 인프라 확장
 
 - [ ] **mTLS/SPIRE 기반 내부 caller 인증** — 현재는 NetworkPolicy로 경계 강제. SPIFFE/SPIRE 도입 시 인증서 CN으로 internal/edge 판단, `grace_sec` 동적 결정 가능.
-- [ ] **Envoy HPA / subset LB / EDS** — 현재 Envoy replica 2 고정. 트래픽 기반 HPA + warm pod subset을 Envoy subset LB로 구현 + EndpointSlice 기반 EDS 전환.
+- [ ] **Envoy data plane 확장 (HPA)** — 현재 Envoy replica 2 고정. invoke 트래픽에 따라 Envoy 자체를 수평 확장할 때 검토.
+- [ ] **Pool endpoint discovery (EDS)** — *원래 ROADMAP에 “subset LB + EDS”가 한 항목으로 있었으나, 구현·설계 근거 없이 initial commit에만 남아 있던 미완 placeholder였음.* 실제 라우팅은 ext-authz `x-pod-addr` + DFP. warm affinity는 Envoy subset이 아니라 Redis. **현재 pool 규모(~10 pod/pool)에서는 EDS 불필요** — pool pod가 수백 개 이상일 때만 검토. 유래·headless 정리: [deploy/DESIGN.md](deploy/DESIGN.md) “EDS / headless — 유래와 정리”.
 
 ### Nice-to-have
 

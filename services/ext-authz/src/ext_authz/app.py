@@ -97,13 +97,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     agent_scheduler = Scheduler(
         kind="agent",
-        ring_fallback_endpoints=[],
         subscriber=agent_subscriber,
         query=query,
     )
     mcp_scheduler = Scheduler(
         kind="mcp",
-        ring_fallback_endpoints=[],
         subscriber=mcp_subscriber,
         query=query,
     )
@@ -211,15 +209,16 @@ async def list_server_tools(name: str, request: Request, version: str | None = N
     _, _, runtime_kind = source.runtime_pool.partition(":")
 
     settings: Settings = app.state.settings
+    pool_url = settings.mcp_pool_url(runtime_kind)
+    if not pool_url:
+        raise HTTPException(status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}")
     warm_url = await app.state.mcp_scheduler.pick(
         runtime_kind=runtime_kind,
         checksum=source.checksum,
         ring_key=f"{name}:{version or ''}:{source.checksum or ''}",
+        pool_fallback_url=pool_url,
     )
-    pool_url = settings.mcp_pool_url(runtime_kind)
     target = warm_url or pool_url
-    if not target:
-        raise HTTPException(status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}")
 
     params: dict = {"server": name}
     if version:
@@ -281,17 +280,18 @@ async def mcp_stream(request: Request) -> Response:
         source = resolved.source
         _, _, runtime_kind = source.runtime_pool.partition(":")
         settings: Settings = app.state.settings
+        pool_url = settings.mcp_pool_url(runtime_kind)
+        if not pool_url:
+            raise HTTPException(
+                status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}"
+            )
         warm_url = await app.state.mcp_scheduler.pick(
             runtime_kind=runtime_kind,
             checksum=source.checksum,
             ring_key=f"{server}:{version or ''}:{source.checksum or ''}",
+            pool_fallback_url=pool_url,
         )
-        pool_url = settings.mcp_pool_url(runtime_kind)
         target = warm_url or pool_url
-        if not target:
-            raise HTTPException(
-                status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}"
-            )
     else:
         target = None
 
@@ -489,11 +489,15 @@ async def check(path: str, request: Request) -> Response:
             resp_headers["x-grace-applied"] = "1"
         return Response(status_code=200, headers=resp_headers)
 
-    # Bundle mode: warm-registry → ring-hash fallback → pool Service URL
+    # Bundle mode: warm-registry → pool ClusterIP Service fallback
     scheduler: Scheduler = (
         app.state.agent_scheduler if kind == "agent" else app.state.mcp_scheduler
     )
     ring_key = f"{kind}:{name}:{version or ''}:{source.checksum or ''}"
+    pool_url = _pool_url(kind, pool_id.runtime_kind, settings)
+    if not pool_url:
+        return _deny(502, f"no pool for runtime_kind: {pool_id.runtime_kind}")
+
     with tracer.start_as_current_span("scheduler.pick") as span:
         span.set_attribute("kind", kind)
         span.set_attribute("runtime.pool", source.runtime_pool)
@@ -501,11 +505,8 @@ async def check(path: str, request: Request) -> Response:
             runtime_kind=pool_id.runtime_kind,
             checksum=source.checksum,
             ring_key=ring_key,
+            pool_fallback_url=pool_url,
         )
-
-    pool_url = _pool_url(kind, pool_id.runtime_kind, settings)
-    if not pool_url:
-        return _deny(502, f"no pool for runtime_kind: {pool_id.runtime_kind}")
 
     # ext_authz returns only the host:port pair (no scheme). Envoy's Lua filter
     # replaces :authority with this value; the dynamic_forward_proxy cluster

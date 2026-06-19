@@ -22,7 +22,7 @@ Envoy **HTTP ext_authz** 서비스. agent/mcp 통합 단일 서비스. 역할은
 5. **Rate limit**: principal 단위(기본 60/min) + resource 단위(기본 120/min). 초과 시 429.
 6. **`DeployApiClient.resolve(kind, name, version, principal)` → `source.runtime_pool` + 전체 `SourceMeta`**. 404 → 404 패스-스루.
 7. **`runtime_pool` 파싱 → 모드 분기** (`parse_runtime_pool(source.runtime_pool)`):
-   - **Bundle 모드** (`slug is None`): `Scheduler.pick(runtime_kind, checksum, ring_key)`. `ring_key = "{kind}:{name}:{version}:{checksum}"`.
+   - **Bundle 모드** (`slug is None`): `Scheduler.pick(runtime_kind, checksum, ring_key, pool_fallback_url=...)`. warm miss 시 해당 pool ClusterIP Service URL. `ring_key`는 trace용으로만 유지.
    - **Image 모드** (`slug is not None`, `runtime_kind == "custom"`): Scheduler 미호출. Service DNS를 slug에서 derive — `{kind}-pool-custom-{slug}.{runtime_namespace}.svc.{cluster_domain}:8080`. 이 URL을 fallback addr로 사용.
 8. **`x-runtime-cfg` 헤더 첨부**: `{**source.config, **user.config}` shallow merge(user wins) 결과를 `base64(json)` 인코딩. Bundle/Image 모드 공통. Envoy `max_request_headers_kb=64` 내에 안전히 들어가도록 등록 시 16 KB 상한 검증.
 9. **`x-runtime-secrets-ref` 헤더**: `user_meta.secrets_ref` opaque 패스스루 (예: `vault://...`). 없으면 헤더 생략.

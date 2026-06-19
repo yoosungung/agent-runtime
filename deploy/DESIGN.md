@@ -68,7 +68,33 @@ ext-authz가 `x-pod-addr`(warm pod IP)과 함께 `x-pod-fallback-addr`(pool Serv
 
 - `with_request_body.max_request_bytes: 65536`, `allow_partial_message: true`
 - `stream_idle_timeout: 0s`, `request_timeout: 0s` — SSE 스트리밍 패스스루
-- Envoy replicas: 2 (고정). HPA/EDS 전환은 향후 계획.
+- Envoy replicas: 2 (고정). data plane 확장(Envoy HPA 등)은 [ROADMAP.md](../ROADMAP.md) 참고.
+
+### EDS / headless — 유래와 정리
+
+**조사 결과: EDS 도입 근거가 구현과 맞물린 적이 없고, headless Service는 그에 대한 매니페스트만 남아 있었다.**
+
+| 항목 | 유래 (initial commit, `51ce500`) | 실제 구현 |
+|------|----------------------------------|-----------|
+| ROADMAP “Envoy HPA / subset LB / **EDS**” | gateway 제거 후 Envoy 확장을 염두에 둔 **미구현 TODO**. “warm pod subset → Envoy subset LB”와 “EndpointSlice EDS”를 한 줄에 묶었으나 설계 문서·코드에 구체화되지 않음 | warm pick은 **Redis warm-registry + ext-authz `Scheduler.pick()`**. Envoy는 **`x-pod-addr` → `dynamic_forward_proxy`** 로 pod IP 직접 연결 |
+| `agent-pool-compiled-graph-headless` | 동일 커밋에 **주석·참조 없이** ClusterIP Service와 함께 추가. 다른 pool(`-adk`, mcp)에는 없음 | 코드·Envoy·ext-authz 어디에서도 DNS/URL로 참조하지 않음. fallback은 ClusterIP `agent-pool-compiled-graph`만 사용 |
+
+**왜 headless가 생겼는지에 대한 명시적 근거는 저장소에 없다.** ROADMAP의 EDS 항목과 시기가 같아, EDS/DNS 기반 pod 발견을 위한 **선행 매니페스트(placeholder)** 로 추정되나, Envoy xDS·subset LB·headless DNS endpoint 열거 등 **후속 작업이 없었다.**
+
+**조치 (배포·코드):**
+
+- 미사용 `agent-pool-compiled-graph-headless` Service **삭제** (`agent-pool-compiled-graph.yaml`).
+- `Scheduler.pick()` cold-start는 **해당 pool의 ClusterIP Service URL**(`pool_fallback_url`)만 사용. 제거된 headless/ring-hash endpoint 열거 경로 없음. 구현: `packages/common/scheduling.py`, `services/ext-authz/app.py`.
+
+**현재 규모에서는 EDS가 필요하지 않다.**
+
+- EDS endpoint 수 = pool **pod** 수(HPA/KEDA `maxReplicas` ~10/pool). agent/MCP 정의 수와 무관.
+- warm affinity는 앱 레이어(Redis) 책임. EDS subset LB로 checksum별 라우팅을 옮기는 방안은 agent 수에 비례해 xDS가 비대해져 **채택하지 않음**.
+- `dynamic_forward_proxy` + `max_hosts: 1024`로 현재 pool 규모에 충분.
+
+**조치:** pool당 ClusterIP Service 하나만 유지. cold-start는 `Scheduler.pick(..., pool_fallback_url=)` → ext-authz `x-pod-addr`.
+
+향후 pool pod가 수백 개 이상이거나 Envoy data plane 자체를 수평 확장해야 할 때만 EDS·Envoy HPA를 별도 검토([ROADMAP.md](../ROADMAP.md)). warm 스케줄링은 ext-authz + Redis 유지.
 
 ## env 배선
 

@@ -20,6 +20,10 @@ class Settings(BaseRuntimeSettings):
         default="",
         description="Postgres DSN for VFS tables (asyncpg). Empty = VFS disabled.",
     )
+    vfs_pgbouncer: bool = Field(
+        default=False,
+        description="PgBouncer-compatible asyncpg settings for VFS (statement_cache_size=0).",
+    )
     warmup_agents: list[str] = Field(
         default_factory=list,
         description="Agent names to preload at startup (comma-separated via WARMUP_AGENTS env).",

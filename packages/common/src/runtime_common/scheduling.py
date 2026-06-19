@@ -3,7 +3,7 @@
 Scheduler.pick() selects a pod endpoint using:
 1. subscriber.snapshot() in-memory table  → power-of-2-choices (p2c)
 2. If subscriber unhealthy → RegistryQuery pull fallback
-3. If no warm pod found → consistent ring-hash over provided endpoints
+3. If no warm pod found → pool ClusterIP Service URL (kube-proxy LB)
 """
 
 from __future__ import annotations
@@ -50,24 +50,21 @@ def _p2c_pick(candidates: list[tuple[str, str, int, int]]) -> str | None:
 
 
 class Scheduler:
-    """Warm-aware scheduler shared by agent-gateway and mcp-gateway.
+    """Warm-aware scheduler for ext-authz.
 
     Args:
         subscriber: RegistrySubscriber instance (or None when not available).
         kind: "agent" | "mcp"
-        ring_fallback_endpoints: list of service URL strings for cold-start ring-hash.
         query: optional RegistryQuery for pull fallback when subscriber unhealthy.
     """
 
     def __init__(
         self,
         kind: str,
-        ring_fallback_endpoints: list[str],
         subscriber: RegistrySubscriber | None = None,
         query: RegistryQuery | None = None,
     ) -> None:
         self._kind = kind
-        self._endpoints = ring_fallback_endpoints
         self._subscriber = subscriber
         self._query = query
 
@@ -76,8 +73,10 @@ class Scheduler:
         runtime_kind: str,
         checksum: str | None,
         ring_key: str,
+        *,
+        pool_fallback_url: str | None = None,
     ) -> str | None:
-        """Return an endpoint URL (addr or pool service URL)."""
+        """Return an endpoint URL (warm pod IP or pool ClusterIP Service URL)."""
 
         # 1. subscriber memory path
         if self._subscriber is not None and self._subscriber.healthy() and checksum:
@@ -110,7 +109,7 @@ class Scheduler:
                     if addr:
                         return addr
             except Exception:
-                logger.exception("registry query failed; falling back to ring-hash")
+                logger.exception("registry query failed; falling back to pool service")
 
-        # 3. ring-hash fallback (cold-start)
-        return _ring_pick(ring_key, self._endpoints)
+        # 3. cold-start: pool ClusterIP Service (one URL per runtime_kind; no headless/EDS)
+        return pool_fallback_url

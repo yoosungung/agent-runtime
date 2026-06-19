@@ -54,6 +54,13 @@ spec:
               value: "3"
             - name: MCP_GATEWAY_URL
               value: http://envoy.runtime.svc.cluster.local:8080
+            - name: VFS_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+            - name: VFS_PGBOUNCER
+              value: "true"
           volumeMounts:
             - name: bundles
               mountPath: /var/cache/agent-bundles

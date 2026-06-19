@@ -1129,6 +1129,29 @@ async def test_admin_force_password_change_weak_400(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
+async def test_dashboard_summary_accessible_to_authenticated_user(client: AsyncClient):
+    from unittest.mock import AsyncMock
+
+    from backend.app import app
+    from runtime_common.schemas import Principal
+
+    user_principal = Principal.model_validate(
+        {
+            "sub": "alice",
+            "user_id": 2,
+            "tenant": None,
+            "access": [],
+            "grace_applied": False,
+            "role": "user",
+            "must_change_password": False,
+        }
+    )
+    app.state.auth_client.verify = AsyncMock(return_value=user_principal)
+
+    resp = await client.get("/api/dashboard/summary", headers=_csrf_headers())
+    assert resp.status_code == 200
+
+
 async def test_dashboard_summary_resource_counts(client: AsyncClient):
     from backend.app import app
 
