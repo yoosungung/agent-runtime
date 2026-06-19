@@ -1,0 +1,52 @@
+name: Build and push images
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: services/ext-authz/Dockerfile
+            image: ext-authz
+          - dockerfile: services/auth/Dockerfile
+            image: auth
+          - dockerfile: services/deploy-api/Dockerfile
+            image: deploy-api
+          - dockerfile: runtimes/agent-base/Dockerfile
+            image: agent-base
+          - dockerfile: runtimes/mcp-base/Dockerfile
+            image: mcp-base
+          - dockerfile: backend/Dockerfile
+            image: backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/agent-runtime/${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/agent-runtime/${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

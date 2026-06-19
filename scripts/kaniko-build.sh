@@ -54,7 +54,7 @@ spec:
       volumes:
       - name: docker-config
         secret:
-          secretName: ncr-creds
+          secretName: registry-creds
           items:
           - key: .dockerconfigjson
             path: config.json

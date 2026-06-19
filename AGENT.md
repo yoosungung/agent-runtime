@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## 프로젝트 목표
 
@@ -15,11 +15,12 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **첫 셋업**: `uv sync --all-packages`
 - **자주 쓰는 명령**
   - `make sync` / `make lint` / `make fmt` / `make typecheck` / `make test`
-  - 이미지 빌드: `make images` (개별: `make agent-base-image` 등)
-  - k8s 배포: `make k8s-apply-dev`
-  - DB 마이그레이션: `make db-migrate`
+  - 이미지 빌드: GitHub Release publish → GHA (`.github/workflows/build-images.yml`)
+  - k8s 배포: `make k8s-apply-dev` / `make k8s-rollout-restart`
+  - DB 마이그레이션: `make db-migrate-all`
+  - GHCR pull secret (private): `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 - **로컬에서 단일 서비스 실행**:
-  `uv run uvicorn agent_gateway.app:app --reload --port 8080`
+  `uv run uvicorn backend.app:app --reload --port 8000`
   (다른 서비스도 동일 패턴 — 모듈 경로는 각 `pyproject.toml`의 wheel target 참고)
 - **코드 구현** : 
   - 작업 전 해당 폴더의 `DESIGN.md`를 반드시 확인한다. 현재 진행중인 작업이 설계에 반영이 필요하다고 판단되면 `DESIGN.md` 파일을 작업 수행 전에 수정한다. 
@@ -29,7 +30,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 ## 코드 컨벤션
 
 - `src/` 레이아웃. 패키지명은 하이픈 X, 언더스코어 O (`agent-gateway` 디렉토리 → `agent_gateway` 모듈).
-- 공용 로직은 `packages/common` (`runtime_common.*`)에 넣는다. 서비스/런타임에 중복 생기면 여기로 옮긴다.
+- 공용 로직은 `packages/common` (`runtime_common.`*)에 넣는다. 서비스/런타임에 중복 생기면 여기로 옮긴다.
 - `ruff` isort의 first-party 목록은 루트 `pyproject.toml`에 있음 — 새 워크스페이스 패키지 추가하면 거기도 등록.
 - 테스트는 `pytest-asyncio`, `asyncio_mode = "auto"`.
 
@@ -48,3 +49,4 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - pool별 이미지를 만들지 말 것 — env로만 분기.
 - `source_meta`/`user_meta`/`users`/`user_resource_access`에 런타임 서비스(gateway·pool·deploy-api·auth)가 직접 INSERT/UPDATE 하지 말 것 — 쓰기 소유자는 admin backend. `refresh_tokens`만 예외로 auth 전용.
 - LLM/RAG 코드를 이 저장소에 추가하지 말 것 — scope 밖. (관리 콘솔 `frontend/`·`backend/`는 예외.)
+

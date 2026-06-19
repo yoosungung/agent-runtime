@@ -14,13 +14,11 @@ Out of scope (lives in sibling repos / external infra):
 services/
   auth/            AuthN/AuthZ — /login (JWT issue), /verify (RBAC check)
   deploy-api/      Runtime meta read-only — /v1/resolve returns source_meta + user_meta
-  agent-gateway/   Agent select-gateway (Phase 1) — auth → access → pod pick → proxy
-  mcp-gateway/     MCP select-gateway (Phase 1)  — same pattern, internal grace period
-  ext-authz/       Envoy HTTP ext_authz (Phase 2) — agent+mcp unified, path-based kind/grace
+  ext-authz/       Envoy HTTP ext_authz — auth + access + resolve + pod pick
 
 runtimes/
-  agent-base/      Agent-Pool base image — RUNTIME_KIND ∈ {compiled_graph, adk, custom}
-  mcp-base/        MCP-Pool base image   — RUNTIME_KIND ∈ {fastmcp, mcp_sdk, didim_rag, t2sql}
+  agent-base/      Agent-Pool base image — RUNTIME_KIND ∈ {compiled_graph, adk}
+  mcp-base/        MCP-Pool base image   — RUNTIME_KIND ∈ {fastmcp, mcp_sdk}
 
 packages/
   common/          Shared lib: schemas, db, auth client, deploy client, loader, factory,
@@ -30,6 +28,7 @@ backend/           Admin console BFF (FastAPI) — REST API for the SPA
 frontend/          Admin console SPA (React + Vite + Tailwind)
 
 deploy/k8s/        Kustomize base + overlays (dev / stage / prod)
+                   Data plane: Envoy fronts /v1/agents/* and /v1/mcp/* (see deploy/DESIGN.md)
 ```
 
 Architecture diagram: [`agent-runtime.d2`](agent-runtime.d2) → rendered to `agent-runtime.png` via `make diagram`.
@@ -98,13 +97,25 @@ uv run uvicorn deploy_api.app:app --reload --port 8002
 
 ### Build & deploy
 
+Images are built by **GitHub Actions** when a **GitHub Release** is published (`.github/workflows/build-images.yml`). Tags: `:latest` and commit SHA on `ghcr.io/yoosungung/agent-runtime/<service>`.
+
 ```bash
-make images            # build all Docker images (Kaniko jobs run in cluster, non-blocking)
-make k8s-apply-dev     # apply dev overlay (namespace: runtime)
-make db-migrate        # apply backend/migrations/0001_init.sql to dev Postgres
+# 1. Publish a release (triggers image build + GHCR push)
+gh release create v0.1.0 --title "dev 0.1.0" --target main
+
+# 2. Wait for Actions workflow to finish, then deploy
+make k8s-apply-dev     # dev overlay (GHCR images, Ingress: agents.k8s-test)
+make db-migrate-all    # apply 0001 + 0002 SQL migrations
+make k8s-rollout-restart   # pull new :latest images
+
+# Emergency rebuild without a release: Actions → "Build and push images" → Run workflow
 ```
 
-`make ...-image` submits a Kaniko `Job` and returns immediately. Tail progress with the printed `kubectl logs ... -f` hint, or `kubectl get jobs -n runtime`.
+For private GHCR packages:
+
+```bash
+GITHUB_USER=yoosungung GITHUB_PAT=<read:packages token> make registry-secret
+```
 
 ### First-run admin bootstrap
 

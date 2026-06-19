@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against the dev cluster Ingress (https://agents.didim365.app).
+# End-to-end smoke test against the dev cluster Ingress (https://agents.k8s-test).
 #
 # Flow:
 #   1. login as admin (cookies + csrf)

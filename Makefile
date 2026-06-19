@@ -1,4 +1,4 @@
-REGISTRY  ?= ax1-images.kr.ncr.ntruss.com
+REGISTRY  ?= ghcr.io/yoosungung/agent-runtime
 TAG       ?= latest
 NAMESPACE ?= runtime
 GIT_REPO  ?= https://github.com/yoosungung/agent-studio.git
@@ -8,12 +8,12 @@ S3_BUCKET ?= agent-bundles
 KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts/kaniko-build.sh
 
 .PHONY: help sync lint typecheck test fmt \
-        images ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret \
+        images registry-secret ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         ext-authz-image auth-image deploy-api-image \
         agent-base-image mcp-base-image backend-image \
         k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
         k8s-rollout-restart k8s-redeploy-dev \
-        db-migrate \
+        db-migrate db-migrate-all \
         diagram diagram-png
 
 help:
@@ -34,7 +34,7 @@ typecheck: ## mypy
 test: ## pytest
 	uv run pytest
 
-# --- images ---------------------------------------------------------------
+# --- images (deprecated: use GitHub Release → .github/workflows/build-images.yml) ---
 
 IMG_EXT_AUTHZ     := $(REGISTRY)/ext-authz:$(TAG)
 IMG_AUTH          := $(REGISTRY)/auth:$(TAG)
@@ -42,27 +42,35 @@ IMG_DEPLOY_API    := $(REGISTRY)/deploy-api:$(TAG)
 IMG_AGENT_BASE    := $(REGISTRY)/agent-base:$(TAG)
 IMG_MCP_BASE      := $(REGISTRY)/mcp-base:$(TAG)
 
-ext-authz-image: ## build ext-authz image via Kaniko
+ext-authz-image: ## [deprecated] build ext-authz via Kaniko — use GHA release workflow
 	$(KANIKO) services/ext-authz/Dockerfile $(IMG_EXT_AUTHZ)
 
-auth-image: ## build auth image via Kaniko
+auth-image: ## [deprecated] build auth via Kaniko
 	$(KANIKO) services/auth/Dockerfile $(IMG_AUTH)
 
-deploy-api-image: ## build deploy-api image via Kaniko
+deploy-api-image: ## [deprecated] build deploy-api via Kaniko
 	$(KANIKO) services/deploy-api/Dockerfile $(IMG_DEPLOY_API)
 
-agent-base-image: ## build agent-base image via Kaniko
+agent-base-image: ## [deprecated] build agent-base via Kaniko
 	$(KANIKO) runtimes/agent-base/Dockerfile $(IMG_AGENT_BASE)
 
-mcp-base-image: ## build mcp-base image via Kaniko
+mcp-base-image: ## [deprecated] build mcp-base via Kaniko
 	$(KANIKO) runtimes/mcp-base/Dockerfile $(IMG_MCP_BASE)
 
 IMG_BACKEND       := $(REGISTRY)/backend:$(TAG)
 
-backend-image: ## build backend (admin console BFF + SPA) image via Kaniko
+backend-image: ## [deprecated] build backend via Kaniko
 	$(KANIKO) backend/Dockerfile $(IMG_BACKEND)
 
-images: ext-authz-image auth-image deploy-api-image agent-base-image mcp-base-image backend-image ## build all images via Kaniko
+images: ext-authz-image auth-image deploy-api-image agent-base-image mcp-base-image backend-image ## [deprecated] Kaniko — use GHA release workflow
+
+registry-secret: ## create/update GHCR pull secret (GITHUB_USER= GITHUB_PAT=)
+	kubectl create secret docker-registry registry-creds \
+		--namespace $(NAMESPACE) \
+		--docker-server=ghcr.io \
+		--docker-username=$(GITHUB_USER) \
+		--docker-password=$(GITHUB_PAT) \
+		--dry-run=client -o yaml | kubectl apply -f -
 
 jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret (overwrites existing)
 	openssl genrsa -out /tmp/jwt.key 4096 2>/dev/null
@@ -74,23 +82,22 @@ jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret (overwr
 		--dry-run=client -o yaml | kubectl apply -f -
 	rm -f /tmp/jwt.key /tmp/jwt.pub
 
-ensure-jwt-secret: ## create jwt-keys secret only if it does not already exist (idempotent)
+ensure-namespace: ## create runtime namespace if missing (first deploy)
+	@kubectl get ns $(NAMESPACE) >/dev/null 2>&1 \
+		|| kubectl apply -f deploy/k8s/base/namespace.yaml
+
+ensure-jwt-secret: ensure-namespace ## create jwt-keys secret only if it does not already exist (idempotent)
 	@kubectl -n $(NAMESPACE) get secret jwt-keys >/dev/null 2>&1 \
 		&& echo "jwt-keys already exists, skipping key generation" \
 		|| $(MAKE) jwt-secret
 
-git-secret: ## create/update GitHub token secret  (GIT_TOKEN=<token> make git-secret)
+git-secret: ## create/update GitHub token secret for Kaniko  (GIT_TOKEN=<token> make git-secret)
 	kubectl create secret generic git-creds \
 		--namespace $(NAMESPACE) \
 		--from-literal=token=$(GIT_TOKEN) \
 		--dry-run=client -o yaml | kubectl apply -f -
 
-ncr-secret: ## create/update NCR push secret from .ncr-config.json
-	kubectl create secret generic ncr-creds \
-		--namespace $(NAMESPACE) \
-		--from-file=.dockerconfigjson=.ncr-config.json \
-		--type=kubernetes.io/dockerconfigjson \
-		--dry-run=client -o yaml | kubectl apply -f -
+ncr-secret: registry-secret ## deprecated alias — use registry-secret (GHCR)
 
 s3-secret: ## create/update S3 credentials secret from .s3-config.json  (S3_BUCKET=<bucket> make s3-secret)
 	kubectl create secret generic s3-creds \
@@ -121,13 +128,17 @@ k8s-delete-dev:
 k8s-rollout-restart: ## rolling restart all Deployments in $(NAMESPACE) (picks up new :latest images)
 	kubectl -n $(NAMESPACE) rollout restart deployment
 
-k8s-redeploy-dev: images k8s-apply-dev k8s-rollout-restart ## build all images → apply dev → rollout restart
+k8s-redeploy-dev: k8s-apply-dev k8s-rollout-restart ## apply dev overlay → rollout (images from GHCR via GHA release)
 
 # --- db -------------------------------------------------------------------
 
-db-migrate: ## apply SQL migrations to the dev postgres
+db-migrate: ## apply 0001_init.sql to dev postgres
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0001_init.sql
+
+db-migrate-all: db-migrate ## apply 0001 + 0002 migrations
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0002_custom_image_mode.sql
 
 # --- docs -----------------------------------------------------------------
 

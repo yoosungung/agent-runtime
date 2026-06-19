@@ -11,8 +11,24 @@
   - **Redis**: LangGraph 체크포인터 + ext-authz warm-registry 공용.
   - 서비스: `auth`, `deploy-api`, `ext-authz`, `envoy`, `backend`
   - Agent pools (2 정적): `agent-pool-compiled-graph` / `-adk` — 동일한 `agent-base:latest` 이미지, `RUNTIME_KIND` env만 다름
-  - MCP pools (4 정적): `mcp-pool-fastmcp` / `-mcp-sdk` / `-didim-rag` / `-t2sql` — 동일 패턴
+  - MCP pools (2 정적): `mcp-pool-fastmcp` / `-mcp-sdk` — 동일 패턴
   - **Image 모드 pool (동적)**: admin이 `POST /api/admin/custom-images` 호출 시 backend가 K8s API로 생성. 네이밍 규칙 `{kind}-pool-custom-{slug}`. 정적 kustomize 파일 없음. (`agent-pool-custom.yaml` / `mcp-pool-custom.yaml` 삭제됨)
+
+## 컨테이너 이미지 (GHCR)
+
+- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:latest` (+ commit SHA tag)
+- **빌드**: GitHub Actions on Release publish (`.github/workflows/build-images.yml`) — push마다 빌드하지 않음
+- **dev overlay**: base `agents-runtime/*` → GHCR remap, `imagePullSecrets: registry-creds` (private GHCR 시)
+- **Kaniko / NCR**: deprecated — Makefile `make images`는 legacy
+
+## Ingress 호스트
+
+| overlay | 외부 호스트 | 용도 |
+|---------|------------|------|
+| dev | `agents.k8s-test` | admin SPA, `/api/*`, `/v1/agents/*` (agent call) |
+| stage/prod (base) | `agents.didim365.app` | 동일 라우팅 |
+
+Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend chat (`ENVOY_URL`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음.
 
 ## Envoy 데이터플레인
 

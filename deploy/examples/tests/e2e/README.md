@@ -1,4 +1,6 @@
-실 dev 클러스터(Ingress: `https://agents.didim365.app`) 에 대한 curl 기반 e2e 스모크 테스트.
+실 dev 클러스터(Ingress: `https://agents.k8s-test`) 에 대한 curl 기반 e2e 스모크 테스트.
+
+(stage/prod는 base Ingress `https://agents.didim365.app` — `AGENTS_HOST`로 override)
 
 번들 4종을 등록하고 agent 2종을 호출한다 — agent → ext-authz/Envoy → agent-pool → (필요 시) mcp-pool 경로 전체를 검증.
 
@@ -15,7 +17,7 @@ export OPENAI_API_KEY='sk-...'      # 두 agent 모두 OpenAI로 LLM 호출
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `ADMIN_PASSWORD` | (필수) | 백엔드 BFF 로그인 비밀번호 |
-| `AGENTS_HOST` | `https://agents.didim365.app` | Ingress 호스트 |
+| `AGENTS_HOST` | `https://agents.k8s-test` | Ingress 호스트 (dev) |
 | `ADMIN_USER` | `admin` | 로그인 계정 |
 | `OPENAI_API_KEY` | (선택) | DeepAgent / ADK 양쪽 모두 OpenAI 모델 사용 |
 | `OPENAI_MODEL` | `openai:gpt-4o-mini` | 두 agent 의 model spec |

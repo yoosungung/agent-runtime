@@ -5,17 +5,23 @@ resources:
   - ../../base
 images:
   - name: agents-runtime/ext-authz
-    newName: ax1-images.kr.ncr.ntruss.com/ext-authz
+    newName: ghcr.io/yoosungung/agent-runtime/ext-authz
+    newTag: latest
   - name: agents-runtime/auth
-    newName: ax1-images.kr.ncr.ntruss.com/auth
+    newName: ghcr.io/yoosungung/agent-runtime/auth
+    newTag: latest
   - name: agents-runtime/deploy-api
-    newName: ax1-images.kr.ncr.ntruss.com/deploy-api
+    newName: ghcr.io/yoosungung/agent-runtime/deploy-api
+    newTag: latest
   - name: agents-runtime/agent-base
-    newName: ax1-images.kr.ncr.ntruss.com/agent-base
+    newName: ghcr.io/yoosungung/agent-runtime/agent-base
+    newTag: latest
   - name: agents-runtime/mcp-base
-    newName: ax1-images.kr.ncr.ntruss.com/mcp-base
+    newName: ghcr.io/yoosungung/agent-runtime/mcp-base
+    newTag: latest
   - name: agents-runtime/backend
-    newName: ax1-images.kr.ncr.ntruss.com/backend
+    newName: ghcr.io/yoosungung/agent-runtime/backend
+    newTag: latest
 patches:
   - patch: |-
       - op: replace
@@ -125,3 +131,16 @@ patches:
         value: 1
     target:
       kind: HorizontalPodAutoscaler
+  - patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: agents.k8s-test
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: agents-k8s-test-tls
+      - op: replace
+        path: /spec/rules/0/host
+        value: agents.k8s-test
+    target:
+      kind: Ingress
+      name: agents-runtime

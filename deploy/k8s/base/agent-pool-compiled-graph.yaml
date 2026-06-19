@@ -53,7 +53,7 @@ spec:
             - name: REGISTRY_TTL_SEC
               value: "3"
             - name: MCP_GATEWAY_URL
-              value: http://mcp-gateway.runtime.svc.cluster.local:8080
+              value: http://envoy.runtime.svc.cluster.local:8080
           volumeMounts:
             - name: bundles
               mountPath: /var/cache/agent-bundles
