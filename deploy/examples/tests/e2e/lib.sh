@@ -169,9 +169,9 @@ upsert_infra_meta() {
       --arg url "${OPIK_URL:-}" \
       --arg ws "${OPIK_WORKSPACE:-default}" \
       --arg model "${DEFAULT_LLM_MODEL:-${OPENAI_MODEL:-}}" \
-      '(if $url != "" then {opik_url: $url} else {} end)
-       + {opik_workspace: $ws}
-       + (if $model != "" then {default_llm_model: $model} else {} end)')
+      '(if $url != "" then {OPIK_URL: $url} else {} end)
+       + {OPIK_WORKSPACE: $ws}
+       + (if $model != "" then {DEFAULT_LLM_MODEL: $model} else {} end)')
   fi
 
   body=$(jq -nc --argjson e "$env_json" --argjson s "$secrets_json" \

@@ -8,7 +8,7 @@ vi.mock("../hooks/useInfraMeta", () => ({
     data: {
       scope: "global",
       scope_key: "",
-      env: { opik_url: "http://opik/api" },
+      env: { OPIK_URL: "http://opik/api" },
       secret_keys: ["OPENAI_API_KEY"],
       updated_at: null,
     },

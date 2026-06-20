@@ -40,7 +40,8 @@
     - **secrets_ref 키 컨벤션 (UPPERCASE — env var 명규약, EnvSecretResolver 와 호환)**: 인프라 DSN 만 `secrets_ref` 로 흐른다. 표준 키: `CHECKPOINTER_DSN`, `STORE_DSN`, `CACHE_DSN`, `EMBED_API_KEY`, `SESSION_DB_DSN`, `VERTEXAI_CREDENTIALS`, `GCS_BUCKET`, `SESSION_REDIS_DSN`, `TASK_REDIS_DSN`.
     - **API 키는 `source_meta.config` 에 직접** (이 프로젝트 컨벤션 — bundle/tool 별 자격증명은 cfg, 인프라 DSN 만 secrets). 예: `cfg["anthropic_api_key"]`, `cfg["google_api_key"]`, `cfg["naver"]["client_id"]`. 번들 코드가 cfg 에서 읽어 필요 시 env var 로 export (LangChain·ADK 의 `init_chat_model` 같은 헬퍼가 env var 를 자동 인식).
     - admin backend가 등록 시 `SourceConfig.model_validate(config)` / `UserConfig.model_validate(config)` 로 검증.
-    - **`InfraConfig`** (`infra_meta.env`) — platform-wide non-secret settings. `infra_env.py`가 flatten → `OPIK_URL`, `OPIK_WORKSPACE`, `DEFAULT_LLM_MODEL`, `OTLP_ENDPOINT`. LLM API keys는 `infra_meta` → K8s Secret (`OPENAI_API_KEY` 등 whitelist).
+    - **`infra_env.py`** — flat `infra_meta.env` validation (`[A-Z][A-Z0-9_]*`, reserved keys). PUT merges patches; empty string removes a key. Legacy snake_case keys normalized on read. K8s ConfigMap receives env as-is.
+    - **`InfraConfig`** (`config_schema.py`) — curated **UI** field catalog only (maps to `OPIK_URL`, …); API does not validate through this model.
   - **`providers/`** — config + secrets → 프레임워크-네이티브 인프라 객체 빌더. 번들 factory 가 이 헬퍼들을 호출해 매번 wiring 코드를 반복하지 않도록 한다. **모든 framework 의존(`langgraph`, `google.adk`, `fastmcp`, `mcp`)은 함수 본문 내 lazy import** — mcp-base 이미지에 langgraph 가 없어도 mcp_sdk 번들이 정상 동작.
     - **`providers/langgraph.py`** (LangGraph / DeepAgents 공용)
       - `get_recursion_limit(cfg)` / `get_model_spec(cfg)` — cfg 에서 단순 값 추출.

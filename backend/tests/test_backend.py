@@ -811,13 +811,31 @@ async def test_get_infra_meta_empty(client: AsyncClient):
 async def test_upsert_infra_meta_env(client: AsyncClient):
     resp = await client.put(
         "/api/infra-meta",
-        json={"env": {"opik_url": "http://opik:5173/api", "opik_workspace": "dev"}},
+        json={"env": {"OPIK_URL": "http://opik:5173/api", "OPIK_WORKSPACE": "dev"}},
         headers=_csrf_headers(),
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["env"]["opik_url"] == "http://opik:5173/api"
+    assert data["env"]["OPIK_URL"] == "http://opik:5173/api"
     assert data["reconciled"] is False
+
+
+async def test_upsert_infra_meta_env_merge_preserves_extra(client: AsyncClient):
+    await client.put(
+        "/api/infra-meta",
+        json={"env": {"CUSTOM_PLATFORM_VAR": "keep", "OPIK_URL": "http://old/api"}},
+        headers=_csrf_headers(),
+    )
+    resp = await client.put(
+        "/api/infra-meta",
+        json={"env": {"OPIK_URL": "http://new/api"}},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["env"] == {
+        "CUSTOM_PLATFORM_VAR": "keep",
+        "OPIK_URL": "http://new/api",
+    }
 
 
 async def test_upsert_infra_meta_secrets(client: AsyncClient):
@@ -830,10 +848,20 @@ async def test_upsert_infra_meta_secrets(client: AsyncClient):
     assert "OPENAI_API_KEY" in resp.json()["secret_keys"]
 
 
+async def test_upsert_infra_meta_custom_secret(client: AsyncClient):
+    resp = await client.put(
+        "/api/infra-meta",
+        json={"secrets": {"MY_VENDOR_API_KEY": "secret-value"}},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert "MY_VENDOR_API_KEY" in resp.json()["secret_keys"]
+
+
 async def test_upsert_infra_meta_rejects_unknown_secret(client: AsyncClient):
     resp = await client.put(
         "/api/infra-meta",
-        json={"secrets": {"NOT_ALLOWED": "x"}},
+        json={"secrets": {"pod_name": "x"}},
         headers=_csrf_headers(),
     )
     assert resp.status_code == 400
@@ -847,21 +875,31 @@ async def test_upsert_infra_meta_requires_body(client: AsyncClient):
 async def test_upsert_infra_meta_rejects_invalid_env(client: AsyncClient):
     resp = await client.put(
         "/api/infra-meta",
-        json={"env": {"bad_key": "value"}},
+        json={"env": {"opik_url": "value"}},
         headers=_csrf_headers(),
     )
     assert resp.status_code == 400
 
 
+async def test_upsert_infra_meta_accepts_custom_env(client: AsyncClient):
+    resp = await client.put(
+        "/api/infra-meta",
+        json={"env": {"MY_PLATFORM_FLAG": "enabled"}},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["env"]["MY_PLATFORM_FLAG"] == "enabled"
+
+
 async def test_get_infra_meta_after_upsert(client: AsyncClient):
     await client.put(
         "/api/infra-meta",
-        json={"env": {"default_llm_model": "openai:gpt-4o-mini"}},
+        json={"env": {"DEFAULT_LLM_MODEL": "openai:gpt-4o-mini"}},
         headers=_csrf_headers(),
     )
     resp = await client.get("/api/infra-meta", headers=_csrf_headers())
     assert resp.status_code == 200
-    assert resp.json()["env"]["default_llm_model"] == "openai:gpt-4o-mini"
+    assert resp.json()["env"]["DEFAULT_LLM_MODEL"] == "openai:gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------

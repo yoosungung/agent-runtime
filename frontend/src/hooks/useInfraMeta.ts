@@ -1,22 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "../lib/api";
 
+/** Flat container env keys managed by the curated Platform Infra UI. */
+export const INFRA_UI_ENV_KEYS = {
+  opikUrl: "OPIK_URL",
+  opikWorkspace: "OPIK_WORKSPACE",
+  defaultLlmModel: "DEFAULT_LLM_MODEL",
+  otlpEndpoint: "OTLP_ENDPOINT",
+} as const;
+
+/** Password fields shown in the UI (any valid env key allowed via API). */
+export const INFRA_UI_SECRET_KEYS = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_API_KEY",
+  "OPIK_API_KEY",
+] as const;
+
 export interface InfraMeta {
   scope: string;
   scope_key: string;
-  env: {
-    opik_url?: string | null;
-    opik_workspace?: string;
-    default_llm_model?: string | null;
-    otlp_endpoint?: string | null;
-  };
+  /** Flat container env var names → values (comprehensive API surface). */
+  env: Record<string, string>;
   secret_keys: string[];
   updated_at: string | null;
   reconciled?: boolean;
 }
 
 export interface InfraMetaUpsert {
-  env?: InfraMeta["env"];
+  /** Partial patch — merges into stored env; empty string removes a key. */
+  env?: Record<string, string>;
   secrets?: Record<string, string>;
 }
 

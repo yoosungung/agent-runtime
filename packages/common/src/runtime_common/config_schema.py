@@ -407,7 +407,11 @@ class UserConfig(BaseModel):
 # ── infra_meta (platform env) ───────────────────────────────────────────────
 
 class InfraConfig(BaseModel):
-    """infra_meta.env — platform-wide non-secret settings reconciled to pool pod env."""
+    """Curated UI fields for Platform Infra — maps to flat container env keys.
+
+    API/DB/K8s use flat env var names (``OPIK_URL``, …). This model documents
+    the admin UI form only; validation is ``infra_env.validate_infra_env_patch``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

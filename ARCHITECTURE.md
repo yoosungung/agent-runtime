@@ -147,7 +147,7 @@ CREATE TABLE infra_meta (
     id           BIGSERIAL PRIMARY KEY,
     scope        VARCHAR(16)  NOT NULL DEFAULT 'global',   -- MVP: 'global' only
     scope_key    VARCHAR(128) NOT NULL DEFAULT '',
-    env          JSONB        NOT NULL DEFAULT '{}',       -- non-secret env (structured InfraConfig)
+    env          JSONB        NOT NULL DEFAULT '{}',       -- flat container env var names → values
     secret_keys  JSONB        NOT NULL DEFAULT '[]',       -- configured secret env var names only
     updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_infra_meta_scope UNIQUE (scope, scope_key)
@@ -238,7 +238,9 @@ source/user meta와 **orthogonal**. principal·번들과 무관하게 pool pod c
 |---|---|---|---|---|
 | 범위 | platform (global) | 번들/버전 | principal × 번들 | 클러스터 bootstrap |
 | 수명 | 운영 중 mutable | immutable (버전) | invoke마다 fresh | 배포 시 |
-| 전달 | ConfigMap + Secret → pod env | resolve → merge → factory cfg | resolve → merge → factory cfg | gitops envFrom |
-| 예시 | `OPIK_URL`, `ANTHROPIC_API_KEY` | MCP provider, default model | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
+| 전달 | flat env → ConfigMap + Secret → pod env | resolve → merge → factory cfg | resolve → merge → factory cfg | gitops envFrom |
+| 예시 | `OPIK_URL`, `ANTHROPIC_API_KEY`, 임의 `[A-Z][A-Z0-9_]*` | MCP provider, default model | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
+
+**API/DB/K8s**: `env`는 flat container env var 이름(`[A-Z][A-Z0-9_]*`, reserved 제외). PUT은 partial merge, 빈 문자열이면 키 삭제. **Admin UI**는 Opik·LLM keys 등 curated 필드만 편집; 추가 env는 API/e2e로 설정.
 
 **infra에 두지 않을 것**: 번들 도메인 credential → `source_meta.config`; principal identity → `user_meta.config`; custom image 전용 env → `source_meta.pool_env`(infra보다 우선).

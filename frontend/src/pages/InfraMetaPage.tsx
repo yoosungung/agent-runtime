@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { useInfraMeta, useUpsertInfraMeta } from "../hooks/useInfraMeta";
+import {
+  INFRA_UI_ENV_KEYS,
+  INFRA_UI_SECRET_KEYS,
+  useInfraMeta,
+  useUpsertInfraMeta,
+} from "../hooks/useInfraMeta";
 import {
   FormActions,
   FormError,
@@ -7,12 +12,12 @@ import {
   formPrimaryButtonClassName,
 } from "../components/FormPageLayout";
 
-const SECRET_FIELDS = [
-  { key: "OPENAI_API_KEY", label: "OpenAI API Key" },
-  { key: "ANTHROPIC_API_KEY", label: "Anthropic API Key" },
-  { key: "GOOGLE_API_KEY", label: "Google API Key" },
-  { key: "OPIK_API_KEY", label: "Opik API Key" },
-] as const;
+const SECRET_LABELS: Record<(typeof INFRA_UI_SECRET_KEYS)[number], string> = {
+  OPENAI_API_KEY: "OpenAI API Key",
+  ANTHROPIC_API_KEY: "Anthropic API Key",
+  GOOGLE_API_KEY: "Google API Key",
+  OPIK_API_KEY: "Opik API Key",
+};
 
 export function InfraMetaPage() {
   const { data, isLoading, isError } = useInfraMeta();
@@ -27,21 +32,24 @@ export function InfraMetaPage() {
 
   useEffect(() => {
     if (!data) return;
-    setOpikUrl(data.env.opik_url ?? "");
-    setOpikWorkspace(data.env.opik_workspace ?? "default");
-    setDefaultModel(data.env.default_llm_model ?? "");
-    setOtlpEndpoint(data.env.otlp_endpoint ?? "");
+    const env = data.env ?? {};
+    setOpikUrl(env[INFRA_UI_ENV_KEYS.opikUrl] ?? "");
+    setOpikWorkspace(env[INFRA_UI_ENV_KEYS.opikWorkspace] ?? "default");
+    setDefaultModel(env[INFRA_UI_ENV_KEYS.defaultLlmModel] ?? "");
+    setOtlpEndpoint(env[INFRA_UI_ENV_KEYS.otlpEndpoint] ?? "");
     setSecrets({});
   }, [data]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-    const env: Record<string, string> = {};
-    if (opikUrl.trim()) env.opik_url = opikUrl.trim();
-    if (opikWorkspace.trim()) env.opik_workspace = opikWorkspace.trim();
-    if (defaultModel.trim()) env.default_llm_model = defaultModel.trim();
-    if (otlpEndpoint.trim()) env.otlp_endpoint = otlpEndpoint.trim();
+
+    const env: Record<string, string> = {
+      [INFRA_UI_ENV_KEYS.opikUrl]: opikUrl.trim(),
+      [INFRA_UI_ENV_KEYS.opikWorkspace]: opikWorkspace.trim() || "default",
+      [INFRA_UI_ENV_KEYS.defaultLlmModel]: defaultModel.trim(),
+      [INFRA_UI_ENV_KEYS.otlpEndpoint]: otlpEndpoint.trim(),
+    };
 
     const secretsPayload = Object.fromEntries(
       Object.entries(secrets).filter(([, v]) => v.trim() !== ""),
@@ -72,7 +80,7 @@ export function InfraMetaPage() {
   return (
     <FormPageLayout
       title="Platform Infra"
-      description="Cluster-wide LLM keys, Opik, and observability settings injected into pool pod environment."
+      description="Common pool pod settings (Opik, LLM keys, observability). Additional env vars can be set via PUT /api/infra-meta."
     >
       <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
         <section className="space-y-4">
@@ -127,10 +135,10 @@ export function InfraMetaPage() {
           <p className="text-sm text-gray-500">
             Values are stored in K8s Secret only. Leave blank to keep existing keys.
           </p>
-          {SECRET_FIELDS.map(({ key, label }) => (
+          {INFRA_UI_SECRET_KEYS.map((key) => (
             <label key={key} className="block space-y-1">
               <span className="text-sm font-medium text-gray-700">
-                {label}
+                {SECRET_LABELS[key]}
                 {data?.secret_keys.includes(key) ? (
                   <span className="ml-2 text-xs text-green-700">(configured)</span>
                 ) : null}

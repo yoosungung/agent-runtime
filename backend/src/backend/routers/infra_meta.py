@@ -14,7 +14,9 @@ from backend.deps import check_csrf, get_db, get_principal, require_admin
 from backend.infra_reconciler import reconcile_infra
 from runtime_common.db.models import InfraMetaRow
 from runtime_common.infra_env import (
-    validate_infra_env_raw,
+    merge_infra_env,
+    normalize_stored_env,
+    validate_infra_env_patch,
     validate_infra_secret_keys,
     validate_infra_secrets_input,
 )
@@ -51,12 +53,17 @@ class InfraMetaUpsertRequest(BaseModel):
     secrets: dict[str, str] | None = None
 
 
-def _row_to_response(row: InfraMetaRow, *, reconciled: bool = True) -> InfraMetaResponse:
+def _row_to_response(
+    row: InfraMetaRow,
+    *,
+    reconciled: bool = True,
+    env: dict | None = None,
+) -> InfraMetaResponse:
     keys = row.secret_keys if isinstance(row.secret_keys, list) else []
     return InfraMetaResponse(
         scope=row.scope,
         scope_key=row.scope_key,
-        env=row.env,
+        env=env if env is not None else row.env,
         secret_keys=[str(k) for k in keys],
         updated_at=row.updated_at,
         reconciled=reconciled,
@@ -86,7 +93,8 @@ async def get_infra_meta(db: AsyncSession = Depends(get_db)) -> InfraMetaRespons
             updated_at=None,
             reconciled=True,
         )
-    return _row_to_response(row)
+    normalized_env = normalize_stored_env(row.env if isinstance(row.env, dict) else {})
+    return _row_to_response(row, env=normalized_env)
 
 
 @router.put("", response_model=InfraMetaResponse)
@@ -119,8 +127,10 @@ async def upsert_infra_meta(
 
     if body.env is not None:
         try:
-            row.env = validate_infra_env_raw(body.env)
-        except Exception as exc:
+            patch = validate_infra_env_patch(body.env)
+            base = normalize_stored_env(row.env if isinstance(row.env, dict) else {})
+            row.env = merge_infra_env(base, patch)
+        except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         _validate_env_size(row.env)
 

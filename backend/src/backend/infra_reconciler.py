@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from runtime_common.infra_env import infra_config_to_env
+from runtime_common.infra_env import normalize_stored_env
 
 if TYPE_CHECKING:
     from backend.k8s_client import K8sPoolManager
@@ -20,7 +20,7 @@ async def reconcile_infra(
     secrets_patch: dict[str, str] | None,
 ) -> list[str]:
     """Apply infra env to ConfigMap, merge secrets into Secret, restart pool Deployments."""
-    flat_env = infra_config_to_env(env)
+    flat_env = normalize_stored_env(env)
     await k8s.apply_infra_configmap(flat_env)
 
     if secrets_patch is not None:

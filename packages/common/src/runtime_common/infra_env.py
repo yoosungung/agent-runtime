@@ -1,18 +1,11 @@
-"""infra_meta env flattening and validation helpers."""
+"""infra_meta env validation — flat container env var names (comprehensive API)."""
 
 from __future__ import annotations
 
-from runtime_common.config_schema import InfraConfig
+import re
 
-# Whitelisted secret env var names (values live in K8s Secret only).
-INFRA_SECRET_KEYS: frozenset[str] = frozenset(
-    {
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "GOOGLE_API_KEY",
-        "OPIK_API_KEY",
-    }
-)
+# Env var names for infra_meta (UPPER_SNAKE — matches pool env convention).
+_ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 # Keys reserved by the platform — must not appear in infra_meta env or secrets.
 RESERVED_INFRA_ENV_KEYS: frozenset[str] = frozenset(
@@ -28,33 +21,69 @@ RESERVED_INFRA_ENV_KEYS: frozenset[str] = frozenset(
     }
 )
 
-_INFRA_CONFIG_TO_ENV: tuple[tuple[str, str], ...] = (
-    ("opik_url", "OPIK_URL"),
-    ("opik_workspace", "OPIK_WORKSPACE"),
-    ("default_llm_model", "DEFAULT_LLM_MODEL"),
-    ("otlp_endpoint", "OTLP_ENDPOINT"),
-)
+# Legacy InfraConfig (snake_case) → flat env — normalize on read/write migration.
+_LEGACY_ENV_ALIASES: dict[str, str] = {
+    "opik_url": "OPIK_URL",
+    "opik_workspace": "OPIK_WORKSPACE",
+    "default_llm_model": "DEFAULT_LLM_MODEL",
+    "otlp_endpoint": "OTLP_ENDPOINT",
+}
 
 
-def validate_infra_env_raw(env: dict) -> dict:
-    """Validate structured infra env dict and return normalized InfraConfig dump."""
-    return InfraConfig.model_validate(env).model_dump(
-        exclude_none=True,
-        exclude_defaults=True,
-    )
+def validate_infra_env_key(key: str) -> None:
+    if key in RESERVED_INFRA_ENV_KEYS:
+        raise ValueError(f"env key {key!r} is reserved by the platform")
+    if not _ENV_KEY_RE.match(key):
+        raise ValueError(
+            f"env key {key!r} must match [A-Z][A-Z0-9_]* (container env var name)"
+        )
+
+
+def normalize_stored_env(env: dict) -> dict[str, str]:
+    """Return flat UPPER_SNAKE env, migrating legacy snake_case keys if present."""
+    flat: dict[str, str] = {}
+    for key, value in env.items():
+        if value is None:
+            continue
+        out_key = _LEGACY_ENV_ALIASES.get(key, key)
+        validate_infra_env_key(out_key)
+        flat[out_key] = str(value)
+    return flat
+
+
+def validate_infra_env_patch(patch: dict) -> dict[str, str]:
+    """Validate a partial env patch (flat container env var names)."""
+    validated: dict[str, str] = {}
+    for key, value in patch.items():
+        validate_infra_env_key(key)
+        if value is None:
+            validated[key] = ""
+        elif not isinstance(value, str):
+            raise ValueError(f"env value for {key!r} must be a string")
+        else:
+            validated[key] = value
+    return validated
+
+
+def merge_infra_env(existing: dict, patch: dict[str, str]) -> dict[str, str]:
+    """Shallow merge env patch into existing flat env. Empty string removes a key."""
+    merged = dict(existing)
+    for key, value in patch.items():
+        if value == "":
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
 
 
 def validate_infra_secret_keys(keys: list[str]) -> list[str]:
-    """Ensure secret key names are whitelisted and not reserved."""
+    """Ensure secret env var names are valid (no whitelist — comprehensive API)."""
     normalized: list[str] = []
     seen: set[str] = set()
     for key in keys:
         if key in seen:
             continue
-        if key in RESERVED_INFRA_ENV_KEYS:
-            raise ValueError(f"env key {key!r} is reserved by the platform")
-        if key not in INFRA_SECRET_KEYS:
-            raise ValueError(f"secret key {key!r} is not allowed")
+        validate_infra_env_key(key)
         seen.add(key)
         normalized.append(key)
     return normalized
@@ -64,21 +93,10 @@ def validate_infra_secrets_input(secrets: dict[str, str]) -> dict[str, str]:
     """Validate PUT body secrets dict (key → plaintext value for K8s only)."""
     if not secrets:
         return {}
-    for key in secrets:
-        if key in RESERVED_INFRA_ENV_KEYS:
-            raise ValueError(f"env key {key!r} is reserved by the platform")
-        if key not in INFRA_SECRET_KEYS:
-            raise ValueError(f"secret key {key!r} is not allowed")
-    return dict(secrets)
-
-
-def infra_config_to_env(env: dict) -> dict[str, str]:
-    """Flatten validated InfraConfig dict to container env vars."""
-    cfg = InfraConfig.model_validate(env)
-    flat: dict[str, str] = {}
-    data = cfg.model_dump(exclude_none=True, exclude_defaults=True)
-    for src_key, env_key in _INFRA_CONFIG_TO_ENV:
-        value = data.get(src_key)
-        if value is not None:
-            flat[env_key] = str(value)
-    return flat
+    validated: dict[str, str] = {}
+    for key, value in secrets.items():
+        validate_infra_env_key(key)
+        if not isinstance(value, str):
+            raise ValueError(f"secret value for {key!r} must be a string")
+        validated[key] = value
+    return validated
