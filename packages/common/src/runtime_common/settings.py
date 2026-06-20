@@ -39,6 +39,7 @@ class BaseRuntimeSettings(BaseSettings):
     registry_heartbeat_interval_sec: int = Field(default=2)
     registry_ttl_sec: int = Field(default=3)
     bundle_cache_max: int = Field(default=16)
+    instance_cache_max: int = Field(default=64)
     bundle_verify_signatures: bool = Field(default=False)
     bundle_signing_public_key: str | None = Field(default=None)
 

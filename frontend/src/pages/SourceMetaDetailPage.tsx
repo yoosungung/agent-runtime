@@ -56,6 +56,8 @@ export function SourceMetaDetailPage({ kind }: Props) {
   const [retireDialog, setRetireDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [sigDialog, setSigDialog] = useState(false);
+  const [addUserMetaOpen, setAddUserMetaOpen] = useState(false);
+  const [newPrincipalId, setNewPrincipalId] = useState("");
 
   // User meta list
   const { limit: umLimit, offset: umOffset, setOffset: setUmOffset } = usePagination(20);
@@ -348,6 +350,28 @@ export function SourceMetaDetailPage({ kind }: Props) {
         <div className="p-6">
           {activeTab === "user-meta" && (
             <div>
+              <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <p className="font-medium mb-1">source_meta vs user_meta</p>
+                <p className="text-blue-800">
+                  <span className="font-medium">source_meta.config</span> — 기동 시
+                  공통 provider·shared credential (예: email provider=outlook).
+                  {" "}
+                  <span className="font-medium">user_meta.config</span> — invoke 시
+                  principal별 identity (예: mailbox, OAuth refresh).
+                </p>
+              </div>
+              <div className="flex justify-end mb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewPrincipalId("");
+                    setAddUserMetaOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Add User Meta
+                </button>
+              </div>
               {userMetaLoading && (
                 <p className="text-sm text-gray-500">Loading...</p>
               )}
@@ -432,6 +456,53 @@ export function SourceMetaDetailPage({ kind }: Props) {
       </div>
 
       {/* Dialogs */}
+      {addUserMetaOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setAddUserMetaOpen(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 z-10">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              Add User Meta
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Principal ID (username or sub) for per-user invoke config.
+            </p>
+            <input
+              type="text"
+              value={newPrincipalId}
+              onChange={(e) => setNewPrincipalId(e.target.value)}
+              placeholder="e.g. hong or user-42"
+              className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-6"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setAddUserMetaOpen(false)}
+                className="px-4 py-2 rounded border border-gray-300 text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!newPrincipalId.trim()}
+                onClick={() => {
+                  const pid = newPrincipalId.trim();
+                  setAddUserMetaOpen(false);
+                  navigate(
+                    `${detailBasePath}/${numId}/user-meta/${encodeURIComponent(pid)}`,
+                  );
+                }}
+                className="px-4 py-2 rounded text-white text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmDialog
         open={retireDialog}
         title="Retire resource"

@@ -1,10 +1,6 @@
 # ROADMAP
 
-전체 DESIGN.md에서 수집한 미완료 항목. 세부 맥락은 각 컴포넌트 DESIGN.md 참조.
-
-게이트웨이 통합(ext-authz + Envoy로 데이터플레인 일원화) 3단계가 완료되어 agent-gateway·mcp-gateway가 제거됐다. 완료된 내용은 [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [deploy/DESIGN.md](deploy/DESIGN.md), [backend/DESIGN.md](backend/DESIGN.md)에 합성됨.
-
-Image 모드(`custom` pool 의미 전환) 구현이 완료됐다. 스키마 확장·ext-authz 라우팅 분기·backend K8s admin path·관리 콘솔·정적 매니페스트 정리·테스트가 모두 완료됨. 완료된 내용은 [DESIGN.md](DESIGN.md), [deploy/DESIGN.md](deploy/DESIGN.md), [backend/DESIGN.md](backend/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md), [runtimes/mcp-base/DESIGN.md](runtimes/mcp-base/DESIGN.md)에 합성됨.
+각 컴포넌트 `DESIGN.md`에서 수집한 미완료 항목. 세부 맥락은 해당 문서 및 [ARCHITECTURE.md](ARCHITECTURE.md) 참조.
 
 ## 향후 계획
 
@@ -14,18 +10,6 @@ Image 모드(`custom` pool 의미 전환) 구현이 완료됐다. 스키마 확�
 - [ ] **유휴 image cold-storage** (리스크 D): backend reconciler가 N일(예: 14일) 호출 없는 `active` image를 감지 → `status='sleep'` + `replicas=0` patch. 첫 invoke 시 ext-authz가 `sleep` 상태를 발견하면 503 + admin 알림 (또는 작은 activator path를 도입해 자동 wake — 별도 결정 필요). 비용 누수 방지.
 - [ ] **cfg body fallback** (리스크 A 확장): cfg가 16KB를 초과해야 하는 케이스 발생 시, ext-authz가 헤더 대신 invoke body에 `_meta.cfg` 필드로 주입하는 옵션을 도입. body 변형은 image contract를 깨므로 admin이 명시적 opt-in.
 - [ ] **image signature 검증**: cosign + admission webhook. 신뢰 registry 화이트리스트 + 서명 검증.
-
-### factory instance 캐싱 적용 (런타임 경로 통합)
-
-`runtime_common.instance_cache.InstanceCache` 와 `runtime_common.providers.{langgraph,adk,fastmcp,mcp_sdk}` 는 정의·테스트 완료 ([packages/common/DESIGN.md](packages/common/DESIGN.md) 합성). 샘플 번들도 새 패턴으로 마이그레이션 완료 ([deploy/examples/](deploy/examples/)). 남은 건 런타임이 캐시를 실제로 경유하게 만드는 것.
-
-- [ ] **agent-base / mcp-base invoke 핸들러 교체** — 현재는 매 invoke 마다 `call_factory(factory, merged_cfg, secrets)` 직접 호출 → `instance_cache.get_or_build(key, builder)` 경유로 변경. 위치: [agent-base/app.py:192](runtimes/agent-base/src/agent_base/app.py#L192), [mcp-base/app.py:144·212·265](runtimes/mcp-base/src/mcp_base/app.py#L144).
-  - `app.state.instance_cache: InstanceCache` 를 lifespan 에서 생성, 종료 시 `clear()`.
-  - 키는 `make_instance_key(source.checksum, principal_id, user.updated_at)`. user_meta 없으면 `principal_id`/`updated_at` 모두 None — override 없는 모든 principal 이 단일 entry 공유.
-  - 적용 후 번들의 무거운 자원 (PG 풀, LLM 클라이언트) 이 cold-start 1회만 만들어진다는 계약이 실제로 성립.
-- [ ] **BundleLoader eviction 연동** — checksum 이 BundleLoader LRU 에서 빠질 때 `instance_cache.invalidate_checksum(checksum)` 호출 (재배포된 동일 checksum 의 stale instance 잔존 방지). BundleLoader 에 콜백 hook 또는 publisher pattern 추가 검토.
-
-완료 후 위 내용을 [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md), [runtimes/mcp-base/DESIGN.md](runtimes/mcp-base/DESIGN.md) 에 합성하고 ROADMAP 에서 삭제.
 
 ### 설계 결정 필요
 

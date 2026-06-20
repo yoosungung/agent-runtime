@@ -1,6 +1,6 @@
 # runtime-common
 
-모든 서비스(agent-gateway, mcp-gateway, auth, deploy-api)와 런타임 베이스 이미지(agent-base, mcp-base)가 공용으로 import 하는 라이브러리.
+모든 서비스(auth, deploy-api, ext-authz)와 런타임 베이스 이미지(agent-base, mcp-base)가 공용으로 import 하는 라이브러리.
 
 ## 설계
 
@@ -19,7 +19,7 @@
     - `db/__init__.py` — 엔진 유틸만 re-export (`make_engine`, `make_session_factory`, `session_scope`). 모델은 `from runtime_common.db.models import SourceMetaRow` 처럼 명시적으로 import — engine만 쓰는 쪽(`runtime_common.db.engine`)은 SQLAlchemy declarative 모델을 로드하지 않음.
     - **schemas.py와의 관계**: `schemas.py`(pydantic)는 HTTP wire 계약으로 **모든** 서비스·런타임이 import. `db/models.py`(SQLAlchemy)는 **DB에 붙는 서비스만** import. 두 파일은 합치지 않는다 — gateway/pool이 SQLAlchemy 의존을 안 끌게 하기 위함.
     - **변환 헬퍼**: `SourceMeta.from_row(row: SourceMetaRow) -> SourceMeta` 같은 classmethod를 `schemas.py`에 추가해 deploy-api·backend의 수동 필드 매핑을 제거.
-  - `auth.py` — `AuthClient` (auth 서비스 호출용 thin httpx 래퍼). `verify(token, grace_sec: int = 0) -> Principal` — 엣지 gateway는 기본값(0), 내부 경로는 운영값(예: 300) 전달. 서버측 `GRACE_MAX_SEC`로 clamp. 전체 정책은 `/DESIGN.md`의 "내부 호출의 토큰 Grace Period".
+  - `auth.py` — `AuthClient` (auth 서비스 호출용 thin httpx 래퍼). `verify(token, grace_sec: int = 0) -> Principal` — 엣지 gateway는 기본값(0), 내부 경로는 운영값(예: 300) 전달. 서버측 `GRACE_MAX_SEC`로 clamp. 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period".
   - **`deploy_client.py`** — `DeployApiClient`. gateway·agent-base·mcp-base가 공유. 주요 메서드:
     - `resolve(kind, name, version, principal) -> ResolveResponse`
     - ETag + 로컬 LRU 캐시(크기·TTL 설정 가능). 조건부 요청(`If-None-Match`) 지원.
@@ -34,7 +34,8 @@
     - **번들 서명 검증**: `BUNDLE_VERIFY_SIGNATURES=true`이면 `source_meta.sig_uri`에서 서명 파일을 받아 공개키(`BUNDLE_SIGNING_PUBLIC_KEY` PEM)로 검증. 실패 시 `BundleSignatureError`(→ HTTP 500). 지원 키: ECDSA P-256(cosign 기본), Ed25519. `cryptography` 라이브러리 사용 — 별도 바이너리 없음. dev에서는 기본 off; prod에서는 반드시 켤 것. 서명 형식: `cosign sign-blob --key` 출력(base64 DER). `sig_uri` 스킴은 `http(s)://` · `file://` 지원.
   - **`config_schema.py`** — `source_meta.config` / `user_meta.config` 의 단일 진실 소스. Pydantic 모델로 런타임별 허용 키·타입·기본값을 명세.
     - `SourceConfig` — 전체 source config 루트. 공통(`timeout_seconds`, `log_level`) + 런타임 섹션(`langgraph`, `adk`, `fastmcp`, `mcp`). 루트는 `extra="allow"` — 번들 작성자가 자기만의 top-level 키 추가 가능 (예: `mcp_server`, `naver`, `anthropic_api_key`). 표준 섹션 내부는 여전히 `extra="forbid"` 로 strict.
-    - `UserConfig` — per-principal override 루트. 허용된 override 키만 Optional로 노출. `fastmcp`·`mcp`는 per-principal override 없음. 루트는 동일하게 `extra="allow"` (override 가 bundle-specific 키도 타깃 가능).
+    - `UserConfig` — per-principal override 루트. `EmailUserConfig`, `OutlookUserConfig`, `GmailUserConfig` 등 invoke 시 identity.
+    - `EmailSourceConfig` / `OutlookSourceConfig` / `GmailSourceConfig` — email_bundle 기동·공통 wiring.
     - 섹션별 모델: `LangGraphSourceConfig` / `LangGraphUserConfig`, `AdkSourceConfig` / `AdkUserConfig`, `FastMcpSourceConfig`, `McpSdkSourceConfig`.
     - **secrets_ref 키 컨벤션 (UPPERCASE — env var 명규약, EnvSecretResolver 와 호환)**: 인프라 DSN 만 `secrets_ref` 로 흐른다. 표준 키: `CHECKPOINTER_DSN`, `STORE_DSN`, `CACHE_DSN`, `EMBED_API_KEY`, `SESSION_DB_DSN`, `VERTEXAI_CREDENTIALS`, `GCS_BUCKET`, `SESSION_REDIS_DSN`, `TASK_REDIS_DSN`.
     - **API 키는 `source_meta.config` 에 직접** (이 프로젝트 컨벤션 — bundle/tool 별 자격증명은 cfg, 인프라 DSN 만 secrets). 예: `cfg["anthropic_api_key"]`, `cfg["google_api_key"]`, `cfg["naver"]["client_id"]`. 번들 코드가 cfg 에서 읽어 필요 시 env var 로 export (LangChain·ADK 의 `init_chat_model` 같은 헬퍼가 env var 를 자동 인식).
@@ -101,6 +102,6 @@
     1. `subscriber.healthy()` → `subscriber.snapshot()` 에서 warm pod 집합 + load 조회 → p2c.
     2. subscriber unhealthy → `query` pull 폴백.
     3. warm miss → `pool_fallback_url`(해당 runtime_kind의 ClusterIP Service). headless/EDS 미사용.
-    - agent-gateway/mcp-gateway가 공유.
+    - ext-authz가 사용.
   - **`active_counter.py`** (또는 `registry.ActiveCounter`) — `asyncio.Semaphore`를 감싸 `active`/`max` 노출. warm-registry publisher가 읽고, pool 런타임이 진입/종료에서 갱신.
 

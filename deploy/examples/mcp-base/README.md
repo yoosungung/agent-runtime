@@ -2,7 +2,7 @@
 
 각 디렉토리는 배포 가능한 MCP 서버 번들의 **학습용** 대표 예제다.
 
-> **운영 번들** (Outlook, 사내 API 연동 등)은 [`bundles/mcp/`](../../../bundles/mcp/) 에 둔다. 같은 zip·`source_meta` 계약이지만 CI·온보딩 친화적 코드만 이 디렉토리에 유지한다.
+> **운영 번들** (email, 사내 API 연동 등)은 [`bundles/mcp/`](../../../bundles/mcp/) 에 둔다. 같은 zip·`source_meta` 계약이지만 CI·온보딩 친화적 코드만 이 디렉토리에 유지한다.
 
 **런타임 계약**
 
@@ -11,7 +11,20 @@
 - mcp-base 의 runner ([runtimes/mcp-base/src/mcp_base/runner.py](../../../runtimes/mcp-base/src/mcp_base/runner.py)) 가 `runtime_kind` 별로 호출 규약을 다르게 적용:
   - `fastmcp` : `await instance.call_tool(tool, args)` + `await instance.list_tools()`
   - `mcp_sdk` : `await instance.dispatch(tool, args)` + `await instance.list_tools()` (커스텀 어댑터 객체 필요)
-- **API 키는 `source_meta.config`** 에 직접 둔다 (이 프로젝트 컨벤션). 인프라 DSN 은 `secrets_ref` 경유.
+- **API 키는 `source_meta.config`** 에 직접 둔다 (shared credential). **principal별 identity** (mailbox, OAuth refresh) 는 `user_meta.config`. 인프라 DSN 은 `secrets_ref` 경유. 층 정의: [ARCHITECTURE.md](../../../ARCHITECTURE.md) §5.
+
+---
+
+## source vs user — 번들별 예시
+
+config 층 정의는 [ARCHITECTURE.md](../../../ARCHITECTURE.md) §5. 아래는 이 디렉터리 번들에 적용한 **구체 예시**다.
+
+| 번들 | source_meta (기동·공통) | user_meta (invoke·개인) |
+|------|-------------------------|-------------------------|
+| search-server (Naver) | `naver.client_id`, `client_secret` — 모두 shared | 보통 없음 |
+| email-server ([`bundles/mcp/email_bundle/`](../../../bundles/mcp/email_bundle/)) | `email.provider`, `outlook.tenant_id`, `client_secret` | `outlook.mailbox`, `refresh_token`, `email.from_address` |
+
+Tool argument (`folder`, `limit`, `query`) 는 invoke payload — user_meta 가 아님.
 
 ---
 

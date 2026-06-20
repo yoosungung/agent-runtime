@@ -12,7 +12,7 @@ MCP-Pool의 베이스 이미지. 구조는 agent-base와 평행 — 같은 Lambd
   1. **`DeployApiClient.resolve(kind='mcp', name=server, version=version, principal=principal.id)`** → `{source, user}`.
   2. `source.runtime_pool == "mcp:{RUNTIME_KIND}"` 검증.
   3. 공용 `BundleLoader`로 번들 로드 → `factory` 얻음.
-  4. `factory(cfg, secrets)` 호출해 instance 얻음. `cfg` = `runtime_common.factory.merge_configs(source.config, user.config)` — shallow merge, user wins. 자세한 합의는 [/DESIGN.md](../../DESIGN.md)의 "source_meta / user_meta config 병합". zero-arg / 1-arg 하위호환은 `call_factory`가 처리.
+  4. `factory(cfg, secrets)` 호출해 instance 얻음. `cfg` = `runtime_common.factory.merge_configs(source.config, user.config)` — shallow merge, user wins. 자세한 합의는 [ARCHITECTURE.md](../../ARCHITECTURE.md) §5 "source_meta / user_meta config 병합". zero-arg / 1-arg 하위호환은 `call_factory`가 처리.
   5. `runner.run(kind, instance, tool, arguments)` — kind별 툴 호출 어댑터.
      - `fastmcp` → `instance.call_tool(tool, arguments)`
      - `mcp_sdk` → `instance.dispatch(tool, arguments)` 또는 `request_handlers[tool](arguments)`
@@ -49,7 +49,7 @@ with opik.start_as_current_span(
 
 agent-base와 동일 규약. 상태 + 이벤트 양측 발행:
 - 상태: `rt:warm:mcp_{RUNTIME_KIND}:{checksum}` / `rt:load:{pod_id}` (HASH: `{active, max, addr}`, TTL 3s).
-- 이벤트: `PUBLISH rt:events:mcp_{RUNTIME_KIND}` 에 snapshot JSON — mcp-gateway의 `RegistrySubscriber`가 구독해 메모리 라우팅 테이블 유지.
+- 이벤트: `PUBLISH rt:events:mcp_{RUNTIME_KIND}` 에 snapshot JSON — ext-authz의 `RegistrySubscriber`가 구독해 warm-registry를 유지.
 
 `runtime_common.registry.RegistryPublisher` 공용 모듈 사용. 자세한 내용은 [../agent-base/DESIGN.md](../agent-base/DESIGN.md)의 같은 섹션 참조.
 

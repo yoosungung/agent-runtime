@@ -100,7 +100,7 @@
 
 **불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config` 오기재 수정 정도만 허용(감사 로그에 before/after 기록).
 
-**`config` 필드**: 번들 기본 config(immutable 의도지만 row-level `PATCH`는 허용). runtime이 `user_meta.config`와 shallow merge(user wins)해 factory에 주입 — 자세한 합의는 [/DESIGN.md](../DESIGN.md)의 "source_meta / user_meta config 병합". admin UI는 두 config를 나란히 편집할 수 있어야 하며, 덮어쓰기 프리뷰(merge 결과)도 보여주면 유용.
+**`config` 필드**: **source_meta** = 기동·공통 (provider, shared credential). **user_meta** = invoke·principal별 (mailbox, OAuth refresh). runtime이 shallow merge(user wins) 후 factory에 주입 — [ARCHITECTURE.md](../ARCHITECTURE.md) "source_meta / user_meta config 병합" 및 email-server 예시 참조. `PUT /api/user-meta` 시 `UserConfig.model_validate`. admin UI는 2-pane + merge 프리뷰.
 
 ### Custom Image 관리
 

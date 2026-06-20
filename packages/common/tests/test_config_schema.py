@@ -4,9 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from runtime_common.config_schema import (
+    EmailSourceConfig,
+    EmailUserConfig,
     GeneralAgentSourceConfig,
     GeneralAgentUserConfig,
     GeneralVfsConfig,
+    OutlookSourceConfig,
+    OutlookUserConfig,
     SourceConfig,
     UserConfig,
 )
@@ -74,3 +78,64 @@ def test_user_config_includes_general_section():
     cfg = UserConfig(general=GeneralAgentUserConfig(system_prompt="Override"))
     assert cfg.general is not None
     assert cfg.general.system_prompt == "Override"
+
+
+def test_email_source_config_outlook_provider():
+    cfg = EmailSourceConfig(provider="outlook", page_size=25)
+    assert cfg.provider == "outlook"
+    assert cfg.default_folder == "INBOX"
+
+
+def test_outlook_source_config_requires_app_registration():
+    cfg = OutlookSourceConfig(
+        tenant_id="tenant-1",
+        client_id="app-id",
+        client_secret="secret",
+        auth="oauth_refresh",
+    )
+    assert cfg.auth == "oauth_refresh"
+    assert cfg.mailbox is None
+
+
+def test_outlook_user_config_per_principal():
+    cfg = OutlookUserConfig(
+        mailbox="hong@company.com",
+        refresh_token="rt-abc",
+    )
+    assert cfg.mailbox == "hong@company.com"
+    assert cfg.refresh_token == "rt-abc"
+
+
+def test_email_user_config_from_address():
+    cfg = EmailUserConfig(from_address="hong@company.com")
+    assert cfg.from_address == "hong@company.com"
+
+
+def test_source_config_includes_email_sections():
+    cfg = SourceConfig(
+        email=EmailSourceConfig(provider="outlook"),
+        outlook=OutlookSourceConfig(
+            tenant_id="t",
+            client_id="c",
+            client_secret="s",
+        ),
+    )
+    assert cfg.email is not None
+    assert cfg.email.provider == "outlook"
+    assert cfg.outlook is not None
+    assert cfg.outlook.tenant_id == "t"
+
+
+def test_user_config_includes_email_sections():
+    cfg = UserConfig(
+        email=EmailUserConfig(from_address="hong@company.com"),
+        outlook=OutlookUserConfig(mailbox="hong@company.com"),
+    )
+    assert cfg.email is not None
+    assert cfg.outlook is not None
+    assert cfg.outlook.mailbox == "hong@company.com"
+
+
+def test_email_source_config_rejects_unknown_provider():
+    with pytest.raises(ValidationError):
+        EmailSourceConfig(provider="exchange")  # type: ignore[arg-type]

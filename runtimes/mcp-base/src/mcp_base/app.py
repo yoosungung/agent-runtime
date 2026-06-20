@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -16,13 +17,13 @@ from mcp_base.runner import list_tools as runner_list_tools
 from mcp_base.runner import run
 from mcp_base.settings import Settings
 from runtime_common.deploy_client import DeployApiClient
-from runtime_common.factory import call_factory, merge_configs
+from runtime_common.instance_builder import build_secrets_resolver, get_or_build_cached_instance
+from runtime_common.instance_cache import InstanceCache
 from runtime_common.loader import BundleFetchError, BundleImportError, BundleLoader
 from runtime_common.logging import configure_logging
 from runtime_common.opik_tracing import configure_opik, opik_span_context
 from runtime_common.registry import ActiveCounter, RegistryPublisher
 from runtime_common.schemas import Principal
-from runtime_common.secrets import EnvSecretResolver
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
 
 logger = logging.getLogger(__name__)
@@ -56,11 +57,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_metrics(settings.service_name, settings.otlp_endpoint)
     configure_opik(settings.opik_url, settings.opik_workspace)
 
+    instance_cache = InstanceCache(settings.instance_cache_max)
+
+    def _on_bundle_evict(checksum: str) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(instance_cache.invalidate_checksum(checksum))
+        except RuntimeError:
+            pass
+
     loader = BundleLoader(
         settings.bundle_cache_dir,
         settings.bundle_cache_max,
         verify_signatures=settings.bundle_verify_signatures,
         signing_public_key=settings.bundle_signing_public_key,
+        on_evict=_on_bundle_evict,
     )
     counter = ActiveCounter(settings.max_concurrent)
     deploy_client = DeployApiClient(settings.deploy_api_url)
@@ -87,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     app.state.loader = loader
+    app.state.instance_cache = instance_cache
     app.state.counter = counter
     app.state.deploy = deploy_client
     app.state.publisher = publisher
@@ -96,6 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await publisher.stop()
+        await instance_cache.clear()
         await deploy_client.aclose()
 
 
@@ -118,6 +131,7 @@ async def list_tools(server: str, version: str | None = None) -> dict:
     settings: Settings = app.state.settings
     deploy: DeployApiClient = app.state.deploy
     loader: BundleLoader = app.state.loader
+    cache: InstanceCache = app.state.instance_cache
 
     try:
         resolved = await deploy.resolve(kind="mcp", name=server, version=version)
@@ -133,15 +147,15 @@ async def list_tools(server: str, version: str | None = None) -> dict:
         )
 
     try:
-        factory = loader.load(source)
+        secrets = build_secrets_resolver(None)
+        instance = await get_or_build_cached_instance(
+            cache, source, None, loader, secrets, source_only=True
+        )
     except BundleFetchError as exc:
         raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
     except BundleImportError as exc:
         logger.error("bundle_import_failed", extra={"server": server, "error": str(exc)})
         raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
-
-    secrets = EnvSecretResolver()
-    instance = call_factory(factory, source.config, secrets)
 
     try:
         tools = await runner_list_tools(settings.runtime_kind, instance)
@@ -169,6 +183,7 @@ async def invoke(
     counter: ActiveCounter = app.state.counter
     deploy: DeployApiClient = app.state.deploy
     loader: BundleLoader = app.state.loader
+    cache: InstanceCache = app.state.instance_cache
 
     expected_pool = f"mcp:{settings.runtime_kind}"
 
@@ -197,19 +212,17 @@ async def invoke(
         )
 
     user = resolved.user
-    user_cfg = user.config if user else {}
-    merged_cfg = merge_configs(source.config, user_cfg)
-    secrets = EnvSecretResolver()
+    secrets = build_secrets_resolver(user)
 
     try:
-        factory = loader.load(source)
+        instance = await get_or_build_cached_instance(
+            cache, source, user, loader, secrets
+        )
     except BundleFetchError as exc:
         raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
     except BundleImportError as exc:
         logger.error("bundle_import_failed", extra={"server": req.server, "error": str(exc)})
         raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
-
-    instance = call_factory(factory, merged_cfg, secrets)
 
     with opik_span_context(
         name=f"mcp:{req.server}/{req.tool}",
@@ -249,6 +262,7 @@ async def _resolve_instance(
     settings: Settings,
     deploy: DeployApiClient,
     loader: BundleLoader,
+    cache: InstanceCache,
 ) -> tuple[Any, str]:
     """Resolve + load bundle; returns (instance, expected_pool)."""
     expected_pool = f"mcp:{settings.runtime_kind}"
@@ -259,10 +273,9 @@ async def _resolve_instance(
     if source.runtime_pool != expected_pool:
         raise ValueError(f"pool mismatch: {source.runtime_pool} != {expected_pool}")
     user = resolved.user
-    user_cfg = user.config if user else {}
-    merged_cfg = merge_configs(source.config, user_cfg)
-    factory = loader.load(source)
-    return call_factory(factory, merged_cfg, EnvSecretResolver()), expected_pool
+    secrets = build_secrets_resolver(user)
+    instance = await get_or_build_cached_instance(cache, source, user, loader, secrets)
+    return instance, expected_pool
 
 
 @app.post("/mcp")
@@ -281,6 +294,7 @@ async def mcp_streamable(request: Request) -> Response:
     counter: ActiveCounter = app.state.counter
     deploy: DeployApiClient = app.state.deploy
     loader: BundleLoader = app.state.loader
+    cache: InstanceCache = app.state.instance_cache
 
     server = request.headers.get("X-Mcp-Server", "")
     version = request.headers.get("X-Mcp-Version") or None
@@ -323,7 +337,7 @@ async def mcp_streamable(request: Request) -> Response:
     if method == "tools/list":
         try:
             instance, _ = await _resolve_instance(
-                server, version, principal_sub, settings, deploy, loader
+                server, version, principal_sub, settings, deploy, loader, cache
             )
             tools = await runner_list_tools(settings.runtime_kind, instance)
         except Exception as exc:
@@ -344,7 +358,7 @@ async def mcp_streamable(request: Request) -> Response:
 
         try:
             instance, _ = await _resolve_instance(
-                server, version, principal_sub, settings, deploy, loader
+                server, version, principal_sub, settings, deploy, loader, cache
             )
         except Exception as exc:
             return Response(

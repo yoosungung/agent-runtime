@@ -1,76 +1,35 @@
 # agents-runtime
 
+저장소 방문자·기여자용 소개와 로컬 quickstart. 계약·내부 설계는 [ARCHITECTURE.md](ARCHITECTURE.md)와 각 컴포넌트 `DESIGN.md`를 본다. 에이전트·기여 워크플로는 [AGENTS.md](AGENTS.md).
+
 Runtime platform for **LLM agents** and **MCP servers** on Kubernetes. Base images run as long-lived pods; user code (agent graphs, MCP tools) is deployed *dynamically* at invoke time — similar to AWS Lambda — without rebuilding images.
 
 Out of scope (lives in sibling repos / external infra):
 - LLM serving (API / vLLM)
 - RAG stack (DidimRAG, pgvector)
 - OpenTelemetry collector / storage
-- User-facing Chat UI
+- User-facing Chat UI (admin console in this repo is the exception)
 
-## Components
+Architecture contracts and cross-component schemas: [ARCHITECTURE.md](ARCHITECTURE.md). Roadmap: [ROADMAP.md](ROADMAP.md).
 
-```
-services/
-  auth/            AuthN/AuthZ — /login (JWT issue), /verify (RBAC check)
-  deploy-api/      Runtime meta read-only — /v1/resolve returns source_meta + user_meta
-  ext-authz/       Envoy HTTP ext_authz — auth + access + resolve + pod pick
-
-runtimes/
-  agent-base/      Agent-Pool base image — RUNTIME_KIND ∈ {compiled_graph, adk}
-  mcp-base/        MCP-Pool base image   — RUNTIME_KIND ∈ {fastmcp, mcp_sdk}
-
-packages/
-  common/          Shared lib: schemas, db, auth client, deploy client, loader, factory,
-                   secrets, registry, scheduling, telemetry, logging, settings
-
-backend/           Admin console BFF (FastAPI) — REST API for the SPA
-frontend/          Admin console SPA (React + Vite + Tailwind)
-
-deploy/k8s/        Kustomize base + overlays (dev / stage / prod)
-                   Data plane: Envoy fronts /v1/agents/* and /v1/mcp/* (see deploy/DESIGN.md)
-```
-
-Architecture diagram: [`agent-runtime.d2`](agent-runtime.d2) → rendered to `agent-runtime.png` via `make diagram`.
-
-## Admin Console
-
-A web UI (`/`) served by the backend BFF at the same origin as the API. Features:
-
-| Page | Path | Access |
-|---|---|---|
-| Dashboard | `/` | Admin |
-| Agents | `/agents` | Admin — **General** (config-only), **Bundle** (ZIP), **Custom** (OCI image) |
-| MCP Servers | `/mcp-servers` | Admin |
-| Users | `/users` | Admin |
-| Audit Log | `/audit` | Admin |
-| Chat | `/chat` | All authenticated |
-| My Profile | `/me` | All authenticated |
-
-**Key flows**
-- Register agents via three tiers: **General** (system prompt + MCP servers, no code), **Bundle** (ZIP/URI + factory), or **Custom** (OCI image)
-- Register MCP servers via **Bundle** or **Custom** only
-- Verify bundle integrity (`POST /api/source-meta/{id}/verify` — sha256 recompute + signature recheck)
-- Manage user accounts, reset passwords, grant/revoke access per agent or MCP server (bulk revoke)
-- Audit log: every create/update/delete/retire/login event is recorded atomically alongside the operation
-- Chat with any agent you have access to (streaming, session-based)
+Architecture diagram: [`agent-runtime.d2`](agent-runtime.d2) → `make diagram` renders `agent-runtime.png`.
 
 ## Quickstart
 
 ### Prerequisites
 
 - Python 3.12 (`uv` manages the venv — see `.python-version`)
-- Node 20 (for frontend dev; the Docker build handles this automatically)
+- Node 20 (for frontend dev; Docker build handles this automatically)
 - A running Postgres instance (see `backend/migrations/0001_init.sql`)
 
 ### Install & run tests
 
 ```bash
-uv sync --all-packages       # install all workspace packages in a single venv
-make test                    # pytest (248 tests)
-make typecheck               # mypy
-make lint                    # ruff check
-make fmt                     # ruff format
+uv sync --all-packages
+make test
+make typecheck
+make lint
+make fmt
 ```
 
 ### Frontend dev
@@ -78,145 +37,55 @@ make fmt                     # ruff format
 ```bash
 cd frontend
 npm ci
-npm run dev      # Vite dev server on :5173, proxies /api/* → localhost:8000
-npm test         # vitest unit tests
-npm run e2e      # Playwright smoke tests (requires a running backend, see E2E_ env vars)
+npm run dev      # Vite :5173, proxies /api/* → localhost:8000
+npm test
+npm run e2e      # Playwright (requires running backend)
 ```
 
 ### Run a single service locally
 
 ```bash
-# Backend (admin console BFF)
-uv run uvicorn backend.app:app --reload --port 8000
-
-# Auth
+uv run uvicorn backend.app:app --reload --port 8000   # admin BFF
 uv run uvicorn auth.app:app --reload --port 8001
-
-# Deploy API
 uv run uvicorn deploy_api.app:app --reload --port 8002
 ```
 
 ### Build & deploy
 
-Images are built by **GitHub Actions** when a **GitHub Release** is published (`.github/workflows/build-images.yml`). Tags: `:latest` and commit SHA on `ghcr.io/yoosungung/agent-runtime/<service>`.
+Images are built by **GitHub Actions** on **GitHub Release** publish (`.github/workflows/build-images.yml`). Tags: `:latest` and commit SHA on `ghcr.io/yoosungung/agent-runtime/<service>`.
 
 ```bash
-# 1. Publish a release (triggers image build + GHCR push)
 gh release create v0.1.0 --title "dev 0.1.0" --target main
-
-# 2. Wait for Actions workflow to finish, then deploy
-make k8s-apply-dev     # dev overlay (GHCR images, Ingress: agents.k8s-test)
-make db-migrate-all    # apply 0001 + 0002 + 0003 SQL migrations (K8s postgres pod)
-make k8s-rollout-restart   # pull new :latest images
-
-# Emergency rebuild without a release: Actions → "Build and push images" → Run workflow
-```
-
-For private GHCR packages:
-
-```bash
-GITHUB_USER=yoosungung GITHUB_PAT=<read:packages token> make registry-secret
-```
-
-### First-run admin bootstrap
-
-On startup the backend seeds an initial admin user **only if the `users` table is empty**. The password is read from `INITIAL_ADMIN_PASSWORD_FILE` (mounted Secret) or `INITIAL_ADMIN_PASSWORD` (env). Without one of these, bootstrap is skipped and login will return 401 for every credential.
-
-```bash
-# 1. create the Secret (one-time; pick your own password)
-kubectl create secret generic initial-admin-password -n runtime \
-  --from-literal=password=agent-admin-password
-
-# 2. apply the dev overlay (the Secret is mounted by backend.yaml)
 make k8s-apply-dev
-
-# 3. backend logs should report:
-#    INFO:backend.bootstrap:Bootstrap: created initial admin user 'admin' (id=1)
+make db-migrate-all
+make k8s-rollout-restart
 ```
 
-The seeded user is `admin` (override with `INITIAL_ADMIN_USERNAME`), `is_admin=true`, `must_change_password=true` — the SPA will force a password change on first login. The Secret is mounted with `optional: true`, so missing-secret in stage/prod doesn't crash the pod; rotate or remove it after the first admin has logged in.
+Private GHCR: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 
-## How dynamic deployment works
+K8s 배포·Ingress·bootstrap 상세는 [deploy/DESIGN.md](deploy/DESIGN.md) 참조.
 
-1. An operator registers a bundle via the admin console (ZIP upload or external URI).
-2. The backend writes `source_meta` to Postgres: `{kind, name, version, runtime_pool, entrypoint, bundle_uri, checksum}`.
-3. A user invokes an agent through the gateway.
-4. The gateway verifies the JWT, checks `user_resource_access`, and calls deploy-api `/v1/resolve`.
-5. Deploy-api returns `{source, user}` — the pool picks up the bundle, imports the entrypoint factory, and serves the request.
-6. `factory(cfg, secrets)` receives a shallow-merged config: `source_meta.config` ← overridden by `user_meta.config`.
+## Bundles & examples
 
-## Bundle signing (production)
+| 목적 | README |
+|------|--------|
+| 운영 번들 (email 등) | [bundles/README.md](bundles/README.md) |
+| 학습용 예제 번들 | [deploy/examples/agent-base/README.md](deploy/examples/agent-base/README.md), [deploy/examples/mcp-base/README.md](deploy/examples/mcp-base/README.md) |
+| 클러스터 e2e 스모크 | [deploy/examples/tests/e2e/README.md](deploy/examples/tests/e2e/README.md) |
 
-Pools verify the SHA-256 checksum of every downloaded bundle. For stronger guarantees, enable signature verification so only bundles signed by your CI pipeline can be loaded.
+배포 절차 정본: [deploy/examples/mcp-base/README.md](deploy/examples/mcp-base/README.md) (zip → upload → `source_meta` 등록).
 
-### 1. Generate a key pair (once)
+## Component design documents
 
-```bash
-cosign generate-key-pair   # → cosign.key (private), cosign.pub (public)
-```
-
-Store `cosign.key` in CI secrets. Mount `cosign.pub` in pool pods via a Kubernetes Secret.
-
-### 2. Sign in CI
-
-```bash
-cosign sign-blob --key cosign.key bundle.zip > bundle.zip.sig
-```
-
-### 3. Register via admin console
-
-Upload the ZIP and `.sig` in the "ZIP Upload" tab, or set `bundle_uri` + `sig_uri` for external artifacts.
-
-### 4. Enable verification on pool pods
-
-```yaml
-env:
-  - name: BUNDLE_VERIFY_SIGNATURES
-    value: "true"
-  - name: BUNDLE_SIGNING_PUBLIC_KEY
-    valueFrom:
-      secretKeyRef:
-        name: bundle-signing-pubkey
-        key: cosign.pub
-```
-
-### Supported key types
-
-| Type | How to generate |
+| Component | DESIGN.md |
 |---|---|
-| ECDSA P-256 | `cosign generate-key-pair` (default) |
-| Ed25519 | `openssl genpkey -algorithm ed25519` |
-
-If `sig_uri` is absent but `BUNDLE_VERIFY_SIGNATURES=true`, the pod rejects the bundle. Set `sig_uri` on every registered bundle before enabling the flag in production.
-
-## Write ownership
-
-All DB writes go through the admin backend. Runtime services are read-only:
-
-| Table | Writer | Readers |
-|---|---|---|
-| `source_meta` | admin backend | deploy-api |
-| `user_meta` | admin backend | deploy-api |
-| `users` | admin backend | auth |
-| `user_resource_access` | admin backend | auth |
-| `refresh_tokens` | auth (exception) | auth |
-| `audit_log` | admin backend (atomic) | admin backend |
-
-When the admin backend changes a password or deactivates an account it calls `POST /admin/revoke-tokens` on the auth service to invalidate existing refresh tokens.
-
-## Design documents
-
-Each component has a detailed `DESIGN.md`:
-
-- [Top-level architecture](DESIGN.md)
-- [packages/common](packages/common/DESIGN.md)
-- [services/auth](services/auth/DESIGN.md)
-- [services/deploy-api](services/deploy-api/DESIGN.md)
-- [services/agent-gateway](services/agent-gateway/DESIGN.md)
-- [services/mcp-gateway](services/mcp-gateway/DESIGN.md)
-- [services/ext-authz](services/ext-authz/DESIGN.md)
-- [runtimes/agent-base](runtimes/agent-base/DESIGN.md)
-- [runtimes/mcp-base](runtimes/mcp-base/DESIGN.md)
-- [backend (admin BFF)](backend/DESIGN.md)
-- [frontend (admin SPA)](frontend/DESIGN.md)
-- [deploy/k8s](deploy/DESIGN.md)
+| Cross-component contracts | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| packages/common | [packages/common/DESIGN.md](packages/common/DESIGN.md) |
+| services/auth | [services/auth/DESIGN.md](services/auth/DESIGN.md) |
+| services/deploy-api | [services/deploy-api/DESIGN.md](services/deploy-api/DESIGN.md) |
+| services/ext-authz | [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md) |
+| runtimes/agent-base | [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md) |
+| runtimes/mcp-base | [runtimes/mcp-base/DESIGN.md](runtimes/mcp-base/DESIGN.md) |
+| backend (admin BFF) | [backend/DESIGN.md](backend/DESIGN.md) |
+| frontend (admin SPA) | [frontend/DESIGN.md](frontend/DESIGN.md) |
+| deploy/k8s | [deploy/DESIGN.md](deploy/DESIGN.md) |

@@ -124,11 +124,12 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
   - `무결성 검증` (nice-to-have): `POST /api/source-meta/{id}/verify` → 저장 파일의 sha256 재계산 + 서명 재검증. 결과를 토스트/패널로.
   - `retire`: `POST /api/source-meta/{id}/retire` → confirm dialog → `retired=true` 표시.
   - `delete`: `DELETE /api/source-meta/{id}` (dev/stage only, `ALLOW_HARD_DELETE=true`일 때만 서버가 수락). confirm dialog. 409 → "다른 버전이 같은 bundle을 참조 중" 메시지.
-- `user_meta` 섹션: principal별 설정 테이블. 열: `principal_id`, `config` 요약(키 수), `secrets_ref`, `updated_at`. row → 편집. 페이지네이션 표준.
+- `user_meta` 섹션: principal별 설정 테이블 + **Add User Meta** (principal 입력 → 편집 페이지). 상단 안내: source=기동·공통, user=invoke·개인.
+- 열: `principal_id`, `config` 요약(키 수), `secrets_ref`, `updated_at`. row → 편집. 페이지네이션 표준.
 
 **user_meta 편집 (`/.../user-meta/:principal`)**
-- `GET /api/user-meta?kind=&name=&version=&principal=` (없으면 404 → 빈 폼).
-- `config`: JSON editor (monaco-editor 또는 가벼운 `react-json-view` + 텍스트 모드 토글). zod로 JSON 파싱 검증. **2-pane 레이아웃** — 좌측 `source.config`(read-only), 우측 `user.config`(편집), 하단에 **merge 프리뷰** (shallow merge, user wins) 표시. 사용자가 덮어쓴 키를 강조.
+- `GET /api/user-meta?source_meta_id=&principal_id=` (items 비면 404 → 빈 폼).
+- **2-pane 레이아웃** — 좌측 `source.config`(기동 시 공통, read-only), 우측 `user.config`(호출 시 사용자별). email MCP 예시 collapsible help.
 - `secrets_ref`: 단일 문자열 입력 (`vault://...` / `env://...` 등).
 - 저장: `PUT /api/user-meta` (upsert). 성공 시 invalidate `user-meta` + `source-meta` 쿼리.
 

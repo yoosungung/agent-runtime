@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiJson, apiFetch } from "../lib/api";
+import { apiJson, apiFetch, type PageResponse } from "../lib/api";
 
 export interface UserMeta {
   id: number;
@@ -23,10 +23,15 @@ export function useUserMeta(
 ) {
   return useQuery({
     queryKey: ["user-meta", sourceMetaId, principalId],
-    queryFn: () =>
-      apiJson<UserMeta>(
-        `/api/user-meta?source_meta_id=${sourceMetaId}&principal=${encodeURIComponent(principalId!)}`,
-      ),
+    queryFn: async () => {
+      const data = await apiJson<PageResponse<UserMeta>>(
+        `/api/user-meta?source_meta_id=${sourceMetaId}&principal_id=${encodeURIComponent(principalId!)}&limit=1`,
+      );
+      if (data.items.length === 0) {
+        throw Object.assign(new Error("user_meta not found"), { status: 404 });
+      }
+      return data.items[0];
+    },
     enabled: sourceMetaId !== undefined && principalId !== undefined,
     retry: (count, err: unknown) => (err as { status?: number })?.status !== 404 && count < 2,
   });

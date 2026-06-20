@@ -20,7 +20,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
   2. `source.runtime_pool`이 `agent:{RUNTIME_KIND}`와 일치하는지 검증. 불일치 시 400.
   3. `BundleLoader.load(source)` — 디스크 캐시에 없으면 `bundle_uri`에서 zip 다운로드·체크섬 검증·압축 해제·`sys.path` 추가·`module:attr` import.
   4. 로더가 리턴한 `factory`를 **`factory(cfg, secrets)` 형태**로 호출해서 instance 얻음.
-     - `cfg` = `runtime_common.factory.merge_configs(source.config, user.config if user else None)` — **shallow merge, user가 같은 키면 덮어씀**. source-only / user-only 키는 그대로 유지. 자세한 합의는 [/DESIGN.md](../../DESIGN.md)의 "source_meta / user_meta config 병합".
+     - `cfg` = `runtime_common.factory.merge_configs(source.config, user.config if user else None)` — **shallow merge, user가 같은 키면 덮어씀**. source-only / user-only 키는 그대로 유지. 자세한 합의는 [ARCHITECTURE.md](../../ARCHITECTURE.md) §5 "source_meta / user_meta config 병합".
      - `secrets` = `SecretResolver` 인스턴스 (실제 비밀값은 `user.secrets_ref`에서 lazy resolve)
      - 하위호환: zero-arg factory / `(cfg,)` 1-arg factory도 인트로스펙션으로 허용 — `runtime_common.factory.call_factory`가 시그니처 자동 분기.
   5. `runner.run(kind, instance, input, session_id)` — kind별 어댑터가 프레임워크-네이티브 호출.
@@ -40,11 +40,11 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
 
 ### JWT forwarding (MCP 호출 시)
 
-factory가 리턴한 instance가 실행 중 mcp-gateway로 tool 호출을 보낼 때 **사용자 JWT를 그대로 forward**. 서비스 간 별도 토큰을 발급하지 않는다.
+factory가 리턴한 instance가 실행 중 Envoy `/v1/mcp/invoke-internal`로 tool 호출을 보낼 때 **사용자 JWT를 그대로 forward**. 서비스 간 별도 토큰을 발급하지 않는다.
 
 - pool pod는 `/invoke` 진입 시 받은 `Authorization` 헤더를 **request-scoped**로 보관(LangGraph `config` 또는 contextvar)하고, MCP 호출 시점에 그대로 `Authorization: Bearer <same jwt>`로 재사용.
 - **내부 경로**를 호출: `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (엣지 경로 아님). 추가로 `X-Runtime-Caller: agent-pool` 헤더를 감사용으로 실음. pool Deployment만 NetworkPolicy로 이 경로에 도달 가능.
-- **grace period 기대**: 내부 경로이므로 mcp-gateway가 `AuthClient.verify(token, grace_sec=300)` 로 검증 → 한 턴이 LLM 스트리밍 + 다중 tool call로 토큰 TTL을 넘겨도 401 없이 완주. 세부 정책은 [/DESIGN.md](../../DESIGN.md)의 "내부 호출의 토큰 Grace Period".
+- **grace period 기대**: 내부 경로이므로 ext-authz가 `AuthClient.verify(token, grace_sec=300)` 로 검증 → 한 턴이 LLM 스트리밍 + 다중 tool call로 토큰 TTL을 넘겨도 401 없이 완주.
 - **토큰 재발급 금지**: pool은 auth `/login`을 모르고 사용자 credential도 없다. 동일 JWT를 turn 범위 내에서만 재사용.
 - **다음 turn에서는 새 토큰**: user의 다음 `/v1/agents/invoke` 는 UI가 fresh 토큰으로 보냄. grace는 "한 turn 안에서만" 효과.
 
@@ -126,7 +126,7 @@ result = await graph.ainvoke(
 
 ### warm-registry 퍼블리시 (스케줄러와의 계약)
 
-gateway 쪽 warm-aware 스케줄러(전체 방향은 [/DESIGN.md](../../DESIGN.md)의 "확장 로드맵" 참조)가 **"어떤 pod가 어떤 checksum을 load했고 지금 얼마나 바쁜지"** 를 보게 하려면 pod가 Redis에 상태를 **저장 + 이벤트 발행** 해야 한다.
+gateway 쪽 warm-aware 스케줄러(향후 계획은 [ROADMAP.md](../../ROADMAP.md) 참조)가 **"어떤 pod가 어떤 checksum을 load했고 지금 얼마나 바쁜지"** 를 보게 하려면 pod가 Redis에 상태를 **저장 + 이벤트 발행** 해야 한다.
 
 - **키/채널 규약** (agent/mcp 공용):
   ```

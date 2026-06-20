@@ -6,7 +6,7 @@ unique synthetic module name. Exposed as the ``load_bundle`` fixture
 because under ``--import-mode=importlib`` conftest isn't itself importable.
 
 Search order for ``rel_path`` (e.g. ``mcp-base/fastmcp_bundle``,
-``mcp/outlook_bundle``):
+``mcp/email_bundle``):
 
 1. ``deploy/examples/<rel_path>/app.py`` — tutorial samples
 2. ``bundles/<rel_path>/app.py`` — production bundles

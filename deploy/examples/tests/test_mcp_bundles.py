@@ -210,3 +210,220 @@ class TestMcpSdkBundle:
         server = mod.build_server({"mcp": {"mask_error_details": True}}, secrets)
         with pytest.raises(RuntimeError, match="tool call failed"):
             await server.dispatch("not_a_tool", {})
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# email_bundle (IMAP/POP3/SMTP, Outlook, Gmail)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _imap_cfg() -> dict:
+    return {
+        "mcp": {"mask_error_details": False},
+        "email": {
+            "provider": "imap",
+            "default_folder": "INBOX",
+            "page_size": 25,
+            "body_max_bytes": 32,
+            "from_address": "bot@example.com",
+        },
+        "imap": {
+            "host": "imap.example.com",
+            "port": 993,
+            "use_ssl": True,
+            "username": "bot@example.com",
+            "password": "imap-secret",
+        },
+        "smtp": {
+            "host": "smtp.example.com",
+            "port": 587,
+            "use_starttls": True,
+            "username": "bot@example.com",
+            "password": "smtp-secret",
+        },
+    }
+
+
+class TestEmailBundle:
+    async def test_list_tools_exposes_three(self, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        server = mod.build_server(_imap_cfg(), secrets)
+        tools = await server.list_tools()
+        names = {t["name"] for t in tools}
+        assert names == {"list_messages", "read_message", "send_message"}
+
+    async def test_unknown_provider_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        cfg = _imap_cfg()
+        cfg["email"]["provider"] = "unknown"
+        with pytest.raises(ValueError, match="unsupported email.provider"):
+            mod.build_server(cfg, secrets)
+
+    async def test_provider_imap_list_messages(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+
+        class _FakeImap:
+            def login(self, *_args) -> None:
+                return None
+
+            def select(self, *_args, **_kwargs):
+                return "OK", [b"1"]
+
+            def uid(self, command, *args):
+                if command == "search":
+                    return "OK", [b"1 2"]
+                if command == "fetch":
+                    uid = args[0]
+                    headers = (
+                        f"From: sender@example.com\r\n"
+                        f"To: bot@example.com\r\n"
+                        f"Subject: Hello {uid.decode()}\r\n"
+                        f"Date: Sat, 20 Jun 2026 09:00:00 +0000\r\n"
+                    ).encode()
+                    return "OK", [(f"{uid.decode()} (FLAGS (\\Seen))".encode(), headers)]
+                return "NO", [b""]
+
+            def logout(self) -> None:
+                return None
+
+        monkeypatch.setattr("imaplib.IMAP4_SSL", lambda *a, **k: _FakeImap())
+
+        server = mod.build_server(_imap_cfg(), secrets)
+        result = await server.dispatch("list_messages", {"limit": 2})
+        assert len(result["messages"]) == 2
+        assert result["messages"][0]["from"] == "sender@example.com"
+        assert result["messages"][0]["subject"] == "Hello 2"
+
+    async def test_read_message_truncates_body(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        body = "x" * 100
+
+        class _FakeImap:
+            def login(self, *_args) -> None:
+                return None
+
+            def select(self, *_args, **_kwargs):
+                return "OK", [b"1"]
+
+            def uid(self, command, *args):
+                if command == "fetch":
+                    raw = (
+                        "From: sender@example.com\r\n"
+                        "To: bot@example.com\r\n"
+                        "Subject: Long\r\n"
+                        "Date: Sat, 20 Jun 2026 09:00:00 +0000\r\n"
+                        "\r\n"
+                        f"{body}"
+                    ).encode()
+                    return "OK", [(b"42 (FLAGS (\\Seen))", raw)]
+                return "NO", [b""]
+
+            def logout(self) -> None:
+                return None
+
+        monkeypatch.setattr("imaplib.IMAP4_SSL", lambda *a, **k: _FakeImap())
+
+        server = mod.build_server(_imap_cfg(), secrets)
+        result = await server.dispatch("read_message", {"message_id": "42"})
+        assert result["body_text"] == "x" * 32
+
+    async def test_send_message_smtp(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        import importlib
+
+        imap_mod = importlib.import_module("providers.imap_smtp")
+        captured: dict = {}
+
+        def _fake_send(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr(imap_mod, "send_via_smtp", _fake_send)
+
+        server = mod.build_server(_imap_cfg(), secrets)
+        result = await server.dispatch(
+            "send_message",
+            {"to": "user@example.com", "subject": "Hi", "body": "Hello"},
+        )
+        assert captured["to"] == ["user@example.com"]
+        assert captured["subject"] == "Hi"
+        assert result["status"] == "sent"
+
+    async def test_outlook_without_credentials_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        cfg = {
+            "email": {"provider": "outlook"},
+            "outlook": {"tenant_id": "t", "client_id": "c"},
+        }
+        server = mod.build_server(cfg, secrets)
+        with pytest.raises(RuntimeError, match="outlook credentials missing"):
+            await server.dispatch("list_messages", {})
+
+    async def test_outlook_oauth_refresh_uses_merged_token(
+        self, monkeypatch, load_bundle, secrets
+    ):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        import importlib
+
+        outlook_mod = importlib.import_module("providers.outlook")
+
+        class _FakeApp:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def acquire_token_by_refresh_token(self, refresh_token, scopes):
+                assert refresh_token == "user-refresh-token"
+                return {"access_token": "graph-token"}
+
+        monkeypatch.setattr(outlook_mod.msal, "ConfidentialClientApplication", _FakeApp)
+
+        captured: dict = {}
+
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"value": []}
+
+            content = b"{}"
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                captured["url"] = url
+                captured["headers"] = kwargs.get("headers")
+                return _Resp()
+
+        monkeypatch.setattr(outlook_mod.httpx, "AsyncClient", _Client)
+
+        cfg = {
+            "email": {"provider": "outlook", "default_folder": "INBOX"},
+            "outlook": {
+                "tenant_id": "tenant",
+                "client_id": "client",
+                "client_secret": "secret",
+                "mailbox": "shared@company.com",
+                "auth": "oauth_refresh",
+                "refresh_token": "user-refresh-token",
+            },
+        }
+        server = mod.build_server(cfg, secrets)
+        await server.dispatch("list_messages", {})
+        assert captured["headers"]["Authorization"] == "Bearer graph-token"
+        assert "/me/mailFolders/inbox/messages" in captured["url"]
+
+    async def test_mask_error_details(self, load_bundle, secrets):
+        mod = load_bundle("mcp/email_bundle", "email_bundle")
+        server = mod.build_server({"mcp": {"mask_error_details": True}, "email": {"provider": "imap"}}, secrets)
+        with pytest.raises(RuntimeError, match="tool call failed"):
+            await server.dispatch("not_a_tool", {})

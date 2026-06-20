@@ -677,6 +677,31 @@ async def test_list_source_meta_pagination(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
+async def test_upsert_user_meta_email_config_validated(client: AsyncClient):
+    """PUT /api/user-meta validates email user sections."""
+    from backend.app import app
+
+    source = await _insert_source(
+        app.state, {"name": "email-server", "checksum": "sha256:" + "f" * 64}
+    )
+    resp = await client.put(
+        "/api/user-meta",
+        json={
+            "source_meta_id": source.id,
+            "principal_id": "hong",
+            "config": {
+                "email": {"from_address": "hong@company.com"},
+                "outlook": {"mailbox": "hong@company.com", "refresh_token": "rt-1"},
+            },
+        },
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["config"]["email"]["from_address"] == "hong@company.com"
+    assert data["config"]["outlook"]["mailbox"] == "hong@company.com"
+
+
 async def test_upsert_user_meta_create(client: AsyncClient):
     """PUT /api/user-meta creates a new record."""
     from backend.app import app

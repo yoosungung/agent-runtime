@@ -55,10 +55,12 @@ class BundleLoader:
         max_entries: int,
         verify_signatures: bool = False,
         signing_public_key: str | None = None,
+        on_evict: Callable[[str], None] | None = None,
     ) -> None:
         self._cache_root = Path(cache_dir)
         self._cache_root.mkdir(parents=True, exist_ok=True)
         self._max_entries = max_entries
+        self._on_evict = on_evict
         # keyed by checksum (or name:version fallback) -> factory callable
         self._entries: OrderedDict[str, Any] = OrderedDict()
         self._lock = threading.Lock()
@@ -89,7 +91,9 @@ class BundleLoader:
             self._entries[key] = entrypoint
             self._entries.move_to_end(key)
             while len(self._entries) > self._max_entries:
-                self._entries.popitem(last=False)
+                evicted_key, _ = self._entries.popitem(last=False)
+                if self._on_evict is not None:
+                    self._on_evict(evicted_key)
             return entrypoint
 
     def warm_checksums(self) -> set[str]:

@@ -26,21 +26,16 @@ bundles/
 
 ## 배포
 
-[deploy/examples/mcp-base/README.md](../deploy/examples/mcp-base/README.md) 의 배포 절차와 동일:
-
-1. 디렉토리를 zip (`app.py` 가 아카이브 루트)
-2. S3 / OCI / file URI 업로드
-3. admin `POST /admin/source-meta` 등록
-4. `user_resource_access` + (필요 시) `user_meta` / `secrets_ref`
+배포 절차 정본: [deploy/examples/mcp-base/README.md](../deploy/examples/mcp-base/README.md) (zip → upload → `source_meta` 등록 → ACL·`user_meta`).
 
 ## 테스트
 
-단위 테스트는 `deploy/examples/tests/` 에 두되, `load_bundle("mcp/outlook_bundle", …)` 처럼 `bundles/` 경로를 사용한다. conftest 가 `deploy/examples/` 다음 `bundles/` 를 순서대로 탐색한다.
+단위 테스트는 `deploy/examples/tests/` 에 두되, `load_bundle("mcp/email_bundle", …)` 처럼 `bundles/` 경로를 사용한다. conftest 가 `deploy/examples/` 다음 `bundles/` 를 순서대로 탐색한다.
 
 ## 번들 목록
 
 | 경로 | kind | name (예) | runtime_pool | 상태 |
 |------|------|-----------|--------------|------|
-| [mcp/outlook_bundle](mcp/) | mcp | `mail-server` | `mcp:mcp_sdk` | 예정 |
+| [mcp/email_bundle](mcp/email_bundle/) | mcp | `email-server` | `mcp:mcp_sdk` | 구현됨 |
 
 Agent 번들은 [agent/README.md](agent/README.md) 참조.

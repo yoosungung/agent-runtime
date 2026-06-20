@@ -17,13 +17,14 @@ from agent_base.general_agent import build_general_agent
 from agent_base.runner import run, run_stream
 from agent_base.settings import Settings
 from runtime_common.deploy_client import DeployApiClient
-from runtime_common.factory import call_factory, merge_configs
+from runtime_common.factory import merge_configs
+from runtime_common.instance_builder import build_secrets_resolver, get_or_build_cached_instance
+from runtime_common.instance_cache import InstanceCache
 from runtime_common.loader import BundleFetchError, BundleImportError, BundleLoader
 from runtime_common.logging import configure_logging
 from runtime_common.opik_tracing import configure_opik, opik_trace_context
 from runtime_common.registry import ActiveCounter, RegistryPublisher
 from runtime_common.schemas import Principal
-from runtime_common.secrets import EnvSecretResolver
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
 
 logger = logging.getLogger(__name__)
@@ -58,11 +59,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_metrics(settings.service_name, settings.otlp_endpoint)
     configure_opik(settings.opik_url, settings.opik_workspace)
 
+    instance_cache = InstanceCache(settings.instance_cache_max)
+
+    def _on_bundle_evict(checksum: str) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(instance_cache.invalidate_checksum(checksum))
+        except RuntimeError:
+            pass
+
     loader = BundleLoader(
         settings.bundle_cache_dir,
         settings.bundle_cache_max,
         verify_signatures=settings.bundle_verify_signatures,
         signing_public_key=settings.bundle_signing_public_key,
+        on_evict=_on_bundle_evict,
     )
     counter = ActiveCounter(settings.max_concurrent)
     deploy_client = DeployApiClient(settings.deploy_api_url)
@@ -97,6 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     app.state.loader = loader
+    app.state.instance_cache = instance_cache
     app.state.counter = counter
     app.state.deploy = deploy_client
     app.state.publisher = publisher
@@ -117,6 +129,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await publisher.stop()
+        await instance_cache.clear()
         await deploy_client.aclose()
         if vfs_pool is not None:
             await vfs_pool.close()
@@ -148,6 +161,7 @@ async def invoke(
     counter: ActiveCounter = app.state.counter
     deploy: DeployApiClient = app.state.deploy
     loader: BundleLoader = app.state.loader
+    cache: InstanceCache = app.state.instance_cache
 
     expected_pool = f"agent:{settings.runtime_kind}"
 
@@ -185,7 +199,7 @@ async def invoke(
         user = resolved.user
         user_cfg = user.config if user else {}
         merged_cfg = merge_configs(source.config, user_cfg)
-        secrets = EnvSecretResolver()
+        secrets = build_secrets_resolver(user)
 
         deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
         if deploy_mode == "general":
@@ -213,17 +227,15 @@ async def invoke(
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=500, detail=f"general agent build failed: {exc}") from exc
         else:
-            # Load bundle and get factory
             try:
-                factory = loader.load(source)
+                instance = await get_or_build_cached_instance(
+                    cache, source, user, loader, secrets
+                )
             except BundleFetchError as exc:
                 raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
             except BundleImportError as exc:
                 logger.error("bundle_import_failed", extra={"agent": req.agent, "error": str(exc)})
                 raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
-
-            # Instantiate via factory (supports zero-arg, (cfg,), (cfg, secrets))
-            instance = call_factory(factory, merged_cfg, secrets)
 
         user_id = str(principal.user_id) if principal.user_id else principal.sub
         opik_meta = {"version": req.version or "latest", "runtime_kind": settings.runtime_kind}

@@ -5,36 +5,59 @@
 **런타임 계약** — [deploy/examples/mcp-base/README.md](../../deploy/examples/mcp-base/README.md) 와 동일:
 
 - `def build_server(cfg: dict, secrets: SecretResolver) -> NativeObj`
-- tool별 API 키 → `source_meta.config` (예: `cfg["naver"]`, `cfg["microsoft"]`)
-- 인프라 DSN → `secrets_ref`
+- **source_meta.config** / **user_meta.config** / **secrets_ref** — 층 정의는 [ARCHITECTURE.md](../../ARCHITECTURE.md) §5. email-server 예시는 아래 및 [`email_bundle/README.md`](email_bundle/README.md).
 
-## 예정 / 운영 번들
+## email_bundle — IMAP / POP3 / Outlook / Gmail
 
-### outlook_bundle (예정)
-
-Microsoft Graph — shared mailbox 기준 메일 읽기·발송.
+[`email_bundle/`](email_bundle/) — `list_messages`, `read_message`, `send_message`.
 
 | 툴 | 설명 |
 |----|------|
-| `list_messages` | 받은편지함 목록 |
-| `get_message` | 본문 조회 |
-| `send_mail` | 메일 발송 |
+| `list_messages` | 폴더별 메일 목록 |
+| `read_message` | 본문 조회 |
+| `send_message` | plain-text 발송 |
+
+**deps**: `mcp>=1.27`, `httpx>=0.27`, `msal` (Outlook), `google-auth` (Gmail), `email-validator`
+
+**source_meta 등록 (Outlook + oauth_refresh 예시)**
 
 ```json
 {
   "mcp": {"mask_error_details": true},
-  "microsoft": {
-    "tenant_id": "...",
-    "client_id": "...",
-    "client_secret": "..."
-  },
-  "mailbox": "shared-inbox@company.com"
+  "email": {"provider": "outlook", "page_size": 25},
+  "outlook": {
+    "tenant_id": "<azure-tenant-id>",
+    "client_id": "<app-client-id>",
+    "client_secret": "<app-secret>",
+    "auth": "oauth_refresh"
+  }
 }
 ```
 
-1차: application permission + shared mailbox. 개인 받은편함(delegated)은 `secrets_ref` refresh token 으로 확장.
+```sql
+INSERT INTO source_meta (kind, name, version, runtime_pool, entrypoint, bundle_uri, checksum, config)
+VALUES (
+  'mcp', 'email-server', 'v1', 'mcp:mcp_sdk',
+  'app:build_server', 's3://bundles/email-server-v1.zip', 'sha256:<…>',
+  '{"mcp":{"mask_error_details":true},"email":{"provider":"outlook"},"outlook":{"tenant_id":"...","client_id":"...","client_secret":"...","auth":"oauth_refresh"}}'::jsonb
+);
+```
 
-**deps**: `mcp>=1.27`, `httpx>=0.27`, `msal`
+**user_meta upsert (principal별 mailbox)**
+
+```json
+{
+  "email": {"from_address": "hong@company.com"},
+  "outlook": {
+    "mailbox": "hong@company.com",
+    "refresh_token": "<delegated-oauth-refresh-token>"
+  }
+}
+```
+
+Admin: `PUT /api/user-meta` with `source_meta_id`, `principal_id`, `config`.
+
+**Naver search (전부 source)** — API 키는 shared이므로 `user_meta` 없이도 동작. 예: [deploy/examples/mcp-base/README.md](../../deploy/examples/mcp-base/README.md).
 
 ---
 

@@ -9,7 +9,7 @@
 - factory 시그니처: `def build_agent(cfg: dict, secrets: SecretResolver) -> NativeObj`
 - factory 는 `(checksum, principal_id, user.updated_at)` 조합당 **정확히 1회** 호출. 반환된 객체는 모든 invoke 에 재사용 ([packages/common/DESIGN.md](../../../packages/common/DESIGN.md) 의 instance_cache 참조).
 - 무거운 자원(LLM 클라이언트, DB 풀)은 factory 안에서 만들어도 안전.
-- **API 키는 `source_meta.config`** 에 직접 둔다 (이 프로젝트 컨벤션 — bundle/tool 별 자격증명은 cfg, 인프라 DSN 은 secrets_ref). 자세한 매핑은 [packages/common/src/runtime_common/config_schema.py](../../../packages/common/src/runtime_common/config_schema.py) 상단 참조.
+- **API 키는 `source_meta.config`** 에 직접 둔다 (bundle/tool 자격증명은 cfg, 인프라 DSN은 `secrets_ref`). 층 정의: [ARCHITECTURE.md](../../../ARCHITECTURE.md) §5. 필드 매핑: [config_schema.py](../../../packages/common/src/runtime_common/config_schema.py) 상단.
 - **MCP 호출 경로**: `agent_base.app.get_current_token()` 으로 사용자 JWT 를 잡아 `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` 에 `Authorization: Bearer ...` + `X-Runtime-Caller: agent-pool` 로 전달. ext-authz 의 grace 기간 검증 통과 후 mcp-pool 로 라우팅.
 
 ---

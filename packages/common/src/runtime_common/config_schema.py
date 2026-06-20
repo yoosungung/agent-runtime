@@ -3,13 +3,22 @@
 Single source of truth for source_meta.config and user_meta.config structure.
 Bundle factories read from the merged cfg dict; admin backend validates on write.
 
-Layout
-------
-Source (source_meta.config)  — immutable per version, set by bundle author / admin.
-User   (user_meta.config)    — per-principal overrides, mutable; only allowed keys exposed.
+Layout — deploy (source) vs invoke (user)
+-----------------------------------------
+Source (source_meta.config)  — set at registration / startup. Shared resources,
+  provider wiring, and credentials every principal needs for the agent/MCP to run.
+User   (user_meta.config)    — set per principal. Identity and overrides applied
+  at invoke time (mailbox uid, OAuth refresh token, quota, tone). Mutable.
+
+Example (email-server MCP):
+  source_meta.config  → provider=outlook, tenant_id, client_id, client_secret
+  user_meta.config    → mailbox, refresh_token, from_address (per user)
+
+Tool call arguments (folder, limit, query) are invoke payload — not user_meta.
 
 Sections are namespaced by runtime kind so keys never collide across frameworks.
-Infrastructure secrets (DSNs, API keys) go in secrets_ref, never in config.
+Shared service credentials may live in source_meta.config; principal-bound
+credentials belong in user_meta.config or user_meta.secrets_ref.
 
 secrets_ref key conventions (UPPERCASE — matches env var convention used by EnvSecretResolver):
   langgraph.checkpointer=postgres   → secrets_ref["CHECKPOINTER_DSN"]
@@ -183,6 +192,82 @@ class McpSdkSourceConfig(BaseModel):
     )
 
 
+# ── Email MCP (mcp:mcp_sdk — email_bundle) ───────────────────────────────────
+
+class EmailSourceConfig(BaseModel):
+    """source_meta.config['email'] — provider selection and shared defaults."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["imap", "pop3", "outlook", "gmail"]
+    default_folder: str = "INBOX"
+    page_size: int = Field(default=25, ge=1, le=50)
+    body_max_bytes: int = Field(default=32768, ge=1)
+    from_address: str | None = Field(
+        default=None,
+        description="Default From address when not overridden per principal.",
+    )
+
+
+class EmailUserConfig(BaseModel):
+    """user_meta.config['email'] — per-principal mailbox identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_address: str | None = None
+
+
+class OutlookSourceConfig(BaseModel):
+    """source_meta.config['outlook'] — Microsoft Graph app registration (shared)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    client_id: str
+    client_secret: str | None = None
+    client_secret_ref: str | None = Field(
+        default=None,
+        description="Env var name resolved via SecretResolver when client_secret omitted.",
+    )
+    auth: Literal["client_credentials", "oauth_refresh"] = "client_credentials"
+    mailbox: str | None = Field(
+        default=None,
+        description="Shared mailbox for client_credentials mode.",
+    )
+
+
+class OutlookUserConfig(BaseModel):
+    """user_meta.config['outlook'] — delegated mailbox credentials."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mailbox: str | None = None
+    refresh_token: str | None = None
+
+
+class GmailSourceConfig(BaseModel):
+    """source_meta.config['gmail'] — Gmail API app registration (shared)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    auth: Literal["service_account", "oauth_refresh"] = "service_account"
+    client_id: str | None = None
+    client_secret: str | None = None
+    client_secret_ref: str | None = None
+    subject_email: str | None = Field(
+        default=None,
+        description="Delegated subject for service_account mode.",
+    )
+
+
+class GmailUserConfig(BaseModel):
+    """user_meta.config['gmail'] — per-principal OAuth refresh."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str | None = None
+
+
 # ── General Agent (deploy_mode: general) ─────────────────────────────────────
 
 class GeneralVfsConfig(BaseModel):
@@ -254,6 +339,9 @@ class SourceConfig(BaseModel):
     fastmcp: FastMcpSourceConfig = Field(default_factory=FastMcpSourceConfig)
     mcp: McpSdkSourceConfig = Field(default_factory=McpSdkSourceConfig)
     general: GeneralAgentSourceConfig | None = None
+    email: EmailSourceConfig | None = None
+    outlook: OutlookSourceConfig | None = None
+    gmail: GmailSourceConfig | None = None
 
 
 class UserConfig(BaseModel):
@@ -271,4 +359,7 @@ class UserConfig(BaseModel):
     langgraph: LangGraphUserConfig | None = None
     adk: AdkUserConfig | None = None
     general: GeneralAgentUserConfig | None = None
-    # fastmcp / mcp: no per-principal overrides
+    email: EmailUserConfig | None = None
+    outlook: OutlookUserConfig | None = None
+    gmail: GmailUserConfig | None = None
+    # fastmcp / mcp SDK sections: no per-principal overrides beyond bundle-specific keys

@@ -2,6 +2,62 @@
 
 런타임의 Kubernetes 배포 매니페스트(`k8s/`) + 배포 가능한 사용자 번들 샘플(`examples/`). Kustomize 기반. 네임스페이스 `runtime`.
 
+## K8s 디렉터리 (`k8s/`)
+
+```
+deploy/k8s/
+  base/                 # 공통 정의 (namespace: runtime)
+    namespace.yaml
+    postgres.yaml
+    redis.yaml
+    auth.yaml
+    deploy-api.yaml
+    backend.yaml
+    ext-authz.yaml
+    envoy.yaml
+    agent-pool-compiled-graph.yaml
+    agent-pool-adk.yaml
+    mcp-pool-fastmcp.yaml
+    mcp-pool-mcp-sdk.yaml
+    ingress.yaml        # prod/stage: agents.didim365.app
+    ...
+  overlays/
+    dev/                # GHCR images, agents.k8s-test Ingress, replicas=1, no KEDA
+    stage/
+    prod/
+```
+
+적용:
+
+```bash
+make k8s-apply-dev
+make k8s-rollout-restart   # Release 후 :latest pull
+```
+
+### dev overlay 차이
+
+| 설정 | dev | stage/prod (base) |
+|------|-----|-------------------|
+| Ingress | `agents.k8s-test`, HTTP only (no TLS) | `agents.didim365.app` + Let's Encrypt |
+| Image registry | GHCR remap + `imagePullSecrets` | overlay별 |
+| Replicas | 1 (모든 Deployment) | HPA/KEDA 기본값 |
+| KEDA ScaledObject | 제거 | 활성 |
+| Postgres | direct (`pgbouncer` replicas=0) | pgbouncer 경유 |
+| `ENV` / `LOG_LEVEL` | dev / DEBUG | stage·prod / INFO |
+
+### 외부 vs 클러스터 내부 URL
+
+| 용도 | URL |
+|------|-----|
+| Browser / admin SPA / `/api/*` | `http://agents.k8s-test/` (dev, `/etc/hosts`) |
+| External agent invoke | `http://agents.k8s-test/v1/agents/...` |
+| Pod-to-pod MCP (`MCP_GATEWAY_URL`) | `http://envoy.runtime.svc.cluster.local:8080` |
+| Backend chat invoke (`ENVOY_URL`) | 동일 internal envoy |
+
+`/v1/mcp/invoke-internal`은 공개 Ingress에 없음 — agent pool이 클러스터 내 envoy Service로 직접 호출.
+
+각 pool은 동일 base image + 다른 `RUNTIME_KIND` env의 별도 `Deployment`.
+
 ## 설계
 
 - **레이아웃**: `k8s/base/` (공통 정의) + `k8s/overlays/{dev,prod}` (오버레이 패치).
@@ -130,7 +186,7 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 | | `deploy/examples/` | `bundles/` (repo root) |
 |---|---|---|
 | 목적 | 런타임·프레임워크 **학습용** 샘플 | **운영** 업무 번들 |
-| MCP | `mcp-base/` (fastmcp, mcp_sdk 튜토리얼) | `bundles/mcp/` (Outlook 등 외부 연동) |
+| MCP | `mcp-base/` (fastmcp, mcp_sdk 튜토리얼) | `bundles/mcp/` (email 등 외부 연동) |
 | Agent | `agent-base/` (DeepAgent, ADK 데모) | `bundles/agent/` (업무 agent) |
 
 배포·factory·`source_meta` 계약은 동일. zip → upload → admin 등록. 번들 테스트 로더는 examples를 먼저, 없으면 `bundles/` 를 탐색 ([conftest.py](examples/tests/conftest.py)).

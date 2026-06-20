@@ -15,7 +15,7 @@ export function UserMetaEditPage() {
   const decodedPrincipal = decodeURIComponent(principal ?? "");
 
   const { data: sourceMeta } = useSourceMetaById(numSourceMetaId);
-  const { data: userMeta } = useUserMeta(numSourceMetaId, decodedPrincipal);
+  const { data: userMeta, isFetched } = useUserMeta(numSourceMetaId, decodedPrincipal);
   const upsertMut = useUpsertUserMeta();
 
   const [userConfig, setUserConfig] = useState<Record<string, unknown>>({});
@@ -24,13 +24,17 @@ export function UserMetaEditPage() {
   const [success, setSuccess] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
+  const [helpOpen, setHelpOpen] = useState(false);
+
   useEffect(() => {
-    if (!initialized && userMeta) {
-      setUserConfig(userMeta.config ?? {});
-      setSecretsRef(userMeta.secrets_ref ?? "");
+    if (!initialized && isFetched) {
+      if (userMeta) {
+        setUserConfig(userMeta.config ?? {});
+        setSecretsRef(userMeta.secrets_ref ?? "");
+      }
       setInitialized(true);
     }
-  }, [userMeta, initialized]);
+  }, [userMeta, initialized, isFetched]);
 
   const sourceConfig = sourceMeta?.config ?? {};
   const merged = mergeConfigs(sourceConfig, userConfig);
@@ -80,11 +84,34 @@ export function UserMetaEditPage() {
         </p>
       )}
 
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setHelpOpen((v) => !v)}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          {helpOpen ? "Hide" : "Show"} email MCP example (source vs user)
+        </button>
+        {helpOpen && (
+          <pre className="mt-2 text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-x-auto text-gray-700">
+{`// source_meta — provider + app registration (기동)
+{ "email": { "provider": "outlook" },
+  "outlook": { "tenant_id": "...", "client_id": "...", "client_secret": "..." } }
+
+// user_meta — mailbox identity (invoke, this principal)
+{ "email": { "from_address": "hong@company.com" },
+  "outlook": { "mailbox": "hong@company.com", "refresh_token": "..." } }`}
+          </pre>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-700 mb-3">
             Source Config{" "}
-            <span className="text-xs font-normal text-gray-400">(read-only)</span>
+            <span className="text-xs font-normal text-gray-400">
+              (기동 시 공통 — source_meta)
+            </span>
           </h2>
           <JsonEditor
             value={sourceConfig}
@@ -97,7 +124,7 @@ export function UserMetaEditPage() {
           <h2 className="text-base font-semibold text-gray-700 mb-3">
             User Config{" "}
             <span className="text-xs font-normal text-gray-400">
-              (user overrides)
+              (호출 시 사용자별 — user_meta)
             </span>
           </h2>
           <JsonEditor value={userConfig} onChange={setUserConfig} />

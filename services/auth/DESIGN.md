@@ -31,7 +31,7 @@ Postgres는 아키텍처 상 **auth / deploy-api에만 연결**된다. 따라서
 ### 만료 유예 (grace)
 - `GRACE_MAX_SEC` (env, 기본 `600`): `/verify` 호출자가 요청하는 `grace_sec`의 서버측 절대 상한.
 - `grace_sec`이 0 초과인 호출을 **허용할지**는 auth가 판정하지 않는다 — caller(gateway)가 내부 경로 식별 후에만 0 초과 값을 보내야 한다. auth는 어차피 `GRACE_MAX_SEC`로 clamp하므로 악의적 caller의 최대 악영향은 상한까지.
-- 엣지 gateway는 `grace_sec` 생략(=0). 전체 정책은 `/DESIGN.md`의 "내부 호출의 토큰 Grace Period" 참조.
+- 엣지 gateway는 `grace_sec` 생략(=0). 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period" 참조.
 
 ### 테이블 (신규)
 마이그레이션은 [`backend/migrations/0001_init.sql`](../../backend/migrations/0001_init.sql)에 통합(모든 테이블 단일 파일).

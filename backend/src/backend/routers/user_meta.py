@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.deps import check_csrf, get_db, require_admin
+from runtime_common.config_schema import UserConfig
 from runtime_common.db.models import SourceMetaRow, UserMetaRow
 
 logger = logging.getLogger(__name__)
@@ -59,14 +60,16 @@ def _validate_secrets_ref(secrets_ref: str | None) -> None:
         )
 
 
-def _validate_config(config: dict | None) -> None:
+def _validate_config(config: dict | None) -> dict:
     if config is None:
-        return
+        return {}
     import json
 
     serialized = json.dumps(config)
     if len(serialized.encode()) > MAX_CONFIG_BYTES:
         raise HTTPException(status_code=413, detail="config exceeds 64KB limit")
+    validated = UserConfig.model_validate(config)
+    return validated.model_dump(mode="json", exclude_none=True)
 
 
 @router.get("", response_model=UserMetaListResponse)
@@ -124,7 +127,7 @@ async def upsert_user_meta(
     body: UserMetaUpsertRequest,
     db: AsyncSession = Depends(get_db),
 ) -> UserMetaResponse:
-    _validate_config(body.config)
+    config = _validate_config(body.config)
     _validate_secrets_ref(body.secrets_ref)
 
     # Verify source_meta exists
@@ -147,13 +150,13 @@ async def upsert_user_meta(
         row = UserMetaRow(
             source_meta_id=body.source_meta_id,
             principal_id=body.principal_id,
-            config=body.config or {},
+            config=config,
             secrets_ref=body.secrets_ref,
         )
         db.add(row)
     else:
         if body.config is not None:
-            row.config = body.config
+            row.config = config
         if body.secrets_ref is not None:
             row.secrets_ref = body.secrets_ref
         row.updated_at = datetime.now(UTC)
