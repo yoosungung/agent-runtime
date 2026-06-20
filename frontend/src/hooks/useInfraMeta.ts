@@ -6,6 +6,8 @@ export const INFRA_UI_ENV_KEYS = {
   opikUrl: "OPIK_URL",
   opikWorkspace: "OPIK_WORKSPACE",
   defaultLlmModel: "DEFAULT_LLM_MODEL",
+  openaiApiBase: "OPENAI_API_BASE",
+  llmRuntime: "LLM_RUNTIME",
   otlpEndpoint: "OTLP_ENDPOINT",
 } as const;
 

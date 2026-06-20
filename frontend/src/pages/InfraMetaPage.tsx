@@ -11,6 +11,14 @@ import {
   FormPageLayout,
   formPrimaryButtonClassName,
 } from "../components/FormPageLayout";
+import { LlmDefaultsEditor } from "../components/LlmDefaultsEditor";
+import {
+  DEFAULT_LLM_INFRA,
+  llmInfraEquals,
+  parseLlmInfraFromEnv,
+  serializeLlmInfraToEnv,
+  type LlmInfraFormState,
+} from "../lib/llmInfra";
 
 const SECRET_LABELS: Record<(typeof INFRA_UI_SECRET_KEYS)[number], string> = {
   OPENAI_API_KEY: "OpenAI API Key",
@@ -25,7 +33,7 @@ export function InfraMetaPage() {
 
   const [opikUrl, setOpikUrl] = useState("");
   const [opikWorkspace, setOpikWorkspace] = useState("default");
-  const [defaultModel, setDefaultModel] = useState("");
+  const [llmConfig, setLlmConfig] = useState<LlmInfraFormState>(DEFAULT_LLM_INFRA);
   const [otlpEndpoint, setOtlpEndpoint] = useState("");
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -35,9 +43,10 @@ export function InfraMetaPage() {
     const env = data.env ?? {};
     setOpikUrl(env[INFRA_UI_ENV_KEYS.opikUrl] ?? "");
     setOpikWorkspace(env[INFRA_UI_ENV_KEYS.opikWorkspace] ?? "default");
-    setDefaultModel(env[INFRA_UI_ENV_KEYS.defaultLlmModel] ?? "");
+    const nextLlm = parseLlmInfraFromEnv(env);
+    setLlmConfig((prev) => (llmInfraEquals(prev, nextLlm) ? prev : nextLlm));
     setOtlpEndpoint(env[INFRA_UI_ENV_KEYS.otlpEndpoint] ?? "");
-    setSecrets({});
+    setSecrets((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [data]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -47,8 +56,8 @@ export function InfraMetaPage() {
     const env: Record<string, string> = {
       [INFRA_UI_ENV_KEYS.opikUrl]: opikUrl.trim(),
       [INFRA_UI_ENV_KEYS.opikWorkspace]: opikWorkspace.trim() || "default",
-      [INFRA_UI_ENV_KEYS.defaultLlmModel]: defaultModel.trim(),
       [INFRA_UI_ENV_KEYS.otlpEndpoint]: otlpEndpoint.trim(),
+      ...serializeLlmInfraToEnv(llmConfig),
     };
 
     const secretsPayload = Object.fromEntries(
@@ -80,7 +89,7 @@ export function InfraMetaPage() {
   return (
     <FormPageLayout
       title="Platform Infra"
-      description="Common pool pod settings (Opik, LLM keys, observability). Additional env vars can be set via PUT /api/infra-meta."
+      description="Common pool pod settings (Opik, LLM defaults, observability). Additional env vars can be set via PUT /api/infra-meta."
     >
       <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
         <section className="space-y-4">
@@ -118,16 +127,12 @@ export function InfraMetaPage() {
 
         <section className="space-y-4">
           <h2 className="text-lg font-medium text-gray-900">LLM Defaults</h2>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-gray-700">Default LLM Model</span>
-            <input
-              type="text"
-              value={defaultModel}
-              onChange={(e) => setDefaultModel(e.target.value)}
-              placeholder="openai:gpt-4o-mini"
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
+          <p className="text-sm text-gray-500">
+            Platform-wide default model for agents without an explicit{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">langgraph.model</code> override.
+            Frontier providers use API keys below; vLLM/SGLang use an OpenAI-compatible base URL.
+          </p>
+          <LlmDefaultsEditor value={llmConfig} onChange={setLlmConfig} />
         </section>
 
         <section className="space-y-4">

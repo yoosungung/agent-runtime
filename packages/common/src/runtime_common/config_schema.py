@@ -436,6 +436,14 @@ class InfraConfig(BaseModel):
         default=None,
         description="Optional platform default model spec → DEFAULT_LLM_MODEL",
     )
+    openai_api_base: str | None = Field(
+        default=None,
+        description="OpenAI-compatible base URL for vLLM/SGLang → OPENAI_API_BASE",
+    )
+    llm_runtime: str | None = Field(
+        default=None,
+        description="Self-hosted runtime hint (vllm|sglang) → LLM_RUNTIME",
+    )
     otlp_endpoint: str | None = Field(
         default=None,
         description="Pool OTLP endpoint override → OTLP_ENDPOINT",

@@ -26,6 +26,8 @@ _LEGACY_ENV_ALIASES: dict[str, str] = {
     "opik_url": "OPIK_URL",
     "opik_workspace": "OPIK_WORKSPACE",
     "default_llm_model": "DEFAULT_LLM_MODEL",
+    "openai_api_base": "OPENAI_API_BASE",
+    "llm_runtime": "LLM_RUNTIME",
     "otlp_endpoint": "OTLP_ENDPOINT",
 }
 
