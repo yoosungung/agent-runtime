@@ -632,3 +632,427 @@ class TestEmailBundle:
         server = mod.build_server({"mcp": {"mask_error_details": True}, "email": {"provider": "imap"}}, secrets)
         with pytest.raises(RuntimeError, match="tool call failed"):
             await server.dispatch("not_a_tool", {})
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# calendar_outlook_bundle (Microsoft Graph Calendar)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _outlook_calendar_cfg() -> dict:
+    return {
+        "mcp": {"mask_error_details": False},
+        "calendar": {"page_size": 25, "timezone": "Asia/Seoul"},
+        "outlook": {
+            "tenant_id": "tenant",
+            "client_id": "client",
+            "client_secret": "secret",
+            "mailbox": "user@company.com",
+            "auth": "oauth_refresh",
+            "refresh_token": "user-refresh-token",
+        },
+    }
+
+
+class TestCalendarOutlookBundle:
+    async def test_list_tools_exposes_seven(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_outlook_bundle", "calendar_outlook_bundle")
+        server = mod.build_server(_outlook_calendar_cfg(), secrets)
+        tools = await server.list_tools()
+        names = {t["name"] for t in tools}
+        assert names == {
+            "list_calendars",
+            "list_events",
+            "get_event",
+            "find_availability",
+            "create_event",
+            "update_event",
+            "cancel_event",
+        }
+
+    async def test_without_credentials_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_outlook_bundle", "calendar_outlook_bundle")
+        cfg = {"outlook": {"tenant_id": "t", "client_id": "c", "auth": "oauth_refresh"}}
+        server = mod.build_server(cfg, secrets)
+        with pytest.raises(RuntimeError, match="outlook credentials missing"):
+            await server.dispatch("list_calendars", {})
+
+    async def test_list_calendars_oauth_refresh(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_outlook_bundle", "calendar_outlook_bundle")
+        import importlib
+
+        client_mod = importlib.import_module("client")
+
+        class _FakeApp:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def acquire_token_by_refresh_token(self, refresh_token, scopes):
+                assert refresh_token == "user-refresh-token"
+                return {"access_token": "graph-token"}
+
+        monkeypatch.setattr(client_mod.msal, "ConfidentialClientApplication", _FakeApp)
+
+        captured: dict = {}
+
+        class _Resp:
+            status_code = 200
+            content = b"{}"
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {
+                    "value": [
+                        {"id": "cal-1", "name": "Calendar", "isDefaultCalendar": True},
+                    ]
+                }
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                captured["url"] = url
+                captured["headers"] = kwargs.get("headers")
+                return _Resp()
+
+        monkeypatch.setattr(client_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(_outlook_calendar_cfg(), secrets)
+        result = await server.dispatch("list_calendars", {})
+        assert captured["headers"]["Authorization"] == "Bearer graph-token"
+        assert "/me/calendars" in captured["url"]
+        assert result["calendars"][0]["id"] == "cal-1"
+        assert result["calendars"][0]["is_default"] is True
+
+    async def test_create_event_posts_payload(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_outlook_bundle", "calendar_outlook_bundle")
+        import importlib
+
+        client_mod = importlib.import_module("client")
+
+        class _FakeApp:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def acquire_token_by_refresh_token(self, refresh_token, scopes):
+                return {"access_token": "graph-token"}
+
+        monkeypatch.setattr(client_mod.msal, "ConfidentialClientApplication", _FakeApp)
+
+        captured: dict = {}
+
+        class _Resp:
+            status_code = 201
+            content = b"{}"
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"id": "evt-1", "webLink": "https://example.com/event"}
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                captured["method"] = method
+                captured["json"] = kwargs.get("json")
+                return _Resp()
+
+        monkeypatch.setattr(client_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(_outlook_calendar_cfg(), secrets)
+        result = await server.dispatch(
+            "create_event",
+            {
+                "subject": "Sync",
+                "start": "2026-06-20T10:00:00",
+                "end": "2026-06-20T11:00:00",
+                "is_online_meeting": True,
+            },
+        )
+        assert captured["method"] == "POST"
+        assert captured["json"]["subject"] == "Sync"
+        assert captured["json"]["isOnlineMeeting"] is True
+        assert result["status"] == "created"
+        assert result["id"] == "evt-1"
+
+    async def test_mask_error_details(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_outlook_bundle", "calendar_outlook_bundle")
+        server = mod.build_server(
+            {"mcp": {"mask_error_details": True}, "outlook": {"auth": "oauth_refresh"}},
+            secrets,
+        )
+        with pytest.raises(RuntimeError, match="tool call failed"):
+            await server.dispatch("not_a_tool", {})
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# calendar_google_bundle (Google Calendar API)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _google_calendar_cfg() -> dict:
+    return {
+        "mcp": {"mask_error_details": False},
+        "calendar": {"page_size": 25, "timezone": "Asia/Seoul", "create_meet_link": True},
+        "google": {
+            "client_id": "client",
+            "client_secret": "secret",
+            "auth": "oauth_refresh",
+            "refresh_token": "user-refresh-token",
+        },
+    }
+
+
+class TestCalendarGoogleBundle:
+    async def test_list_tools_exposes_seven(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_google_bundle", "calendar_google_bundle")
+        server = mod.build_server(_google_calendar_cfg(), secrets)
+        tools = await server.list_tools()
+        names = {t["name"] for t in tools}
+        assert names == {
+            "list_calendars",
+            "list_events",
+            "get_event",
+            "find_availability",
+            "create_event",
+            "update_event",
+            "cancel_event",
+        }
+
+    async def test_without_credentials_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_google_bundle", "calendar_google_bundle")
+        cfg = {"google": {"client_id": "c", "auth": "oauth_refresh"}}
+        server = mod.build_server(cfg, secrets)
+        with pytest.raises(RuntimeError, match="google credentials missing"):
+            await server.dispatch("list_calendars", {})
+
+    async def test_list_calendars_oauth_refresh(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_google_bundle", "calendar_google_bundle")
+        import importlib
+
+        client_mod = importlib.import_module("client")
+
+        class _Creds:
+            token = "google-token"
+
+            def refresh(self, _request) -> None:
+                return None
+
+        monkeypatch.setattr(
+            client_mod.oauth_credentials,
+            "Credentials",
+            lambda **kwargs: _Creds(),
+        )
+
+        captured: dict = {}
+
+        class _Resp:
+            status_code = 200
+            content = b"{}"
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"items": [{"id": "primary", "summary": "Primary", "primary": True}]}
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                captured["url"] = url
+                captured["headers"] = kwargs.get("headers")
+                return _Resp()
+
+        monkeypatch.setattr(client_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(_google_calendar_cfg(), secrets)
+        result = await server.dispatch("list_calendars", {})
+        assert captured["headers"]["Authorization"] == "Bearer google-token"
+        assert "/calendar/v3/users/me/calendarList" in captured["url"]
+        assert result["calendars"][0]["id"] == "primary"
+
+    async def test_mask_error_details(self, load_bundle, secrets):
+        mod = load_bundle("mcp/calendar_google_bundle", "calendar_google_bundle")
+        server = mod.build_server(
+            {"mcp": {"mask_error_details": True}, "google": {"auth": "oauth_refresh"}},
+            secrets,
+        )
+        with pytest.raises(RuntimeError, match="tool call failed"):
+            await server.dispatch("not_a_tool", {})
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# teams_bundle (Microsoft Graph Teams + Chat)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _teams_cfg() -> dict:
+    return {
+        "mcp": {"mask_error_details": False},
+        "teams": {
+            "page_size": 25,
+            "default_team_id": "team-1",
+            "default_channel_id": "channel-1",
+        },
+        "outlook": {
+            "tenant_id": "tenant",
+            "client_id": "client",
+            "client_secret": "secret",
+            "auth": "oauth_refresh",
+            "refresh_token": "user-refresh-token",
+        },
+    }
+
+
+class TestTeamsBundle:
+    async def test_list_tools_exposes_eight(self, load_bundle, secrets):
+        mod = load_bundle("mcp/teams_bundle", "teams_bundle")
+        server = mod.build_server(_teams_cfg(), secrets)
+        tools = await server.list_tools()
+        names = {t["name"] for t in tools}
+        assert names == {
+            "list_joined_teams",
+            "list_channels",
+            "list_chats",
+            "list_channel_messages",
+            "list_chat_messages",
+            "send_channel_message",
+            "send_chat_message",
+            "create_chat",
+        }
+
+    async def test_list_joined_teams(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/teams_bundle", "teams_bundle")
+        import importlib
+
+        client_mod = importlib.import_module("client")
+
+        class _FakeApp:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def acquire_token_by_refresh_token(self, refresh_token, scopes):
+                return {"access_token": "graph-token"}
+
+        monkeypatch.setattr(client_mod.msal, "ConfidentialClientApplication", _FakeApp)
+
+        class _Resp:
+            status_code = 200
+            content = b"{}"
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {
+                    "value": [
+                        {"id": "team-1", "displayName": "Engineering", "description": "Eng"},
+                    ]
+                }
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                return _Resp()
+
+        monkeypatch.setattr(client_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(_teams_cfg(), secrets)
+        result = await server.dispatch("list_joined_teams", {})
+        assert result["teams"][0]["name"] == "Engineering"
+
+    async def test_send_chat_message(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/teams_bundle", "teams_bundle")
+        import importlib
+
+        client_mod = importlib.import_module("client")
+
+        class _FakeApp:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def acquire_token_by_refresh_token(self, refresh_token, scopes):
+                return {"access_token": "graph-token"}
+
+        monkeypatch.setattr(client_mod.msal, "ConfidentialClientApplication", _FakeApp)
+
+        captured: dict = {}
+
+        class _Resp:
+            status_code = 201
+            content = b"{}"
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"id": "msg-1"}
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def request(self, method, url, **kwargs):
+                captured["method"] = method
+                captured["json"] = kwargs.get("json")
+                return _Resp()
+
+        monkeypatch.setattr(client_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(_teams_cfg(), secrets)
+        result = await server.dispatch(
+            "send_chat_message",
+            {"chat_id": "chat-1", "content": "Hello"},
+        )
+        assert captured["method"] == "POST"
+        assert captured["json"]["body"]["content"] == "Hello"
+        assert result["status"] == "sent"
+
+    async def test_mask_error_details(self, load_bundle, secrets):
+        mod = load_bundle("mcp/teams_bundle", "teams_bundle")
+        server = mod.build_server(
+            {"mcp": {"mask_error_details": True}, "outlook": {"auth": "oauth_refresh"}},
+            secrets,
+        )
+        with pytest.raises(RuntimeError, match="tool call failed"):
+            await server.dispatch("not_a_tool", {})

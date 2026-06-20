@@ -31,6 +31,12 @@ spec:
           envFrom:
             - configMapRef:
                 name: runtime-env
+            - configMapRef:
+                name: runtime-infra
+                optional: true
+            - secretRef:
+                name: runtime-infra-secrets
+                optional: true
           env:
             - name: SERVICE_NAME
               value: mcp-pool-fastmcp

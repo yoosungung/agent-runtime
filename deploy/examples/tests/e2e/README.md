@@ -21,12 +21,15 @@ export OPENAI_API_KEY='sk-...'      # 두 agent 모두 OpenAI로 LLM 호출
 | `ADMIN_USER` | `admin` | 로그인 계정 |
 | `OPENAI_API_KEY` | (선택) | DeepAgent / ADK 양쪽 모두 OpenAI 모델 사용 |
 | `OPENAI_MODEL` | `openai:gpt-4o-mini` | 두 agent 의 model spec |
+| `OPIK_URL` | (선택) | Opik 서버 URL — infra_meta 로 pool env 주입 |
+| `OPIK_WORKSPACE` | `default` | Opik workspace |
+| `DEFAULT_LLM_MODEL` | `OPENAI_MODEL` 과 동일 | infra_meta platform default |
 | `ANTHROPIC_API_KEY` | (선택) | DeepAgent 가 `anthropic:` 모델일 때 |
 | `GOOGLE_API_KEY` | (선택) | ADK 가 `google:gemini-...` 모델일 때 |
 | `NAVER_CLIENT_ID` | (선택) | search-server 의 `naver_search` 툴이 사용 |
 | `NAVER_CLIENT_SECRET` | (선택) | 동일 |
 
-LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 step 5 의 invoke 가 5xx 로 떨어진다(스크립트가 warn 한다).
+LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 step 6 의 invoke 가 5xx 로 떨어진다(스크립트가 warn 한다).
 
 의존성: `curl`, `jq`, `zip`.
 
@@ -35,10 +38,11 @@ LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 st
 | 단계 | 엔드포인트 | 동작 |
 |---|---|---|
 | 1. login | `POST /api/auth/login` | 백엔드 BFF 가 auth 서비스에 위임 후 `access_token` / `refresh_token` / `csrf_token` 쿠키 발급. 이후 admin API 는 cookie + `X-CSRF-Token` 헤더, agent invoke 는 `Authorization: Bearer <access_token cookie 값>`. |
-| 2. zip + register | `POST /api/source-meta/bundle` (multipart) | 4개 번들 디렉토리를 zip(루트에 `app.py`)으로 묶어 업로드. **`meta` JSON 의 `config` 필드에 LLM/Naver 키를 env 에서 읽어 주입** — 시크릿이 git 에 들어가지 않게 한다. backend 가 zip 을 S3 / 로컬에 저장하고 sha256 계산 후 `source_meta` 행을 만든다. |
-| 3. user_meta upsert | `PUT /api/user-meta` | 2개 agent 에 대해 admin 사용자의 `mcp_server` override 등록 — 1-depth deep merge 경로 검증용. |
-| 4. grant access | `POST /api/users/{id}/access` | `(admin, kind, name)` 4쌍을 `user_resource_access` 에 INSERT. **admin 도 자동 면제 아님** — `Principal.can_access` 가 명시 row 를 요구. |
-| 5. invoke | `POST /v1/agents/invoke` | 두 agent 를 각각 호출. ADK 는 자체 `calculate` 툴 사용 / DeepAgent 는 LLM 응답. MCP 호출은 LLM 이 판단 시 `MCP_GATEWAY_URL/v1/mcp/invoke-internal` 경유 (Naver 키 있을 때만 의미). |
+| 2. infra_meta | `PUT /api/infra-meta` | LLM API 키·Opik URL 을 **infra_meta** 로 등록 → backend 가 K8s ConfigMap/Secret 에 reconcile 후 pool pod env 로 주입. |
+| 3. zip + register | `POST /api/source-meta/bundle` (multipart) | 4개 번들 디렉토리를 zip(루트에 `app.py`)으로 묶어 업로드. **`meta.config` 에 Naver 키만** (LLM 키는 infra_meta). backend 가 zip 을 S3 / 로컬에 저장하고 sha256 계산 후 `source_meta` 행을 만든다. |
+| 4. user_meta upsert | `PUT /api/user-meta` | 2개 agent 에 대해 admin 사용자의 `mcp_server` override 등록 — 1-depth deep merge 경로 검증용. |
+| 5. grant access | `POST /api/users/{id}/access` | `(admin, kind, name)` 4쌍을 `user_resource_access` 에 INSERT. **admin 도 자동 면제 아님** — `Principal.can_access` 가 명시 row 를 요구. |
+| 6. invoke | `POST /v1/agents/invoke` | 두 agent 를 각각 호출. ADK 는 자체 `calculate` 툴 사용 / DeepAgent 는 LLM 응답. MCP 호출은 LLM 이 판단 시 `MCP_GATEWAY_URL/v1/mcp/invoke-internal` 경유 (Naver 키 있을 때만 의미). |
 
 ## 등록되는 번들
 
@@ -53,7 +57,8 @@ LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 st
 
 ## 키 / config 분리 컨벤션
 
-- **API 키 (LLM, Naver)** — `source_meta.config` 에 직접 (예: `cfg["openai_api_key"]`, `cfg["naver"]["client_id"]`). 번들 코드가 cfg 에서 읽어 필요 시 env var 로 export.
+- **플랫폼 LLM API 키** — `infra_meta` → K8s Secret → pool pod env (`OPENAI_API_KEY` 등). 번들 factory 는 env 에서 직접 읽음.
+- **Naver Search 키** — `source_meta.config.naver` (번들 도메인 credential).
 - **인프라 DSN** — `secrets_ref` 경유 (이 e2e 는 `checkpointer: "none"` 이라 DSN 불필요).
 
 자세한 컨벤션은 [packages/common/src/runtime_common/config_schema.py](../../../../packages/common/src/runtime_common/config_schema.py) 상단 docstring 참조.

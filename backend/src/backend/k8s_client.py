@@ -24,6 +24,27 @@ _MANAGED_LABELS = {
     "runtime/role": "pool",
 }
 
+_INFRA_MANAGED_LABELS = {
+    "runtime/managed-by": "backend",
+    "runtime/role": "infra",
+}
+
+RUNTIME_INFRA_CONFIGMAP = "runtime-infra"
+RUNTIME_INFRA_SECRET = "runtime-infra-secrets"
+
+BUNDLE_POOL_DEPLOYMENTS = (
+    "agent-pool-compiled-graph",
+    "agent-pool-adk",
+    "mcp-pool-fastmcp",
+    "mcp-pool-mcp-sdk",
+)
+
+_POOL_ENV_FROM = [
+    {"configMapRef": {"name": "runtime-env"}},
+    {"configMapRef": {"name": RUNTIME_INFRA_CONFIGMAP, "optional": True}},
+    {"secretRef": {"name": RUNTIME_INFRA_SECRET, "optional": True}},
+]
+
 
 async def make_api_client(settings: Settings) -> ApiClient:
     """Create a kubernetes ApiClient using in-cluster config or kubeconfig."""
@@ -76,6 +97,7 @@ def _deployment_manifest(
         "name": "pool",
         "image": image_ref,
         "ports": [{"containerPort": 8080, "name": "http"}],
+        "envFrom": list(_POOL_ENV_FROM),
         "env": container_env,
         "readinessProbe": {
             "httpGet": {"path": "/readyz", "port": 8080},
@@ -415,6 +437,106 @@ class K8sPoolManager:
             if exc.status == 404:
                 return False
             raise
+
+    async def read_infra_secrets(self) -> dict[str, str]:
+        """Read runtime-infra-secrets values (decoded plain text)."""
+        import base64
+
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        try:
+            secret = await self._core.read_namespaced_secret(RUNTIME_INFRA_SECRET, self._ns)
+        except ApiException as exc:
+            if exc.status == 404:
+                return {}
+            raise
+        data = secret.data or {}
+        return {
+            key: base64.b64decode(value).decode("utf-8")
+            for key, value in data.items()
+        }
+
+    async def apply_infra_configmap(self, env: dict[str, str]) -> None:
+        """Create or replace ConfigMap runtime-infra."""
+        body = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": RUNTIME_INFRA_CONFIGMAP,
+                "namespace": self._ns,
+                "labels": dict(_INFRA_MANAGED_LABELS),
+            },
+            "data": env,
+        }
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        try:
+            await self._core.replace_namespaced_config_map(
+                RUNTIME_INFRA_CONFIGMAP, self._ns, body
+            )
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+            await self._core.create_namespaced_config_map(self._ns, body)
+
+    async def apply_infra_secret(self, secrets: dict[str, str]) -> None:
+        """Create or replace Secret runtime-infra-secrets (string_data)."""
+        body = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": RUNTIME_INFRA_SECRET,
+                "namespace": self._ns,
+                "labels": dict(_INFRA_MANAGED_LABELS),
+            },
+            "type": "Opaque",
+            "stringData": secrets,
+        }
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        try:
+            await self._core.replace_namespaced_secret(RUNTIME_INFRA_SECRET, self._ns, body)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+            await self._core.create_namespaced_secret(self._ns, body)
+
+    async def restart_deployment(self, name: str) -> None:
+        """Trigger rolling restart for a named Deployment."""
+        from datetime import UTC, datetime
+
+        now = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        patch = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
+                    }
+                }
+            }
+        }
+        await self._apps.patch_namespaced_deployment(name, self._ns, patch)
+        logger.info("k8s.restart_deployment done", extra={"deployment": name})
+
+    async def restart_infra_pool_deployments(self) -> list[str]:
+        """Restart bundle pools and all backend-managed custom image pools."""
+        names = list(BUNDLE_POOL_DEPLOYMENTS)
+        names.extend(await self.list_managed_deployments())
+        restarted: list[str] = []
+        errors: list[str] = []
+        for name in names:
+            try:
+                await self.restart_deployment(name)
+                restarted.append(name)
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+                logger.warning(
+                    "k8s.restart_infra_pool failed",
+                    extra={"deployment": name, "error": str(exc)},
+                )
+        if errors:
+            logger.warning("k8s.restart_infra_pools partial errors", extra={"errors": errors})
+        return restarted
 
     async def aclose(self) -> None:
         await self._api_client.close()

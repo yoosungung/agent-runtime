@@ -22,6 +22,7 @@ from backend.routers import dashboard as dashboard_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
 from backend.routers import custom_images as custom_images_router_module
+from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
@@ -218,6 +219,7 @@ app.include_router(auth_router_module.me_router)  # /api/me
 app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
 app.include_router(user_meta_router_module.router)  # /api/user-meta/*
+app.include_router(infra_meta_router_module.router)  # /api/infra-meta/*
 app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password
 app.include_router(chat_router_module.router)  # /api/chat/*

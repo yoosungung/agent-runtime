@@ -3,12 +3,12 @@
 #
 # Flow:
 #   1. login as admin (cookies + csrf)
-#   2. zip + register the 4 example bundles via /api/source-meta/bundle.
-#      LLM API keys + Naver creds are pulled from env and baked into
-#      source_meta.config so each pool can resolve them at factory time.
-#   3. upsert user_meta for the 2 agents (sanity check that merge path works)
-#   4. grant user_resource_access on all 4 (kind, name) pairs to admin
-#   5. invoke both agents:
+#   2. upsert infra_meta (LLM API keys + Opik URL → pool pod env via K8s reconcile)
+#   3. zip + register the 4 example bundles via /api/source-meta/bundle.
+#      Naver creds stay in source_meta.config; LLM keys come from infra_meta.
+#   4. upsert user_meta for the 2 agents (sanity check that merge path works)
+#   5. grant user_resource_access on all 4 (kind, name) pairs to admin
+#   6. invoke both agents:
 #        - adk asks for arithmetic → LLM is expected to call the local
 #          `calculate` tool
 #        - langgraph (DeepAgent) asks a research question → LLM may call
@@ -23,6 +23,9 @@
 #   OPENAI_MODEL           — default "openai:gpt-4o-mini"
 #   ANTHROPIC_API_KEY      — Claude key (alternative for the DeepAgent)
 #   GOOGLE_API_KEY         — Gemini key (alternative for the ADK agent)
+#   OPIK_URL               — Opik server URL (infra_meta → pool env)
+#   OPIK_WORKSPACE         — Opik workspace (default "default")
+#   DEFAULT_LLM_MODEL      — platform default model (defaults to OPENAI_MODEL)
 #   NAVER_CLIENT_ID        — Naver Search app client id
 #   NAVER_CLIENT_SECRET    — Naver Search app client secret
 
@@ -61,27 +64,19 @@ make_source_config() {
       jq -nc \
         --arg model "$OPENAI_MODEL" \
         --arg mcp "search-server" \
-        --arg openai "${OPENAI_API_KEY:-}" \
-        --arg anthropic "${ANTHROPIC_API_KEY:-}" \
         '{
           langgraph: {model: $model, checkpointer: "none"},
           mcp_server: $mcp
-        }
-        + (if $openai    == "" then {} else {openai_api_key: $openai}      end)
-        + (if $anthropic == "" then {} else {anthropic_api_key: $anthropic} end)'
+        }'
       ;;
     research-math-agent)
       jq -nc \
         --arg model "$OPENAI_MODEL" \
         --arg mcp "search-server" \
-        --arg openai "${OPENAI_API_KEY:-}" \
-        --arg google "${GOOGLE_API_KEY:-}" \
         '{
           adk: {model: $model, temperature: 0.0, max_output_tokens: 1024},
           mcp_server: $mcp
-        }
-        + (if $openai == "" then {} else {openai_api_key: $openai} end)
-        + (if $google == "" then {} else {google_api_key: $google} end)'
+        }'
       ;;
     utility-server)
       jq -nc '{fastmcp: {strict_input_validation: false, mask_error_details: false}}'
@@ -112,7 +107,14 @@ load_state
 [ -n "${NAVER_CLIENT_SECRET:-}"] || log "  (warn) NAVER_CLIENT_SECRET unset — naver_search MCP tool will RuntimeError"
 
 # ---------------------------------------------------------------------------
-# Step 2 — register bundles. Captures source_meta.id per (kind, name) into a
+# Step 2 — platform infra (LLM keys, Opik URL → pool pod env)
+# ---------------------------------------------------------------------------
+log "upsert infra_meta (LLM keys / Opik → pool env)"
+upsert_infra_meta
+ok "  infra_meta upserted (or skipped if no keys set)"
+
+# ---------------------------------------------------------------------------
+# Step 3 — register bundles. Captures source_meta.id per (kind, name) into a
 # parallel indexed array (entries shaped "kind:name=sid") so this runs on
 # macOS system bash 3.2 (no `declare -A`).
 # ---------------------------------------------------------------------------
@@ -143,7 +145,7 @@ for entry in "${BUNDLES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 3 — upsert user_meta for the 2 agents. Override `mcp_server` (same
+# Step 4 — upsert user_meta for the 2 agents. Override `mcp_server` (same
 # value as source default) just to exercise the merge path.
 # ---------------------------------------------------------------------------
 USER_OVERRIDE='{"mcp_server":"search-server"}'
@@ -156,7 +158,7 @@ for key in "agent:research-orchestrator" "agent:research-math-agent"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 4 — grant access on all 4 (kind, name) pairs to the admin user.
+# Step 5 — grant access on all 4 (kind, name) pairs to the admin user.
 # Backend's grant_access calls auth's POST /v1/admin/invalidate-access after
 # each commit so freshly granted rows are visible to /v1/agents/invoke
 # immediately (no TTL wait).
@@ -170,7 +172,7 @@ for entry in "${SOURCE_ENTRIES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 5 — invoke both agents.
+# Step 6 — invoke both agents.
 #   ADK            : input.text → google.genai Content (see agent_base.runner._adk_content)
 #   compiled_graph : DeepAgents expects {"messages": [{"role":"user","content":...}]}
 # ---------------------------------------------------------------------------

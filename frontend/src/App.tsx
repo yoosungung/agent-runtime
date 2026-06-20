@@ -55,6 +55,9 @@ const ChatPage = lazy(() =>
 const AuditLogPage = lazy(() =>
   import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })),
 );
+const InfraMetaPage = lazy(() =>
+  import("./pages/InfraMetaPage").then((m) => ({ default: m.InfraMetaPage })),
+);
 const GeneralAgentNewPage = lazy(() =>
   import("./pages/GeneralAgentNewPage").then((m) => ({
     default: m.GeneralAgentNewPage,
@@ -210,6 +213,7 @@ export function App() {
                     <Route path="/users/new" element={<UserNewPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
+                    <Route path="/settings/infra" element={<InfraMetaPage />} />
                   </Route>
                 </Route>
               </Route>

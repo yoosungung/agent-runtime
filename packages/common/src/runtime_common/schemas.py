@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field, model_validator
 
 if TYPE_CHECKING:
-    from runtime_common.db.models import SourceMetaRow, UserMetaRow
+    from runtime_common.db.models import InfraMetaRow, SourceMetaRow, UserMetaRow
 
 
 class AgentRuntimeKind(StrEnum):
@@ -159,6 +159,27 @@ class UserMeta(BaseModel):
             principal_id=row.principal_id,
             config=row.config,
             secrets_ref=row.secrets_ref,
+            updated_at=row.updated_at,
+        )
+
+
+class InfraMeta(BaseModel):
+    """Platform-wide infra env registry (global scope in MVP)."""
+
+    scope: str = "global"
+    scope_key: str = ""
+    env: dict = Field(default_factory=dict)
+    secret_keys: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+    @classmethod
+    def from_row(cls, row: InfraMetaRow) -> InfraMeta:
+        keys = row.secret_keys if isinstance(row.secret_keys, list) else []
+        return cls(
+            scope=row.scope,
+            scope_key=row.scope_key,
+            env=row.env,
+            secret_keys=[str(k) for k in keys],
             updated_at=row.updated_at,
         )
 

@@ -23,6 +23,9 @@ config 층 정의는 [ARCHITECTURE.md](../../../ARCHITECTURE.md) §5. 아래는 
 |------|-------------------------|-------------------------|
 | search-server ([`bundles/mcp/search_bundle/`](../../../bundles/mcp/search_bundle/)) | `naver.client_id`, `client_secret` — 모두 shared | 보통 없음 |
 | email-server ([`bundles/mcp/email_bundle/`](../../../bundles/mcp/email_bundle/)) | `email.provider`, `outlook.tenant_id`, `client_secret` | `outlook.mailbox`, `refresh_token`, `email.from_address` |
+| calendar-outlook ([`bundles/mcp/calendar_outlook_bundle/`](../../../bundles/mcp/calendar_outlook_bundle/)) | `outlook.tenant_id`, `client_secret`, `calendar.timezone` | `outlook.refresh_token`, `calendar.default_calendar_id` |
+| calendar-google ([`bundles/mcp/calendar_google_bundle/`](../../../bundles/mcp/calendar_google_bundle/)) | `google.client_id`, `client_secret` | `google.refresh_token`, `calendar.default_calendar_id` |
+| teams-server ([`bundles/mcp/teams_bundle/`](../../../bundles/mcp/teams_bundle/)) | `outlook.tenant_id`, `client_secret`, `teams.page_size` | `outlook.refresh_token`, `teams.default_team_id`, `teams.default_channel_id` |
 
 Tool argument (`folder`, `limit`, `query`) 는 invoke payload — user_meta 가 아님.
 

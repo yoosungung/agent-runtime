@@ -402,3 +402,28 @@ class UserConfig(BaseModel):
     outlook: OutlookUserConfig | None = None
     gmail: GmailUserConfig | None = None
     # fastmcp / mcp SDK sections: no per-principal overrides beyond bundle-specific keys
+
+
+# ── infra_meta (platform env) ───────────────────────────────────────────────
+
+class InfraConfig(BaseModel):
+    """infra_meta.env — platform-wide non-secret settings reconciled to pool pod env."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    opik_url: str | None = Field(
+        default=None,
+        description="Opik server URL → OPIK_URL",
+    )
+    opik_workspace: str = Field(
+        default="default",
+        description="Opik workspace → OPIK_WORKSPACE",
+    )
+    default_llm_model: str | None = Field(
+        default=None,
+        description="Optional platform default model spec → DEFAULT_LLM_MODEL",
+    )
+    otlp_endpoint: str | None = Field(
+        default=None,
+        description="Pool OTLP endpoint override → OTLP_ENDPOINT",
+    )

@@ -193,3 +193,21 @@ class UserMetaRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class InfraMetaRow(Base):
+    __tablename__ = "infra_meta"
+    __table_args__ = (UniqueConstraint("scope", "scope_key", name="uq_infra_meta_scope"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, default="global")
+    scope_key: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    env: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    secret_keys: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

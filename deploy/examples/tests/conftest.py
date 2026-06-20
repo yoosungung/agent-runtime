@@ -38,9 +38,9 @@ def resolve_bundle_app(rel_path: str) -> Path:
 
 
 def _evict_bundle_local_modules() -> None:
-    """Drop ``models`` / ``providers.*`` / ``utils`` left by a prior bundle load."""
+    """Drop bundle-local modules left by a prior bundle load."""
     for name in list(sys.modules):
-        if name in ("models", "utils") or name.startswith("providers"):
+        if name in ("models", "utils", "client") or name.startswith("providers"):
             del sys.modules[name]
 
 

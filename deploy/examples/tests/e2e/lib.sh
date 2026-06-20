@@ -147,7 +147,50 @@ grant_access() {
     || fail "grant_access $kind/$name failed"
 }
 
-# Upsert a per-principal user_meta row.
+# Upsert platform infra_meta (LLM keys → K8s Secret, Opik URL → ConfigMap).
+# Usage: upsert_infra_meta
+upsert_infra_meta() {
+  local secrets_json env_json body
+  secrets_json='{}'
+  env_json='{}'
+
+  if [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+    secrets_json=$(jq -nc \
+      --arg o "${OPENAI_API_KEY:-}" \
+      --arg a "${ANTHROPIC_API_KEY:-}" \
+      --arg g "${GOOGLE_API_KEY:-}" \
+      '(if $o != "" then {OPENAI_API_KEY: $o} else {} end)
+       + (if $a != "" then {ANTHROPIC_API_KEY: $a} else {} end)
+       + (if $g != "" then {GOOGLE_API_KEY: $g} else {} end)')
+  fi
+
+  if [ -n "${OPIK_URL:-}" ] || [ -n "${DEFAULT_LLM_MODEL:-}" ] || [ -n "${OPENAI_MODEL:-}" ]; then
+    env_json=$(jq -nc \
+      --arg url "${OPIK_URL:-}" \
+      --arg ws "${OPIK_WORKSPACE:-default}" \
+      --arg model "${DEFAULT_LLM_MODEL:-${OPENAI_MODEL:-}}" \
+      '(if $url != "" then {opik_url: $url} else {} end)
+       + {opik_workspace: $ws}
+       + (if $model != "" then {default_llm_model: $model} else {} end)')
+  fi
+
+  body=$(jq -nc --argjson e "$env_json" --argjson s "$secrets_json" \
+    'if ($e | length) == 0 and ($s | length) == 0 then empty
+     else {env: $e, secrets: $s} | if (.secrets | length) == 0 then del(.secrets) else . end
+          | if (.env | length) == 0 then del(.env) else . end end') \
+    || true
+
+  if [ -z "$body" ]; then
+    log "  skip infra_meta (no OPENAI/ANTHROPIC/GOOGLE/OPIK env set)"
+    return 0
+  fi
+
+  admin_curl PUT /api/infra-meta \
+    -H 'Content-Type: application/json' \
+    -d "$body" \
+    -o /dev/null
+}
+
 # Usage: upsert_user_meta <source_meta_id> <principal_sub> <config_json>
 upsert_user_meta() {
   local sid="$1" sub="$2" cfg="$3"

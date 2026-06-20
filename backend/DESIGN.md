@@ -70,6 +70,8 @@
 | `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | |
 | `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | `config`/`secrets_ref` 갱신 |
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
+| `GET` | `/api/infra-meta` | Postgres SELECT global infra row | secret 값 없음, `secret_keys`만 |
+| `PUT` | `/api/infra-meta` | Postgres UPSERT + K8s reconcile | `{env?, secrets?}` — secrets는 K8s Secret만, DB에는 key 이름 |
 | `GET` | `/api/users` | Postgres SELECT, filter `username`/`tenant`/`disabled` | 페이지네이션 |
 | `GET` | `/api/users/{id}` | Postgres SELECT by id | 비밀번호 해시는 응답에 없음 |
 | `POST` | `/api/users` | argon2id hash + Postgres INSERT | `{username, password, tenant?, is_admin?}`, 409 중복 |
@@ -160,6 +162,18 @@ backend가 `kubernetes-asyncio` 클라이언트로 `runtime` 네임스페이스 
 - `status='pending'` 행이 5분 초과 → K8s 4종 강제 삭제 + `status='failed'` 마킹 (앱 크래시 복구)
 - `status='active'` 행 ↔ Deployment 존재 검사: 누락/잉여 로그 경고 (자동 복구는 admin 액션 요구)
 - `status='retired'` 후 K8s 리소스 잔존 시 강제 정리
+
+#### Infra reconcile (`backend.infra_reconciler`)
+
+`PUT /api/infra-meta` 직후 동기 호출:
+
+- ConfigMap `runtime-infra` — `InfraConfig` flatten → pod env (`OPIK_URL`, `OPIK_WORKSPACE`, …)
+- Secret `runtime-infra-secrets` — LLM API keys (plaintext는 Postgres 미저장)
+- bundle pool 4종 + `runtime/managed-by=backend` custom image Deployment rolling restart
+
+RBAC: `backend-k8s-rbac.yaml`에 `configmaps`/`secrets` create/update/get/patch/replace.
+
+로컬 dev(`k8s_pool_manager=None`): DB만 갱신, K8s skip.
 
 #### Scale 정책
 

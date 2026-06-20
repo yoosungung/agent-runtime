@@ -23,6 +23,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **pool `/invoke` payload는 식별자만**: agent는 `{agent, version, input, session_id, principal}`, mcp는 `{server, version, tool, arguments, principal}`. meta는 pool이 deploy-api에 **재조회**한다.
 - **`access`는 `/verify` 응답에 번들**. ext-authz가 별도 authorize 호출을 하지 않도록 한 번에 내려온다.
 - **config는 source + user 두 층**. deploy-api는 병합하지 않고 그대로 내려보낸다 — cache 경계와 감사 지점 분리.
+- **`infra_meta`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리.
 - **LangGraph 체크포인터는 Redis**. 대화 상태가 pod-local이 아니므로 session affinity 불필요.
 - **데이터플레인은 Envoy(C++)**. ext-authz는 스케줄링·인가 결정만. 바디 릴레이·SSE 패스스루는 Envoy.
 - **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `/invoke-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
@@ -32,7 +33,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 
 - 루트 외 위치에 `.venv` 만들지 말 것(uv가 루트에 단일 venv 관리).
 - pool별 이미지를 만들지 말 것 — env로만 분기.
-- `source_meta`/`user_meta`/`users`/`user_resource_access`에 런타임 서비스(gateway·pool·deploy-api·auth)가 직접 INSERT/UPDATE 하지 말 것 — 쓰기 소유자는 admin backend. `refresh_tokens`만 예외로 auth 전용.
+- `source_meta`/`user_meta`/`infra_meta`/`users`/`user_resource_access`에 런타임 서비스(gateway·pool·deploy-api·auth)가 직접 INSERT/UPDATE 하지 말 것 — 쓰기 소유자는 admin backend. `refresh_tokens`만 예외로 auth 전용.
 - LLM/RAG 코드를 이 저장소에 추가하지 말 것 — scope 밖. (관리 콘솔 `frontend/`·`backend/`는 예외.)
 
 ---
@@ -103,6 +104,7 @@ LLM serving, RAG 스토리지, OTEL collector, bundle 저장소(S3/OCI), 사용�
 |---|---|---|---|
 | `source_meta` | admin backend | deploy-api | immutable·versioned |
 | `user_meta` | admin backend | deploy-api | mutable |
+| `infra_meta` | admin backend | — | platform env; K8s reconciler가 pool pod에 주입 |
 | `users` | admin backend | auth | 로그인 credentials |
 | `user_resource_access` | admin backend | auth | user ↔ `(kind, name)` ACL |
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
@@ -137,6 +139,22 @@ CREATE TABLE source_meta (
 ```
 
 `/v1/resolve`: `status='pending'` 제외, `status='active'` + `retired=false`만 반환.
+
+### infra_meta
+
+```sql
+CREATE TABLE infra_meta (
+    id           BIGSERIAL PRIMARY KEY,
+    scope        VARCHAR(16)  NOT NULL DEFAULT 'global',   -- MVP: 'global' only
+    scope_key    VARCHAR(128) NOT NULL DEFAULT '',
+    env          JSONB        NOT NULL DEFAULT '{}',       -- non-secret env (structured InfraConfig)
+    secret_keys  JSONB        NOT NULL DEFAULT '[]',       -- configured secret env var names only
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_infra_meta_scope UNIQUE (scope, scope_key)
+);
+```
+
+`/v1/resolve`에 포함하지 않음. secret 값은 K8s Secret `runtime-infra-secrets`에만 존재.
 
 ### user_meta
 
@@ -211,3 +229,16 @@ CREATE TABLE api_keys (
 **런타임 factory 입력** = shallow merge `{**source.config, **user.config}` — user 키가 같으면 source를 덮어씀. 병합은 agent-base / mcp-base가 resolve 직후 수행. MVP는 1단 shallow merge만.
 
 email-server 등 per-principal 예시는 [backend/DESIGN.md](backend/DESIGN.md) 참조.
+
+### 5.1 infra_meta (platform env)
+
+source/user meta와 **orthogonal**. principal·번들과 무관하게 pool pod container env로 전달.
+
+| 측면 | `infra_meta` | `source_meta.config` | `user_meta.config` | Kustomize `runtime-env` |
+|---|---|---|---|---|
+| 범위 | platform (global) | 번들/버전 | principal × 번들 | 클러스터 bootstrap |
+| 수명 | 운영 중 mutable | immutable (버전) | invoke마다 fresh | 배포 시 |
+| 전달 | ConfigMap + Secret → pod env | resolve → merge → factory cfg | resolve → merge → factory cfg | gitops envFrom |
+| 예시 | `OPIK_URL`, `ANTHROPIC_API_KEY` | MCP provider, default model | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
+
+**infra에 두지 않을 것**: 번들 도메인 credential → `source_meta.config`; principal identity → `user_meta.config`; custom image 전용 env → `source_meta.pool_env`(infra보다 우선).

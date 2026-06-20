@@ -80,6 +80,9 @@ export function Layout() {
 
   const adminLinks = showAdmin ? (
     <>
+      <NavLink to="/settings/infra" className={navLinkClass}>
+        Platform Infra
+      </NavLink>
       <NavLink to="/users" className={navLinkClass}>
         User
       </NavLink>
@@ -134,6 +137,9 @@ export function Layout() {
                 )}
                 {showAdmin && (
                   <>
+                    <NavLink to="/settings/infra" className={desktopNavLinkClass}>
+                      Platform Infra
+                    </NavLink>
                     <NavLink to="/users" className={desktopNavLinkClass}>
                       User
                     </NavLink>

@@ -37,5 +37,9 @@ bundles/
 | 경로 | kind | name (예) | runtime_pool | 상태 |
 |------|------|-----------|--------------|------|
 | [mcp/email_bundle](mcp/email_bundle/) | mcp | `email-server` | `mcp:mcp_sdk` | 구현됨 |
+| [mcp/search_bundle](mcp/search_bundle/) | mcp | `search-server` | `mcp:mcp_sdk` | 구현됨 |
+| [mcp/calendar_outlook_bundle](mcp/calendar_outlook_bundle/) | mcp | `calendar-outlook` | `mcp:mcp_sdk` | 구현됨 |
+| [mcp/calendar_google_bundle](mcp/calendar_google_bundle/) | mcp | `calendar-google` | `mcp:mcp_sdk` | 구현됨 |
+| [mcp/teams_bundle](mcp/teams_bundle/) | mcp | `teams-server` | `mcp:mcp_sdk` | 구현됨 |
 
 Agent 번들은 [agent/README.md](agent/README.md) 참조.

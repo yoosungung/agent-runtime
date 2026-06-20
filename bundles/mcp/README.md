@@ -93,6 +93,44 @@ VALUES (
 
 API 키는 shared이므로 `user_meta` 없이도 동작. 상세: [`search_bundle/README.md`](search_bundle/README.md).
 
+## calendar_outlook_bundle — Microsoft 365 Calendar
+
+[`calendar_outlook_bundle/`](calendar_outlook_bundle/) — Graph Calendar CRUD + free/busy.
+
+| name | `calendar-outlook` |
+| runtime_pool | `mcp:mcp_sdk` |
+
+상세: [`calendar_outlook_bundle/README.md`](calendar_outlook_bundle/README.md).
+
+## calendar_google_bundle — Google Calendar
+
+[`calendar_google_bundle/`](calendar_google_bundle/) — Google Calendar API, tool surface는 outlook과 동일.
+
+| name | `calendar-google` |
+| runtime_pool | `mcp:mcp_sdk` |
+
+상세: [`calendar_google_bundle/README.md`](calendar_google_bundle/README.md).
+
+## teams_bundle — Microsoft Teams + Chat
+
+[`teams_bundle/`](teams_bundle/) — 채널·채팅 읽기/발송.
+
+| name | `teams-server` |
+| runtime_pool | `mcp:mcp_sdk` |
+
+상세: [`teams_bundle/README.md`](teams_bundle/README.md).
+
+**source_meta 등록 (calendar-outlook 예시)**
+
+```sql
+INSERT INTO source_meta (kind, name, version, runtime_pool, entrypoint, bundle_uri, checksum, config)
+VALUES (
+  'mcp', 'calendar-outlook', 'v1', 'mcp:mcp_sdk',
+  'app:build_server', 's3://bundles/calendar-outlook-v1.zip', 'sha256:<…>',
+  '{"mcp":{"mask_error_details":true},"calendar":{"timezone":"Asia/Seoul"},"outlook":{"tenant_id":"...","client_id":"...","client_secret":"...","auth":"oauth_refresh"}}'::jsonb
+);
+```
+
 ---
 
 학습용 FastMCP / MCP SDK 튜토리얼은 [deploy/examples/mcp-base/](../../deploy/examples/mcp-base/) 를 본다.
