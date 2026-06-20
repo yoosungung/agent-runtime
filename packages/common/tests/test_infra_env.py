@@ -12,9 +12,7 @@ from runtime_common.infra_env import (
 
 
 def test_normalize_stored_env_flat():
-    assert normalize_stored_env({"OPIK_URL": "http://opik/api"}) == {
-        "OPIK_URL": "http://opik/api"
-    }
+    assert normalize_stored_env({"OPIK_URL": "http://opik/api"}) == {"OPIK_URL": "http://opik/api"}
 
 
 def test_normalize_stored_env_legacy_snake_case():

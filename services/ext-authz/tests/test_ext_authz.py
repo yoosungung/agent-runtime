@@ -136,6 +136,12 @@ def test_allows_agent_invoke(client: TestClient) -> None:
     principal_json = json.loads(base64.b64decode(r.headers["x-principal"]))
     assert principal_json["sub"] == "u_42"
     assert r.headers["x-source-checksum"] == "sha256:abc"
+    assert "x-resolve" in r.headers
+    from runtime_common.resolve_context import decode_resolve_header
+
+    resolved = decode_resolve_header(r.headers["x-resolve"])
+    assert resolved is not None
+    assert resolved.source.name == "hello"
 
 
 def test_denies_without_token(client: TestClient) -> None:
@@ -381,7 +387,9 @@ class TestMcpServerTools:
         # by using a name that IS in access but patch deploy to return 404.
         fake_deploy: _FakeDeploy = app_module.app.state.deploy
 
-        async def _resolve_404(kind: str, name: str, version: str | None = None, principal: str | None = None) -> ResolveResponse:
+        async def _resolve_404(
+            kind: str, name: str, version: str | None = None, principal: str | None = None
+        ) -> ResolveResponse:
             raise httpx.HTTPStatusError(
                 "not found",
                 request=httpx.Request("GET", "http://deploy/resolve"),
@@ -469,7 +477,9 @@ class TestMcpStream:
     def test_sse_streaming(self, client: TestClient) -> None:
         sse_body = b"data: {}\n\n"
         respx.post(f"{POOL_WARM_BASE}/mcp").mock(
-            return_value=httpx.Response(200, content=sse_body, headers={"content-type": "text/event-stream"})
+            return_value=httpx.Response(
+                200, content=sse_body, headers={"content-type": "text/event-stream"}
+            )
         )
         r = client.post(
             "/v1/mcp/stream",
@@ -508,7 +518,10 @@ class TestAgentInvoke:
         r = self._post(client)
         assert r.status_code == 200, r.text
         assert r.headers["x-pod-addr"] == "10.1.2.3:8080"
-        assert r.headers["x-pod-fallback-addr"] == "agent-pool-compiled-graph.runtime.svc.cluster.local:8080"
+        assert (
+            r.headers["x-pod-fallback-addr"]
+            == "agent-pool-compiled-graph.runtime.svc.cluster.local:8080"
+        )
         principal_json = json.loads(base64.b64decode(r.headers["x-principal"]))
         assert principal_json["sub"] == "u_42"
 

@@ -62,8 +62,7 @@ class GmailApiProvider:
         )
         if not client_id or not client_secret:
             raise RuntimeError(
-                "gmail credentials missing: set source_meta.config.gmail."
-                "{client_id, client_secret}"
+                "gmail credentials missing: set source_meta.config.gmail.{client_id, client_secret}"
             )
         return str(client_id), str(client_secret)
 
@@ -92,8 +91,7 @@ class GmailApiProvider:
         subject_email = self._gmail_cfg.get("subject_email")
         if not service_account_info or not subject_email:
             raise RuntimeError(
-                "gmail service account missing: set gmail.service_account and "
-                "gmail.subject_email"
+                "gmail service account missing: set gmail.service_account and gmail.subject_email"
             )
         if isinstance(service_account_info, str):
             service_account_info = json.loads(service_account_info)
@@ -206,12 +204,9 @@ class GmailApiProvider:
                 prefer=prefer,
                 max_bytes=self._settings.body_max_bytes,
             )
-        attachments = [
-            AttachmentMeta(**meta) for meta in extract_attachment_meta(msg)
-        ]
+        attachments = [AttachmentMeta(**meta) for meta in extract_attachment_meta(msg)]
         headers = {
-            h["name"].lower(): h["value"]
-            for h in detail.get("payload", {}).get("headers") or []
+            h["name"].lower(): h["value"] for h in detail.get("payload", {}).get("headers") or []
         }
         return MessageDetail(
             id=detail["id"],

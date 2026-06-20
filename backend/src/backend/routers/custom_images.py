@@ -387,9 +387,7 @@ async def patch_custom_image(
     result = await db.execute(stmt)
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(
-            status_code=404, detail=f"active custom image {kind}/{slug} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"active custom image {kind}/{slug} not found")
 
     if body.config is not None:
         _validate_config(body.config)
@@ -462,9 +460,7 @@ async def restart_custom_image(
     result = await db.execute(stmt)
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(
-            status_code=404, detail=f"active custom image {kind}/{slug} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"active custom image {kind}/{slug} not found")
 
     k8s: Any = getattr(request.app.state, "k8s_pool_manager", None)
     if k8s is None:

@@ -44,7 +44,7 @@ def extract_message_content(item: dict[str, Any]) -> str:
 
 def graph_message_to_summary(item: dict[str, Any], *, max_bytes: int) -> dict[str, Any]:
     sender = (item.get("from") or {}).get("user") or {}
-    email = (sender.get("email") or sender.get("userPrincipalName") or "")
+    email = sender.get("email") or sender.get("userPrincipalName") or ""
     return {
         "id": item["id"],
         "from_name": sender.get("displayName") or "",

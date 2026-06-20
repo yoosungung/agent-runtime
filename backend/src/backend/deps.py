@@ -11,6 +11,7 @@ from backend.settings import Settings
 from backend.settings import get_settings as _get_settings
 from runtime_common.auth import AuthClient
 from runtime_common.roles import UserRole, role_at_least
+from runtime_common.schemas import Principal
 
 logger = logging.getLogger(__name__)
 

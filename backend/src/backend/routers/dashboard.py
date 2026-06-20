@@ -69,10 +69,7 @@ def _empty_counts() -> ResourceStatusCounts:
 async def _resource_summary(db: AsyncSession) -> ResourceSummary:
     summary = ResourceSummary()
 
-    total_q = (
-        select(SourceMetaRow.kind, func.count())
-        .group_by(SourceMetaRow.kind)
-    )
+    total_q = select(SourceMetaRow.kind, func.count()).group_by(SourceMetaRow.kind)
     for kind, count in (await db.execute(total_q)).all():
         counts = summary.agent if kind == "agent" else summary.mcp
         counts.total = count

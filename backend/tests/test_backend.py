@@ -1396,11 +1396,7 @@ async def test_create_general_agent_duplicate_409(client: AsyncClient):
         "system_prompt": "Hi",
         "mcp_servers": ["s"],
     }
-    r1 = await client.post(
-        "/api/source-meta/general", headers=_csrf_headers(), json=payload
-    )
+    r1 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
     assert r1.status_code == 201
-    r2 = await client.post(
-        "/api/source-meta/general", headers=_csrf_headers(), json=payload
-    )
+    r2 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
     assert r2.status_code == 409

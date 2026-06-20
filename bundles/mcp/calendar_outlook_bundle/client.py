@@ -65,8 +65,11 @@ class OutlookGraphCalendarClient:
                 "outlook credentials missing: set source_meta.config.outlook "
                 "{tenant_id, client_id, client_secret, mailbox}"
             )
-        return str(tenant_id), str(client_id), str(client_secret), (
-            str(mailbox) if mailbox else None
+        return (
+            str(tenant_id),
+            str(client_id),
+            str(client_secret),
+            (str(mailbox) if mailbox else None),
         )
 
     def _acquire_token(self) -> str:

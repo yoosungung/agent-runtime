@@ -2,7 +2,7 @@
 --
 -- 단일 Postgres에 쓰는 모든 테이블을 한 번에 생성. 쓰기 소유자는 admin backend.
 -- runtime 서비스(deploy-api / auth)는 각자 read-only 영역만 가짐 — 자세한 위임은
--- /DESIGN.md "Postgres 스키마 (참고)".
+-- backend/DESIGN.md "Postgres 스키마 (참고)".
 --
 -- 순서: 참조 없는 테이블 → FK 있는 테이블.
 
@@ -16,11 +16,12 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash        VARCHAR(256) NOT NULL,      -- argon2id
     tenant               VARCHAR(64),
     disabled             BOOLEAN      NOT NULL DEFAULT FALSE,
-    is_admin             BOOLEAN      NOT NULL DEFAULT FALSE,
+    role                 VARCHAR(16)  NOT NULL DEFAULT 'user',
     must_change_password BOOLEAN      NOT NULL DEFAULT FALSE,  -- bootstrap admin = TRUE
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT uq_users_username UNIQUE (username)
+    CONSTRAINT uq_users_username UNIQUE (username),
+    CONSTRAINT chk_users_role CHECK (role IN ('user', 'developer', 'admin'))
 );
 
 CREATE TABLE IF NOT EXISTS user_resource_access (
@@ -53,7 +54,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 -- ---------------------------------------------------------------------------
--- 번들 메타 도메인
+-- 번들 / 이미지 / general agent 메타 도메인
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS source_meta (
@@ -61,19 +62,52 @@ CREATE TABLE IF NOT EXISTS source_meta (
     kind         VARCHAR(16)  NOT NULL,              -- 'agent' | 'mcp'
     name         VARCHAR(128) NOT NULL,
     version      VARCHAR(64)  NOT NULL,
-    runtime_pool VARCHAR(64)  NOT NULL,              -- '{kind}:{runtime_kind}'
-    entrypoint   VARCHAR(256) NOT NULL,              -- 'module.path:factory_attr'
-    bundle_uri   VARCHAR(512) NOT NULL,              -- https:// | file:// | s3:// | oci://
+    runtime_pool VARCHAR(128) NOT NULL,              -- bundle: '{kind}:{runtime_kind}' | image: '{kind}:custom:{slug}'
+    entrypoint   VARCHAR(256),                       -- bundle mode 필수
+    bundle_uri   VARCHAR(512),                       -- bundle mode 필수
     checksum     VARCHAR(128),                       -- sha256:...
     sig_uri      VARCHAR(512),                       -- 서명 파일 URI (선택)
     config       JSONB        NOT NULL DEFAULT '{}'::jsonb,  -- 번들 기본 config (user_meta.config와 runtime merge)
+    pool_env     JSONB        NOT NULL DEFAULT '{}'::jsonb,  -- custom image pool env (admin UI round-trip)
     retired      BOOLEAN      NOT NULL DEFAULT FALSE,
+    deploy_mode  VARCHAR(16)  NOT NULL DEFAULT 'bundle',     -- 'bundle' | 'image' | 'general'
+    image_uri    VARCHAR(512),                       -- image mode 필수
+    image_digest VARCHAR(128),
+    slug         VARCHAR(63),                        -- image mode 필수; (kind, slug) unique
+    status       VARCHAR(16)  NOT NULL DEFAULT 'active',     -- 'pending' | 'active' | 'failed' | 'retired'
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT uq_source_meta_nv UNIQUE (kind, name, version)
+    CONSTRAINT uq_source_meta_nv UNIQUE (kind, name, version),
+    CONSTRAINT chk_source_meta_bundle_fields
+        CHECK (
+            deploy_mode != 'bundle'
+            OR (entrypoint IS NOT NULL AND bundle_uri IS NOT NULL)
+        ),
+    CONSTRAINT chk_source_meta_image_fields
+        CHECK (
+            deploy_mode != 'image'
+            OR (image_uri IS NOT NULL AND slug IS NOT NULL)
+        ),
+    CONSTRAINT chk_source_meta_general_fields
+        CHECK (
+            deploy_mode != 'general'
+            OR (
+                entrypoint IS NULL AND bundle_uri IS NULL AND checksum IS NULL
+                AND image_uri IS NULL AND slug IS NULL
+                AND kind = 'agent' AND runtime_pool = 'agent:compiled_graph'
+            )
+        ),
+    CONSTRAINT chk_source_meta_deploy_mode
+        CHECK (deploy_mode IN ('bundle', 'image', 'general')),
+    CONSTRAINT chk_source_meta_status
+        CHECK (status IN ('pending', 'active', 'failed', 'retired'))
 );
 CREATE INDEX IF NOT EXISTS ix_source_meta_name ON source_meta (name);
 CREATE INDEX IF NOT EXISTS ix_source_meta_kind_name_created ON source_meta (kind, name, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_source_meta_checksum ON source_meta (checksum);  -- hard delete 참조 카운트
+CREATE INDEX IF NOT EXISTS ix_source_meta_status ON source_meta (status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_source_meta_kind_slug
+    ON source_meta (kind, slug)
+    WHERE slug IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_meta (
     id             BIGSERIAL PRIMARY KEY,
@@ -87,7 +121,7 @@ CREATE TABLE IF NOT EXISTS user_meta (
 CREATE INDEX IF NOT EXISTS ix_user_meta_principal ON user_meta (principal_id);
 
 -- ---------------------------------------------------------------------------
--- audit_log table (added after initial schema)
+-- audit
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -101,3 +135,56 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS ix_audit_log_actor_id  ON audit_log (actor_id);
 CREATE INDEX IF NOT EXISTS ix_audit_log_action    ON audit_log (action);
 CREATE INDEX IF NOT EXISTS ix_audit_log_created   ON audit_log (created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- VFS (general agent tier)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS vfs_agent_files (
+    kind        VARCHAR(16)  NOT NULL DEFAULT 'agent',
+    agent_name  VARCHAR(128) NOT NULL,
+    path        TEXT         NOT NULL,
+    parent_path TEXT         NOT NULL,
+    name        TEXT         NOT NULL,
+    is_dir      BOOLEAN      NOT NULL DEFAULT FALSE,
+    size        INTEGER      NOT NULL DEFAULT 0,
+    content     BYTEA        NOT NULL,
+    encoding    VARCHAR(8)   NOT NULL DEFAULT 'utf-8',
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    modified_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (kind, agent_name, path)
+);
+
+CREATE TABLE IF NOT EXISTS vfs_user_files (
+    user_id     BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    path        TEXT         NOT NULL,
+    parent_path TEXT         NOT NULL,
+    name        TEXT         NOT NULL,
+    is_dir      BOOLEAN      NOT NULL DEFAULT FALSE,
+    size        INTEGER      NOT NULL DEFAULT 0,
+    content     BYTEA        NOT NULL,
+    encoding    VARCHAR(8)   NOT NULL DEFAULT 'utf-8',
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    modified_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, path)
+);
+CREATE INDEX IF NOT EXISTS ix_vfs_agent_files_parent ON vfs_agent_files (kind, agent_name, parent_path);
+CREATE INDEX IF NOT EXISTS ix_vfs_user_files_parent ON vfs_user_files (user_id, parent_path);
+
+-- ---------------------------------------------------------------------------
+-- platform infra env registry
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS infra_meta (
+    id           BIGSERIAL PRIMARY KEY,
+    scope        VARCHAR(16)  NOT NULL DEFAULT 'global',
+    scope_key    VARCHAR(128) NOT NULL DEFAULT '',
+    env          JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    secret_keys  JSONB        NOT NULL DEFAULT '[]'::jsonb,
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_infra_meta_scope UNIQUE (scope, scope_key)
+);
+
+INSERT INTO infra_meta (scope, scope_key)
+VALUES ('global', '')
+ON CONFLICT (scope, scope_key) DO NOTHING;

@@ -8,7 +8,7 @@ from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from deploy_api.settings import Settings
 from runtime_common.db import make_engine, make_session_factory, session_scope
@@ -103,6 +103,8 @@ async def readyz() -> dict[str, str]:
 async def list_source_meta(
     kind: Kind = Query(...),  # noqa: B008
     name: str | None = Query(default=None),  # noqa: B008
+    limit: int = Query(100, ge=1, le=500),  # noqa: B008
+    offset: int = Query(0, ge=0),  # noqa: B008
 ) -> list[SourceMeta]:
     async with session_scope(app.state.read_session_factory) as session:
         stmt = select(SourceMetaRow).where(SourceMetaRow.kind == kind.value)
@@ -112,7 +114,7 @@ async def list_source_meta(
             SourceMetaRow.retired == False,  # noqa: E712
             SourceMetaRow.status != "pending",  # pending rows not yet routable
         )
-        stmt = stmt.order_by(SourceMetaRow.created_at.desc())
+        stmt = stmt.order_by(SourceMetaRow.created_at.desc()).limit(limit).offset(offset)
         result = await session.execute(stmt)
         rows = result.scalars().all()
         return [SourceMeta.from_row(r) for r in rows]
@@ -191,39 +193,46 @@ async def resolve(
         )
 
     async with session_scope(app.state.read_session_factory) as session:
+        base_filters = [
+            SourceMetaRow.kind == kind.value,
+            SourceMetaRow.name == name,
+            SourceMetaRow.status != "pending",
+        ]
         if version:
-            stmt = select(SourceMetaRow).where(
-                SourceMetaRow.kind == kind.value,
-                SourceMetaRow.name == name,
-                SourceMetaRow.version == version,
-                SourceMetaRow.status != "pending",  # pending rows are not routable
-            )
-        else:
-            stmt = (
-                select(SourceMetaRow)
-                .where(
-                    SourceMetaRow.kind == kind.value,
-                    SourceMetaRow.name == name,
-                    SourceMetaRow.status != "pending",  # pending rows are not routable
-                )
-                .order_by(SourceMetaRow.created_at.desc())
-                .limit(1)
-            )
-        result = await session.execute(stmt)
-        source_row = result.scalar_one_or_none()
-        if source_row is None:
-            raise HTTPException(
-                status_code=404, detail=f"{kind}:{name}@{version or 'latest'} not found"
-            )
+            base_filters.append(SourceMetaRow.version == version)
 
-        um_row = None
         if principal:
-            stmt2 = select(UserMetaRow).where(
-                UserMetaRow.source_meta_id == source_row.id,
-                UserMetaRow.principal_id == principal,
+            stmt = (
+                select(SourceMetaRow, UserMetaRow)
+                .outerjoin(
+                    UserMetaRow,
+                    and_(
+                        UserMetaRow.source_meta_id == SourceMetaRow.id,
+                        UserMetaRow.principal_id == principal,
+                    ),
+                )
+                .where(*base_filters)
             )
-            result2 = await session.execute(stmt2)
-            um_row = result2.scalar_one_or_none()
+            if not version:
+                stmt = stmt.order_by(SourceMetaRow.created_at.desc()).limit(1)
+            result = await session.execute(stmt)
+            row = result.first()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail=f"{kind}:{name}@{version or 'latest'} not found"
+                )
+            source_row, um_row = row
+        else:
+            stmt = select(SourceMetaRow).where(*base_filters)
+            if not version:
+                stmt = stmt.order_by(SourceMetaRow.created_at.desc()).limit(1)
+            result = await session.execute(stmt)
+            source_row = result.scalar_one_or_none()
+            um_row = None
+            if source_row is None:
+                raise HTTPException(
+                    status_code=404, detail=f"{kind}:{name}@{version or 'latest'} not found"
+                )
 
         source = SourceMeta.from_row(source_row)
         user = UserMeta.from_row(um_row) if um_row is not None else None

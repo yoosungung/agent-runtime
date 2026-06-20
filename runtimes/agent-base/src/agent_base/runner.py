@@ -17,6 +17,7 @@ def _json_default(obj: Any) -> Any:
         return obj.dict()
     return str(obj)
 
+
 try:
     from opik.integrations.langchain import OpikTracer as _LangChainOpikTracer
 

@@ -96,6 +96,12 @@ class BundleLoader:
                     self._on_evict(evicted_key)
             return entrypoint
 
+    async def aload(self, meta: SourceMeta) -> Any:
+        """Non-blocking wrapper around :meth:`load` for async handlers."""
+        import asyncio
+
+        return await asyncio.to_thread(self.load, meta)
+
     def warm_checksums(self) -> set[str]:
         """Return the set of checksums currently held in the in-process cache."""
         with self._lock:

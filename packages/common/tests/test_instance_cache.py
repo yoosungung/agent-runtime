@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -33,6 +34,7 @@ class _BadCloseInstance:
 
 # ── make_instance_key ────────────────────────────────────────────────────────
 
+
 class TestMakeInstanceKey:
     def test_no_user(self):
         assert make_instance_key("sha256:abc", None, None) == ("sha256:abc", None, None)
@@ -57,6 +59,7 @@ class TestMakeInstanceKey:
 
 
 # ── get_or_build ─────────────────────────────────────────────────────────────
+
 
 class TestGetOrBuild:
     async def test_builds_on_miss(self):
@@ -110,8 +113,30 @@ class TestGetOrBuild:
         assert first.label == "a"
         assert second.label == "b"
 
+    async def test_concurrent_different_keys_build_in_parallel(self):
+        cache = InstanceCache(max_entries=8)
+        started = 0
+
+        async def slow_builder(label: str):
+            nonlocal started
+            started += 1
+            await asyncio.sleep(0.05)
+            return _FakeInstance(label)
+
+        async def build(key_suffix: str):
+            return await cache.get_or_build(
+                make_instance_key(f"ck:{key_suffix}", None, None),
+                lambda s=key_suffix: slow_builder(s),
+            )
+
+        a, b = await asyncio.gather(build("a"), build("b"))
+        assert a.label == "a"
+        assert b.label == "b"
+        assert started == 2
+
 
 # ── LRU eviction + close ─────────────────────────────────────────────────────
+
 
 class TestEviction:
     async def test_lru_eviction_calls_aclose(self):
@@ -173,6 +198,7 @@ class TestEviction:
 
 # ── Invalidation ─────────────────────────────────────────────────────────────
 
+
 class TestInvalidate:
     async def test_invalidate_checksum_drops_all_principals(self):
         cache = InstanceCache(max_entries=8)
@@ -226,6 +252,7 @@ class TestInvalidate:
 
 
 # ── Validation ───────────────────────────────────────────────────────────────
+
 
 def test_max_entries_must_be_positive():
     with pytest.raises(ValueError, match="max_entries"):

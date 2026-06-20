@@ -400,9 +400,7 @@ class TestSearchBundle:
         mod = load_bundle("mcp/search_bundle", "search_bundle")
         server = mod.build_server({}, secrets)
         with pytest.raises(ValueError, match="blocked"):
-            await server.dispatch(
-                "fetch_url", {"url": "http://169.254.169.254/latest/meta-data/"}
-            )
+            await server.dispatch("fetch_url", {"url": "http://169.254.169.254/latest/meta-data/"})
 
     async def test_dispatch_unknown_tool_raises(self, load_bundle, secrets):
         mod = load_bundle("mcp/search_bundle", "search_bundle")
@@ -563,9 +561,7 @@ class TestEmailBundle:
         with pytest.raises(RuntimeError, match="outlook credentials missing"):
             await server.dispatch("list_messages", {})
 
-    async def test_outlook_oauth_refresh_uses_merged_token(
-        self, monkeypatch, load_bundle, secrets
-    ):
+    async def test_outlook_oauth_refresh_uses_merged_token(self, monkeypatch, load_bundle, secrets):
         mod = load_bundle("mcp/email_bundle", "email_bundle")
         import importlib
 
@@ -629,7 +625,9 @@ class TestEmailBundle:
 
     async def test_mask_error_details(self, load_bundle, secrets):
         mod = load_bundle("mcp/email_bundle", "email_bundle")
-        server = mod.build_server({"mcp": {"mask_error_details": True}, "email": {"provider": "imap"}}, secrets)
+        server = mod.build_server(
+            {"mcp": {"mask_error_details": True}, "email": {"provider": "imap"}}, secrets
+        )
         with pytest.raises(RuntimeError, match="tool call failed"):
             await server.dispatch("not_a_tool", {})
 

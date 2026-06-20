@@ -20,7 +20,6 @@ from backend.deps import (
     get_principal,
     get_settings,
     require_admin,
-    require_developer,
 )
 from backend.passwords import check_policy, hash_password, verify_password
 from backend.settings import Settings

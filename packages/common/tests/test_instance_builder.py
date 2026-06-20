@@ -39,6 +39,9 @@ class _FakeLoader:
 
         return factory
 
+    async def aload(self, meta: SourceMeta):
+        return self.load(meta)
+
 
 @pytest.mark.asyncio
 async def test_source_only_shares_cache_entry():

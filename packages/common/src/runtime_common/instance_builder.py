@@ -21,6 +21,15 @@ def build_secrets_resolver(user: UserMeta | None) -> SecretResolver:
     return EnvSecretResolver()
 
 
+def source_instance_key(source: SourceMeta) -> str | None:
+    """Cache checksum for a source row; general agents have no bundle checksum."""
+    if source.checksum:
+        return source.checksum
+    if source.deploy_mode == "general":
+        return f"general:{source.name}:{source.version}"
+    return source.checksum
+
+
 async def get_or_build_cached_instance(
     cache: InstanceCache,
     source: SourceMeta,
@@ -37,17 +46,17 @@ async def get_or_build_cached_instance(
     """
     if source_only:
         cfg = source.config
-        key = make_instance_key(source.checksum, None, None)
+        key = make_instance_key(source_instance_key(source), None, None)
     else:
         cfg = merge_configs(source.config, user.config if user else None)
         key = make_instance_key(
-            source.checksum,
+            source_instance_key(source),
             user.principal_id if user else None,
             user.updated_at if user else None,
         )
 
     async def builder() -> object:
-        factory = loader.load(source)
+        factory = await loader.aload(source)
         return call_factory(factory, cfg, secrets)
 
     return await cache.get_or_build(key, builder)

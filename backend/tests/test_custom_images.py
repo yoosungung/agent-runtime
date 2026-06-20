@@ -42,10 +42,11 @@ def _make_test_settings(**overrides):
 
 @pytest_asyncio.fixture()
 async def client(monkeypatch):
+    from unittest.mock import AsyncMock
+
     import backend.deps as _deps_mod
     from backend.app import app
     from backend.bundle_storage import LocalBundleStorage
-    from unittest.mock import AsyncMock
     from runtime_common.auth import AuthClient
     from runtime_common.schemas import Principal
 
@@ -134,6 +135,7 @@ def test_validate_config_within_limit():
 
 def test_validate_config_exceeds_16kb():
     from fastapi import HTTPException
+
     from backend.routers.custom_images import _validate_config
 
     big_config = {"data": "x" * (16 * 1024 + 1)}
@@ -269,9 +271,7 @@ async def test_delete_custom_image(client: AsyncClient):
     )
     assert create_r.status_code == 201
 
-    del_r = await client.delete(
-        "/api/admin/custom-images/agent/to-delete-v1", headers=_headers()
-    )
+    del_r = await client.delete("/api/admin/custom-images/agent/to-delete-v1", headers=_headers())
     assert del_r.status_code == 204
 
     # Verify it's retired in the list (retired images still appear in list)
@@ -282,9 +282,7 @@ async def test_delete_custom_image(client: AsyncClient):
 
 
 async def test_delete_nonexistent_404(client: AsyncClient):
-    r = await client.delete(
-        "/api/admin/custom-images/agent/no-such-slug", headers=_headers()
-    )
+    r = await client.delete("/api/admin/custom-images/agent/no-such-slug", headers=_headers())
     assert r.status_code == 404
 
 
@@ -390,5 +388,3 @@ async def test_restart_nonexistent_404(client: AsyncClient):
         headers=_headers(),
     )
     assert r.status_code == 404
-
-

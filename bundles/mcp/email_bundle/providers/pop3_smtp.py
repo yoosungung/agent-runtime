@@ -208,9 +208,7 @@ class Pop3SmtpProvider:
                     prefer=prefer,
                     max_bytes=self._settings.body_max_bytes,
                 )
-            attachments = [
-                AttachmentMeta(**meta) for meta in extract_attachment_meta(msg)
-            ]
+            attachments = [AttachmentMeta(**meta) for meta in extract_attachment_meta(msg)]
             return MessageDetail(
                 id=message_id,
                 thread_id=message_id,

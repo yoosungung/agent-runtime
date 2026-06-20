@@ -177,7 +177,9 @@ class OutlookGraphProvider:
         path = f"{self._mailbox_path()}/messages/{message_id}"
         params = None
         if include_body:
-            params = {"$select": "id,conversationId,subject,from,toRecipients,receivedDateTime,body,isRead,hasAttachments,attachments"}  # noqa: E501
+            params = {
+                "$select": "id,conversationId,subject,from,toRecipients,receivedDateTime,body,isRead,hasAttachments,attachments"
+            }  # noqa: E501
         data = await self._request("GET", path, params=params)
         body = data.get("body") or {}
         content = body.get("content") or ""

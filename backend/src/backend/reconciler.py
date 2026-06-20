@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timezone
+from datetime import UTC
 
 from sqlalchemy import select
 
@@ -21,14 +21,13 @@ logger = logging.getLogger(__name__)
 _RECONCILE_INTERVAL = 60  # seconds
 
 
-async def _now_utc():
-    from datetime import datetime
-    return datetime.now(tz=timezone.utc)
+def _custom_pool_name(kind: str, slug: str) -> str:
+    return f"{kind}-pool-custom-{slug}"
 
 
 async def reconcile_once(app) -> None:  # type: ignore[type-arg]
     """Single reconcile pass — called by the background loop."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     settings = app.state.settings
     k8s = getattr(app.state, "k8s_pool_manager", None)
@@ -41,7 +40,7 @@ async def reconcile_once(app) -> None:  # type: ignore[type-arg]
         # ----------------------------------------------------------------
         # 1. Stuck 'pending' rows → force-failed
         # ----------------------------------------------------------------
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(seconds=timeout_sec)
+        cutoff = datetime.now(tz=UTC) - timedelta(seconds=timeout_sec)
         stmt = select(SourceMetaRow).where(
             SourceMetaRow.deploy_mode == "image",
             SourceMetaRow.status == "pending",
@@ -72,28 +71,27 @@ async def reconcile_once(app) -> None:  # type: ignore[type-arg]
         result2 = await session.execute(stmt2)
         active_rows = result2.scalars().all()
 
+        existing_pools: set[str] = set()
         if k8s is not None:
-            for row in active_rows:
-                if row.slug is None:
-                    continue
-                try:
-                    exists = await k8s.deployment_exists(row.kind, row.slug)
-                except Exception as exc:
-                    logger.error(
-                        "reconciler.k8s_check_error",
-                        extra={"slug": row.slug, "error": str(exc)},
-                    )
-                    continue
-                if not exists:
-                    logger.error(
-                        "reconciler.active_deployment_missing",
-                        extra={
-                            "id": row.id,
-                            "slug": row.slug,
-                            "kind": row.kind,
-                            "action": "admin_action_required",
-                        },
-                    )
+            try:
+                existing_pools = await k8s.custom_pool_deployment_names()
+            except Exception as exc:
+                logger.error("reconciler.k8s_list_error", extra={"error": str(exc)})
+
+        for row in active_rows:
+            if row.slug is None:
+                continue
+            dep_name = _custom_pool_name(row.kind, row.slug)
+            if k8s is not None and existing_pools and dep_name not in existing_pools:
+                logger.error(
+                    "reconciler.active_deployment_missing",
+                    extra={
+                        "id": row.id,
+                        "slug": row.slug,
+                        "kind": row.kind,
+                        "action": "admin_action_required",
+                    },
+                )
 
         # ----------------------------------------------------------------
         # 3. 'retired' rows with residual K8s resources → force-delete
@@ -106,16 +104,19 @@ async def reconcile_once(app) -> None:  # type: ignore[type-arg]
         result3 = await session.execute(stmt3)
         retired_rows = result3.scalars().all()
 
-        if k8s is not None:
+        if k8s is not None and existing_pools:
             for row in retired_rows:
+                if row.slug is None:
+                    continue
+                dep_name = _custom_pool_name(row.kind, row.slug)
+                if dep_name not in existing_pools:
+                    continue
                 try:
-                    exists = await k8s.deployment_exists(row.kind, row.slug)
-                    if exists:
-                        logger.warning(
-                            "reconciler.retired_k8s_residual_cleanup",
-                            extra={"slug": row.slug},
-                        )
-                        await k8s.delete_pool(row.kind, row.slug)
+                    logger.warning(
+                        "reconciler.retired_k8s_residual_cleanup",
+                        extra={"slug": row.slug},
+                    )
+                    await k8s.delete_pool(row.kind, row.slug)
                 except Exception as exc:
                     logger.error(
                         "reconciler.retired_cleanup_error",

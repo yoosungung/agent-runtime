@@ -29,15 +29,6 @@ class TestBuildGeneralAgent:
         agent_store, user_store = vfs_stores
 
         class _FakeClient:
-            def __init__(self, *a, **k):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *a):
-                return None
-
             async def post(self, url, *, json, headers):
                 class _R:
                     def raise_for_status(self):
@@ -50,7 +41,7 @@ class TestBuildGeneralAgent:
 
         import agent_base.mcp_tools as mcp_mod
 
-        monkeypatch.setattr(mcp_mod.httpx, "AsyncClient", _FakeClient)
+        monkeypatch.setattr(mcp_mod, "get_mcp_http_client", lambda: _FakeClient())
 
         from agent_base.general_agent import build_general_agent
 

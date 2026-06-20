@@ -41,13 +41,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # ── LangGraph / DeepAgents (agent:compiled_graph) ────────────────────────────
 
+
 class StoreIndexConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     embed: str | None = Field(
         default=None,
         description="Embedding model spec, e.g. 'openai:text-embedding-3-small'. "
-                    "None disables vector search.",
+        "None disables vector search.",
     )
     dims: int | None = Field(default=None, description="Embedding dimensions.")
 
@@ -84,7 +85,7 @@ class LangGraphSourceConfig(BaseModel):
     model: str | None = Field(
         default=None,
         description="LLM model spec for DeepAgents, e.g. 'anthropic:claude-sonnet-4-6'. "
-                    "Ignored by plain compiled_graph bundles.",
+        "Ignored by plain compiled_graph bundles.",
     )
 
 
@@ -98,6 +99,7 @@ class LangGraphUserConfig(BaseModel):
 
 
 # ── Google ADK (agent:adk) ───────────────────────────────────────────────────
+
 
 class AdkSourceConfig(BaseModel):
     """source_meta.config['adk'] — infra wiring for ADK agents."""
@@ -143,6 +145,7 @@ class AdkUserConfig(BaseModel):
 
 # ── FastMCP (mcp:fastmcp) ────────────────────────────────────────────────────
 
+
 class FastMcpSourceConfig(BaseModel):
     """source_meta.config['fastmcp'] — server-level options for FastMCP bundles."""
 
@@ -181,6 +184,7 @@ class FastMcpSourceConfig(BaseModel):
 
 # ── MCP SDK (mcp:mcp_sdk) ────────────────────────────────────────────────────
 
+
 class McpSdkSourceConfig(BaseModel):
     """source_meta.config['mcp'] — options for low-level MCP SDK bundles."""
 
@@ -193,6 +197,7 @@ class McpSdkSourceConfig(BaseModel):
 
 
 # ── Email MCP (mcp:mcp_sdk — email_bundle) ───────────────────────────────────
+
 
 class EmailSourceConfig(BaseModel):
     """source_meta.config['email'] — provider selection and shared defaults."""
@@ -270,6 +275,7 @@ class GmailUserConfig(BaseModel):
 
 # ── Search MCP (mcp:mcp_sdk — search_bundle) ─────────────────────────────────
 
+
 class SearchSourceConfig(BaseModel):
     """source_meta.config['search'] — Naver search defaults."""
 
@@ -305,6 +311,7 @@ class FetchSourceConfig(BaseModel):
 
 
 # ── General Agent (deploy_mode: general) ─────────────────────────────────────
+
 
 class GeneralVfsConfig(BaseModel):
     """VFS routing is platform-fixed (/, /agent/, /user/). Minimal user config."""
@@ -352,6 +359,7 @@ class GeneralAgentUserConfig(BaseModel):
 
 
 # ── Root config models ────────────────────────────────────────────────────────
+
 
 class SourceConfig(BaseModel):
     """Full schema for source_meta.config.
@@ -405,6 +413,7 @@ class UserConfig(BaseModel):
 
 
 # ── infra_meta (platform env) ───────────────────────────────────────────────
+
 
 class InfraConfig(BaseModel):
     """Curated UI fields for Platform Infra — maps to flat container env keys.

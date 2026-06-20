@@ -251,8 +251,11 @@ class K8sPoolManager:
         await self._apps.create_namespaced_deployment(self._ns, dep)
         await self._core.create_namespaced_service(self._ns, svc)
         await self._custom.create_namespaced_custom_object(
-            group="keda.sh", version="v1alpha1", namespace=self._ns,
-            plural="scaledobjects", body=so,
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=self._ns,
+            plural="scaledobjects",
+            body=so,
         )
         await self._policy.create_namespaced_pod_disruption_budget(self._ns, pdb)
         logger.info("k8s.create_pool done", extra={"pool": name})
@@ -293,6 +296,7 @@ class K8sPoolManager:
 
     async def _delete_deployment(self, name: str) -> None:
         from kubernetes_asyncio.client.exceptions import ApiException
+
         try:
             await self._apps.delete_namespaced_deployment(name, self._ns)
         except ApiException as exc:
@@ -301,6 +305,7 @@ class K8sPoolManager:
 
     async def _delete_service(self, name: str) -> None:
         from kubernetes_asyncio.client.exceptions import ApiException
+
         try:
             await self._core.delete_namespaced_service(name, self._ns)
         except ApiException as exc:
@@ -309,10 +314,14 @@ class K8sPoolManager:
 
     async def _delete_scaled_object(self, name: str) -> None:
         from kubernetes_asyncio.client.exceptions import ApiException
+
         try:
             await self._custom.delete_namespaced_custom_object(
-                group="keda.sh", version="v1alpha1", namespace=self._ns,
-                plural="scaledobjects", name=name,
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=self._ns,
+                plural="scaledobjects",
+                name=name,
             )
         except ApiException as exc:
             if exc.status != 404:
@@ -320,6 +329,7 @@ class K8sPoolManager:
 
     async def _delete_pdb(self, name: str) -> None:
         from kubernetes_asyncio.client.exceptions import ApiException
+
         try:
             await self._policy.delete_namespaced_pod_disruption_budget(name, self._ns)
         except ApiException as exc:
@@ -339,31 +349,41 @@ class K8sPoolManager:
         patches: list[dict] = []
 
         if resources is not None:
-            patches.append({
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/resources",
-                "value": resources,
-            })
+            patches.append(
+                {
+                    "op": "replace",
+                    "path": "/spec/template/spec/containers/0/resources",
+                    "value": resources,
+                }
+            )
 
         if env_vars is not None:
             deploy_api_url = self._settings.DEPLOY_API_URL
-            patches.append({
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/env",
-                "value": _build_container_env(kind, slug, deploy_api_url, env_vars),
-            })
+            patches.append(
+                {
+                    "op": "replace",
+                    "path": "/spec/template/spec/containers/0/env",
+                    "value": _build_container_env(kind, slug, deploy_api_url, env_vars),
+                }
+            )
 
         if patches:
             await self._apps.patch_namespaced_deployment(
-                name, self._ns, patches,
+                name,
+                self._ns,
+                patches,
                 _content_type="application/json-patch+json",
             )
 
         if replicas_max is not None:
             so_patch = [{"op": "replace", "path": "/spec/maxReplicaCount", "value": replicas_max}]
             await self._custom.patch_namespaced_custom_object(
-                group="keda.sh", version="v1alpha1", namespace=self._ns,
-                plural="scaledobjects", name=name, body=so_patch,
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=self._ns,
+                plural="scaledobjects",
+                name=name,
+                body=so_patch,
                 _content_type="application/json-patch+json",
             )
 
@@ -381,16 +401,13 @@ class K8sPoolManager:
         Returns the list of deployment names that were restarted.
         """
         import datetime
-        from datetime import timezone
 
         names = await self.list_managed_deployments()
-        now = datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         patch = {
             "spec": {
                 "template": {
-                    "metadata": {
-                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
-                    }
+                    "metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": now}}
                 }
             }
         }
@@ -408,27 +425,29 @@ class K8sPoolManager:
 
     async def restart_pool(self, kind: str, slug: str) -> None:
         """Trigger a rolling restart by patching the restartedAt annotation."""
-        from datetime import timezone
-
         import datetime
 
         name = f"{kind}-pool-custom-{slug}"
-        now = datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         patch = {
             "spec": {
                 "template": {
-                    "metadata": {
-                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
-                    }
+                    "metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": now}}
                 }
             }
         }
         await self._apps.patch_namespaced_deployment(name, self._ns, patch)
         logger.info("k8s.restart_pool done", extra={"pool": name})
 
+    async def custom_pool_deployment_names(self) -> set[str]:
+        """Return K8s Deployment names for custom image pools."""
+        names = await self.list_managed_deployments()
+        return {name for name in names if "-pool-custom-" in name}
+
     async def deployment_exists(self, kind: str, slug: str) -> bool:
         """Return True if the Deployment exists in K8s."""
         from kubernetes_asyncio.client.exceptions import ApiException
+
         name = f"{kind}-pool-custom-{slug}"
         try:
             await self._apps.read_namespaced_deployment(name, self._ns)
@@ -451,10 +470,7 @@ class K8sPoolManager:
                 return {}
             raise
         data = secret.data or {}
-        return {
-            key: base64.b64decode(value).decode("utf-8")
-            for key, value in data.items()
-        }
+        return {key: base64.b64decode(value).decode("utf-8") for key, value in data.items()}
 
     async def apply_infra_configmap(self, env: dict[str, str]) -> None:
         """Create or replace ConfigMap runtime-infra."""
@@ -471,9 +487,7 @@ class K8sPoolManager:
         from kubernetes_asyncio.client.exceptions import ApiException
 
         try:
-            await self._core.replace_namespaced_config_map(
-                RUNTIME_INFRA_CONFIGMAP, self._ns, body
-            )
+            await self._core.replace_namespaced_config_map(RUNTIME_INFRA_CONFIGMAP, self._ns, body)
         except ApiException as exc:
             if exc.status != 404:
                 raise
@@ -509,9 +523,7 @@ class K8sPoolManager:
         patch = {
             "spec": {
                 "template": {
-                    "metadata": {
-                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
-                    }
+                    "metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": now}}
                 }
             }
         }

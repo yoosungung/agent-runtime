@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from runtime_common.vfs.composite import build_general_vfs
 from runtime_common.vfs.database_backend import AgentDatabaseBackend, UserDatabaseBackend
+from runtime_common.vfs.paths import glob_to_pg_regex, vfs_entry_metadata
 from runtime_common.vfs.store import (
     MemoryAgentVfsStore,
     MemoryUserVfsStore,
@@ -28,6 +31,26 @@ def test_asyncpg_pool_kwargs_pgbouncer_disables_statement_cache():
     )
     assert dsn == "postgresql://u:p@pgbouncer-rw:5432/db"
     assert kwargs == {"statement_cache_size": 0}
+
+
+def test_vfs_entry_metadata_root_level_file():
+    parent_path, name, size = vfs_entry_metadata("/notes.md", b"hello")
+    assert parent_path == "/"
+    assert name == "notes.md"
+    assert size == 5
+
+
+def test_vfs_entry_metadata_nested_file():
+    parent_path, name, size = vfs_entry_metadata("/dir/a.txt", b"abc")
+    assert parent_path == "/dir/"
+    assert name == "a.txt"
+    assert size == 3
+
+
+def test_glob_to_pg_regex():
+    assert re.match(glob_to_pg_regex("**/*.py"), "/src/a.py")
+    assert re.match(glob_to_pg_regex("**/*.py"), "/a.py")
+    assert not re.match(glob_to_pg_regex("**/*.py"), "/src/a.txt")
 
 
 @pytest.fixture
@@ -105,6 +128,19 @@ async def test_edit_replaces_content(agent_store):
     assert edit.occurrences == 1
     read_result = await backend.aread("/f.txt")
     assert "hello there" in read_result.file_data["content"]
+
+
+@pytest.mark.asyncio
+async def test_write_materializes_parent_dirs(agent_store):
+    store = agent_store
+    await store.write("agent", "x", "/deep/nested/file.txt", "data")
+    entries = await store.list_dir("agent", "x", "/deep/")
+    paths = {e.path for e in entries}
+    assert "/deep/nested/" in paths
+
+    nested = await store.list_dir("agent", "x", "/deep/nested/")
+    nested_paths = {e.path for e in nested}
+    assert "/deep/nested/file.txt" in nested_paths
 
 
 @pytest.mark.asyncio

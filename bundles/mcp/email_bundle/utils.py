@@ -184,9 +184,7 @@ def send_via_smtp(
     if not password:
         password = resolve_credential(imap_cfg, secrets)
     if not password:
-        raise RuntimeError(
-            "smtp credentials missing: set smtp.password or imap.password in config"
-        )
+        raise RuntimeError("smtp credentials missing: set smtp.password or imap.password in config")
 
     port = int(smtp_cfg.get("port", 587))
     use_starttls = bool(smtp_cfg.get("use_starttls", True))

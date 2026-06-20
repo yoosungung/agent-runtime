@@ -1,10 +1,6 @@
-"""Database-backed deepagents VFS backends."""
+"""Database-backed deepagents VFS backends — async API only."""
 
 from __future__ import annotations
-
-import asyncio
-import concurrent.futures
-from typing import TYPE_CHECKING
 
 from deepagents.backends.protocol import (
     BackendProtocol,
@@ -18,34 +14,21 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.utils import perform_string_replacement
 
-from runtime_common.vfs.paths import (
-    direct_children,
-    format_read_content,
-    glob_paths,
-    grep_paths,
-    normalize_path,
-    utc_now_iso,
-)
-from runtime_common.vfs.store import AgentVfsStore, UserVfsStore
-
-if TYPE_CHECKING:
-    pass
+from runtime_common.vfs.paths import format_read_content, normalize_dir, normalize_path, utc_now_iso
+from runtime_common.vfs.store import AgentVfsStore, UserVfsStore, VfsEntry
 
 
-def _run_async(coro):
-    """Run a coroutine from sync or async caller context."""
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
+def _entry_to_dict(entry: VfsEntry) -> dict:
+    out: dict = {"path": entry.path, "is_dir": entry.is_dir}
+    if not entry.is_dir:
+        out["modified_at"] = entry.modified_at.isoformat() if entry.modified_at else utc_now_iso()
+    return out
 
 
 class _DatabaseBackendBase(BackendProtocol):
-    """Shared read/write/edit/glob/grep logic for database VFS backends."""
+    """DeepAgents backend — each operation maps to one scoped store query."""
 
-    async def _list_all_paths(self) -> list[str]:
+    async def _list_dir(self, dir_path: str) -> list[VfsEntry]:
         raise NotImplementedError
 
     async def _read_content(self, path: str) -> str | None:
@@ -54,17 +37,21 @@ class _DatabaseBackendBase(BackendProtocol):
     async def _write_content(self, path: str, content: str, *, overwrite: bool) -> None:
         raise NotImplementedError
 
-    async def als(self, path: str) -> LsResult:
-        path = normalize_path(path)
-        all_paths = await self._list_all_paths()
-        entries = direct_children(all_paths, path)
-        for entry in entries:
-            if not entry.get("is_dir"):
-                entry.setdefault("modified_at", utc_now_iso())
-        return LsResult(entries=entries)
+    async def _glob_paths(self, pattern: str, base_path: str | None) -> list[str]:
+        raise NotImplementedError
 
-    def ls(self, path: str) -> LsResult:
-        return _run_async(self.als(path))
+    async def _grep_matches(
+        self,
+        pattern: str,
+        *,
+        path_prefix: str | None,
+        glob_filter: str | None,
+    ) -> list[dict]:
+        raise NotImplementedError
+
+    async def als(self, path: str) -> LsResult:
+        entries = await self._list_dir(normalize_dir(path))
+        return LsResult(entries=[_entry_to_dict(e) for e in entries])
 
     async def aread(self, file_path: str, offset: int = 0, limit: int = 2000) -> ReadResult:
         file_path = normalize_path(file_path)
@@ -73,9 +60,6 @@ class _DatabaseBackendBase(BackendProtocol):
             return ReadResult(error=f"Error: File '{file_path}' not found")
         formatted = format_read_content(content, offset=offset, limit=limit)
         return ReadResult(file_data=FileData(content=formatted, encoding="utf-8"))
-
-    def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> ReadResult:
-        return _run_async(self.aread(file_path, offset=offset, limit=limit))
 
     async def awrite(self, file_path: str, content: str) -> WriteResult:
         file_path = normalize_path(file_path)
@@ -91,9 +75,6 @@ class _DatabaseBackendBase(BackendProtocol):
         except OSError as exc:
             return WriteResult(error=f"Error writing file '{file_path}': {exc}")
         return WriteResult(path=file_path)
-
-    def write(self, file_path: str, content: str) -> WriteResult:
-        return _run_async(self.awrite(file_path, content))
 
     async def aedit(
         self,
@@ -117,33 +98,9 @@ class _DatabaseBackendBase(BackendProtocol):
             return EditResult(error=f"Error editing file '{file_path}': {exc}")
         return EditResult(path=file_path, occurrences=count)
 
-    def edit(
-        self,
-        file_path: str,
-        old_string: str,
-        new_string: str,
-        replace_all: bool = False,
-    ) -> EditResult:
-        return _run_async(
-            self.aedit(file_path, old_string, new_string, replace_all=replace_all)
-        )
-
-    async def _all_files_map(self) -> dict[str, str]:
-        paths = await self._list_all_paths()
-        files: dict[str, str] = {}
-        for p in paths:
-            content = await self._read_content(p)
-            if content is not None:
-                files[p] = content
-        return files
-
     async def aglob(self, pattern: str, path: str | None = None) -> GlobResult:
-        all_paths = await self._list_all_paths()
-        matched = glob_paths(all_paths, pattern, path)
+        matched = await self._glob_paths(pattern, path)
         return GlobResult(matches=matched)
-
-    def glob(self, pattern: str, path: str | None = None) -> GlobResult:
-        return _run_async(self.aglob(pattern, path))
 
     async def agrep(
         self,
@@ -151,17 +108,12 @@ class _DatabaseBackendBase(BackendProtocol):
         path: str | None = None,
         glob: str | None = None,
     ) -> GrepResult:
-        files = await self._all_files_map()
-        matches = grep_paths(files, pattern, path=path, glob_filter=glob)
+        matches = await self._grep_matches(
+            pattern,
+            path_prefix=path,
+            glob_filter=glob,
+        )
         return GrepResult(matches=matches)
-
-    def grep(
-        self,
-        pattern: str,
-        path: str | None = None,
-        glob: str | None = None,
-    ) -> GrepResult:
-        return _run_async(self.agrep(pattern, path=path, glob=glob))
 
 
 class AgentDatabaseBackend(_DatabaseBackendBase):
@@ -172,17 +124,34 @@ class AgentDatabaseBackend(_DatabaseBackendBase):
         self._kind = kind
         self._agent_name = agent_name
 
-    async def _list_all_paths(self) -> list[str]:
-        return await self._store.list_paths(self._kind, self._agent_name)
+    async def _list_dir(self, dir_path: str) -> list[VfsEntry]:
+        return await self._store.list_dir(self._kind, self._agent_name, dir_path)
 
     async def _read_content(self, path: str) -> str | None:
         record = await self._store.read(self._kind, self._agent_name, path)
         return None if record is None else record.content
 
     async def _write_content(self, path: str, content: str, *, overwrite: bool) -> None:
-        await self._store.write(
-            self._kind, self._agent_name, path, content, overwrite=overwrite
+        await self._store.write(self._kind, self._agent_name, path, content, overwrite=overwrite)
+
+    async def _glob_paths(self, pattern: str, base_path: str | None) -> list[str]:
+        return await self._store.glob(self._kind, self._agent_name, pattern, base_path=base_path)
+
+    async def _grep_matches(
+        self,
+        pattern: str,
+        *,
+        path_prefix: str | None,
+        glob_filter: str | None,
+    ) -> list[dict]:
+        rows = await self._store.grep(
+            self._kind,
+            self._agent_name,
+            pattern,
+            path_prefix=path_prefix,
+            glob_filter=glob_filter,
         )
+        return [{"path": r.path, "line": r.line, "text": r.text} for r in rows]
 
 
 class UserDatabaseBackend(_DatabaseBackendBase):
@@ -192,8 +161,8 @@ class UserDatabaseBackend(_DatabaseBackendBase):
         self._store = store
         self._user_id = user_id
 
-    async def _list_all_paths(self) -> list[str]:
-        return await self._store.list_paths(self._user_id)
+    async def _list_dir(self, dir_path: str) -> list[VfsEntry]:
+        return await self._store.list_dir(self._user_id, dir_path)
 
     async def _read_content(self, path: str) -> str | None:
         record = await self._store.read(self._user_id, path)
@@ -201,3 +170,21 @@ class UserDatabaseBackend(_DatabaseBackendBase):
 
     async def _write_content(self, path: str, content: str, *, overwrite: bool) -> None:
         await self._store.write(self._user_id, path, content, overwrite=overwrite)
+
+    async def _glob_paths(self, pattern: str, base_path: str | None) -> list[str]:
+        return await self._store.glob(self._user_id, pattern, base_path=base_path)
+
+    async def _grep_matches(
+        self,
+        pattern: str,
+        *,
+        path_prefix: str | None,
+        glob_filter: str | None,
+    ) -> list[dict]:
+        rows = await self._store.grep(
+            self._user_id,
+            pattern,
+            path_prefix=path_prefix,
+            glob_filter=glob_filter,
+        )
+        return [{"path": r.path, "line": r.line, "text": r.text} for r in rows]

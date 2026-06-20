@@ -99,7 +99,9 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:
             display: Number of results to return (1-10, default 5).
         """
         result = await _call_mcp(
-            mcp_gateway_url, mcp_server, "naver_search",
+            mcp_gateway_url,
+            mcp_server,
+            "naver_search",
             {"query": query, "display": display},
             get_current_token(),
         )
@@ -114,7 +116,9 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:
             timeout_seconds: Request timeout in seconds (default 10).
         """
         result = await _call_mcp(
-            mcp_gateway_url, mcp_server, "fetch_url",
+            mcp_gateway_url,
+            mcp_server,
+            "fetch_url",
             {"url": url, "timeout_seconds": timeout_seconds},
             get_current_token(),
         )
@@ -176,5 +180,6 @@ def _stringify(obj: object) -> str:
         return obj
     if isinstance(obj, dict | list):
         import json
+
         return json.dumps(obj, ensure_ascii=False)
     return str(obj)

@@ -6,11 +6,11 @@ import json
 import os
 from typing import Any
 
-import httpx
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
 
 from agent_base.context import get_current_token
+from agent_base.http_client import get_mcp_http_client
 
 
 async def _call_mcp(
@@ -24,17 +24,17 @@ async def _call_mcp(
     if token:
         headers["Authorization"] = f"Bearer {token}"
     payload = {"server": server, "tool": tool, "arguments": arguments}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{gateway_url.rstrip('/')}/v1/mcp/invoke-internal",
-            json=payload,
-            headers=headers,
-        )
-        resp.raise_for_status()
-        try:
-            return resp.json()
-        except ValueError:
-            return resp.text
+    client = get_mcp_http_client()
+    resp = await client.post(
+        f"{gateway_url.rstrip('/')}/v1/mcp/invoke-internal",
+        json=payload,
+        headers=headers,
+    )
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError:
+        return resp.text
 
 
 def _stringify(obj: object) -> str:
@@ -76,9 +76,7 @@ def build_mcp_tools(
             _name: str = name,
         ) -> str:
             args = arguments or {}
-            result = await _call_mcp(
-                gateway, _server, _name, args, get_current_token()
-            )
+            result = await _call_mcp(gateway, _server, _name, args, get_current_token())
             return _stringify(result)
 
         tools.append(

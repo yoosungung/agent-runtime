@@ -26,6 +26,7 @@ def secrets():
 
 # Recording httpx stub — both bundles use ``httpx.AsyncClient`` for MCP calls.
 
+
 class _FakeResp:
     def __init__(self, body: object) -> None:
         self._body = body
@@ -117,8 +118,11 @@ class TestCompiledGraphMcpForwarding:
         client = fake_httpx(mod)
 
         result = await mod._call_mcp(
-            "http://mcp-gateway.test", "search-server", "naver_search",
-            {"query": "서울 날씨", "display": 3}, "user.jwt.token",
+            "http://mcp-gateway.test",
+            "search-server",
+            "naver_search",
+            {"query": "서울 날씨", "display": 3},
+            "user.jwt.token",
         )
 
         assert client.last_call["url"] == "http://mcp-gateway.test/v1/mcp/invoke-internal"
@@ -137,8 +141,11 @@ class TestCompiledGraphMcpForwarding:
         client = fake_httpx(mod)
 
         await mod._call_mcp(
-            "http://mcp-gateway.test", "search-server", "fetch_url",
-            {"url": "https://example.com"}, None,
+            "http://mcp-gateway.test",
+            "search-server",
+            "fetch_url",
+            {"url": "https://example.com"},
+            None,
         )
         assert "Authorization" not in client.last_call["headers"]
 
@@ -180,9 +187,7 @@ class TestAdkBundle:
         with pytest.raises(ValueError, match="could not evaluate"):
             calc("__import__('os')")
 
-    async def test_naver_search_tool_calls_mcp_with_jwt(
-        self, load_bundle, secrets, fake_httpx
-    ):
+    async def test_naver_search_tool_calls_mcp_with_jwt(self, load_bundle, secrets, fake_httpx):
         mod = load_bundle("agent-base/adk_bundle", "adk_bundle")
         client = fake_httpx(mod)
 
@@ -193,9 +198,7 @@ class TestAdkBundle:
                 {"mcp_server": "search-server", "google_api_key": "AIza-test"},
                 secrets,
             )
-            search = next(
-                t for t in agent.tools if getattr(t, "__name__", "") == "naver_search"
-            )
+            search = next(t for t in agent.tools if getattr(t, "__name__", "") == "naver_search")
             result = await search("서울 날씨", 3)
         finally:
             token_var.reset(tok)

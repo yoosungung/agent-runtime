@@ -359,7 +359,9 @@ class GoogleCalendarClient:
         if "location" in patch:
             google["location"] = patch["location"]
         if "attendees" in patch:
-            google["attendees"] = [{"email": email} for email in normalize_attendees(patch["attendees"])]
+            google["attendees"] = [
+                {"email": email} for email in normalize_attendees(patch["attendees"])
+            ]
         if patch.get("is_online_meeting"):
             google["conferenceData"] = {
                 "createRequest": {

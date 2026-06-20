@@ -15,12 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.audit import log_event, make_audit_row
 from backend.bundle_storage import BundleStorage, bundle_path
-from backend.deps import check_csrf, get_db, get_principal, get_settings, require_admin, require_developer
+from backend.deps import (
+    check_csrf,
+    get_db,
+    get_principal,
+    get_settings,
+    require_admin,
+    require_developer,
+)
 from backend.settings import Settings
+from runtime_common.config_schema import GeneralAgentSourceConfig, McpToolManifestEntry
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
 from runtime_common.roles import UserRole, role_at_least
 from runtime_common.schemas import AgentRuntimeKind, McpRuntimeKind, Principal
-from runtime_common.config_schema import GeneralAgentSourceConfig, McpToolManifestEntry
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +40,7 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
+
 
 def _ensure_can_read_source_meta(row: SourceMetaRow, principal: Principal) -> None:
     if row.deploy_mode != "general" and not role_at_least(principal.role, UserRole.DEVELOPER):
@@ -53,6 +61,8 @@ def _apply_role_list_filter(
     q = q.where(SourceMetaRow.deploy_mode == "general")
     count_q = count_q.where(SourceMetaRow.deploy_mode == "general")
     return q, count_q
+
+
 GENERAL_RUNTIME_POOL = "agent:compiled_graph"
 MAX_MCP_TOOLS = 32
 

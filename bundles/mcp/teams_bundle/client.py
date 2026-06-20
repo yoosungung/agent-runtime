@@ -157,7 +157,10 @@ class GraphTeamsClient:
         expand_members: bool,
     ) -> ListChatsResult:
         limit = clamp_limit(limit, default=self._settings.page_size)
-        params: dict[str, Any] = {"$top": limit, "$orderby": "lastMessagePreview/createdDateTime desc"}
+        params: dict[str, Any] = {
+            "$top": limit,
+            "$orderby": "lastMessagePreview/createdDateTime desc",
+        }
         if expand_members:
             params["$expand"] = "members"
         if cursor:
@@ -196,7 +199,9 @@ class GraphTeamsClient:
             path = f"/teams/{selected_team}/channels/{selected_channel}/messages"
             data = await self._request("GET", path, params={"$top": limit})
         messages = [
-            MessageSummary(**graph_message_to_summary(item, max_bytes=self._settings.body_max_bytes))
+            MessageSummary(
+                **graph_message_to_summary(item, max_bytes=self._settings.body_max_bytes)
+            )
             for item in data.get("value") or []
         ]
         next_cursor = data.get("@odata.nextLink")
@@ -221,7 +226,9 @@ class GraphTeamsClient:
                 params={"$top": limit},
             )
         messages = [
-            MessageSummary(**graph_message_to_summary(item, max_bytes=self._settings.body_max_bytes))
+            MessageSummary(
+                **graph_message_to_summary(item, max_bytes=self._settings.body_max_bytes)
+            )
             for item in data.get("value") or []
         ]
         next_cursor = data.get("@odata.nextLink")

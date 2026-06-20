@@ -50,8 +50,13 @@ from runtime_common.secrets import SecretResolver
 _DEFAULT_MCP_SERVER = "search-server"
 
 _BINOPS = {
-    ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv,
-    ast.FloorDiv: op.floordiv, ast.Mod: op.mod, ast.Pow: op.pow,
+    ast.Add: op.add,
+    ast.Sub: op.sub,
+    ast.Mult: op.mul,
+    ast.Div: op.truediv,
+    ast.FloorDiv: op.floordiv,
+    ast.Mod: op.mod,
+    ast.Pow: op.pow,
 }
 _UNARYOPS = {ast.UAdd: op.pos, ast.USub: op.neg}
 
@@ -121,7 +126,9 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:  # noqa: ARG001 — 
             display: Number of results (1-10, default 5).
         """
         result = await _call_mcp(
-            mcp_gateway_url, mcp_server, "naver_search",
+            mcp_gateway_url,
+            mcp_server,
+            "naver_search",
             {"query": query, "display": display},
             get_current_token(),
         )
@@ -135,7 +142,9 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:  # noqa: ARG001 — 
             timeout_seconds: Request timeout (default 10).
         """
         result = await _call_mcp(
-            mcp_gateway_url, mcp_server, "fetch_url",
+            mcp_gateway_url,
+            mcp_server,
+            "fetch_url",
             {"url": url, "timeout_seconds": timeout_seconds},
             get_current_token(),
         )
@@ -191,5 +200,6 @@ def _stringify(obj: object) -> str:
         return obj
     if isinstance(obj, dict | list):
         import json
+
         return json.dumps(obj, ensure_ascii=False)
     return str(obj)

@@ -20,7 +20,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **베이스 이미지는 이미지 1개 + `RUNTIME_KIND` env**. kind별로 이미지 따로 찍지 않는다.
 - **런타임 메타 조회는 deploy-api `/v1/resolve` 단일 경로**. gateway·agent-base·mcp-base 누구도 Postgres에 직접 붙지 않는다. **deploy-api는 read-only** — `source_meta`/`user_meta` **쓰기는 admin backend만**. `source_meta`(코드 정의)는 immutable·versioned, `user_meta`(사용자별 config·secrets_ref)는 mutable.
 - **사용자/권한 테이블도 동일 규칙**. auth는 `/login`·`/verify`를 위해 `users`·`user_resource_access` **read-only**. 쓰기는 **admin backend만**. `refresh_tokens`는 예외로 auth가 소유. admin이 비밀번호 변경·계정 비활성 시 auth의 `POST /admin/revoke-tokens`를 호출.
-- **pool `/invoke` payload는 식별자만**: agent는 `{agent, version, input, session_id, principal}`, mcp는 `{server, version, tool, arguments, principal}`. meta는 pool이 deploy-api에 **재조회**한다.
+- **pool `/invoke` payload는 식별자만**: agent는 `{agent, version, input, session_id, principal}`, mcp는 `{server, version, tool, arguments, principal}`. meta는 pool이 deploy-api에 **재조회**한다 — 단, Envoy 경유(bundle/image pool) 요청은 ext-authz가 **`x-resolve`** 헤더(base64 `ResolveResponse`)로 resolve 스냅샷을 전달하고 pool은 **헤더가 있으면 deploy-api 호출을 생략**한다. 직접 pool 호출·헤더 불일치·식별자 mismatch 시에는 deploy-api 재조회로 폴백.
 - **`access`는 `/verify` 응답에 번들**. ext-authz가 별도 authorize 호출을 하지 않도록 한 번에 내려온다.
 - **config는 source + user 두 층**. deploy-api는 병합하지 않고 그대로 내려보낸다 — cache 경계와 감사 지점 분리.
 - **`infra_meta`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리.
@@ -90,7 +90,7 @@ LLM serving, RAG 스토리지, OTEL collector, bundle 저장소(S3/OCI), 사용�
 [backend BFF] ── SSE ──> [Chat UI]
 ```
 
-**핵심**: pool은 gateway 경유 payload의 번들 정보를 신뢰하지 않고 **자기 권한으로 resolve를 재조회**. agent와 MCP invoke는 ext-authz / Envoy / pool / deploy-api 네 축이 `kind` 하나로만 분기 — 대칭 구조.
+**핵심**: pool은 gateway 경유 payload의 번들 정보를 신뢰하지 않는다. Envoy+ext-authz 경로에서는 **`x-resolve` 스냅샷**으로 deploy-api 왕복을 줄이되, 헤더가 없거나 검증 실패 시 **deploy-api 재조회**로 폴백한다. agent와 MCP invoke는 ext-authz / Envoy / pool / deploy-api 네 축이 `kind` 하나로만 분기 — 대칭 구조.
 
 단계별 내부 구현은 [backend/DESIGN.md](backend/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md), [runtimes/agent-base/DESIGN.md](runtimes/agent-base/DESIGN.md) 참조.
 
@@ -110,7 +110,7 @@ LLM serving, RAG 스토리지, OTEL collector, bundle 저장소(S3/OCI), 사용�
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
 | `api_keys` | auth | auth | **비활성**(설계 미완 — [ROADMAP.md](ROADMAP.md)) |
 
-마이그레이션: `backend/migrations/0001_init.sql` + 후속 파일. 적용: `make db-migrate-all`.
+마이그레이션: `backend/migrations/0001_init.sql`. 적용: `make db-migrate` 또는 `make db-migrate-all`.
 
 ### source_meta
 

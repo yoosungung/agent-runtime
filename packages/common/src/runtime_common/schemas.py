@@ -4,10 +4,11 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from runtime_common.roles import UserRole, parse_role, role_at_least, role_from_legacy_is_admin
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
+
+from runtime_common.roles import UserRole, role_at_least, role_from_legacy_is_admin
 
 if TYPE_CHECKING:
     from runtime_common.db.models import InfraMetaRow, SourceMetaRow, UserMetaRow
@@ -105,7 +106,8 @@ class SourceMeta(BaseModel):
         default=None, description="Python path, e.g. 'pkg.mod:factory'. None for image mode."
     )
     bundle_uri: str | None = Field(
-        default=None, description="s3://... or file://... location of code bundle. None for image mode."
+        default=None,
+        description="s3://... or file://... location of code bundle. None for image mode.",
     )
     checksum: str | None = None
     sig_uri: str | None = None
@@ -117,7 +119,9 @@ class SourceMeta(BaseModel):
     deploy_mode: str = Field(default="bundle", description="'general' | 'bundle' | 'image'")
     image_uri: str | None = Field(default=None, description="OCI image URI for image mode")
     image_digest: str | None = Field(default=None, description="OCI image digest for image mode")
-    slug: str | None = Field(default=None, description="URL-safe slug for image mode, e.g. 'summarizer-v1'")
+    slug: str | None = Field(
+        default=None, description="URL-safe slug for image mode, e.g. 'summarizer-v1'"
+    )
     status: str = Field(default="active", description="'pending' | 'active' | 'failed' | 'retired'")
     created_at: datetime | None = None
 

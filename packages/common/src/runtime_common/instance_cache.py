@@ -64,31 +64,46 @@ class InstanceCache:
             raise ValueError("max_entries must be >= 1")
         self._max_entries = max_entries
         self._entries: OrderedDict[InstanceKey, Any] = OrderedDict()
-        self._lock = asyncio.Lock()
+        self._meta_lock = asyncio.Lock()
+        self._build_locks: dict[InstanceKey, asyncio.Lock] = {}
+
+    async def _get_build_lock(self, key: InstanceKey) -> asyncio.Lock:
+        async with self._meta_lock:
+            lock = self._build_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._build_locks[key] = lock
+            return lock
 
     async def get_or_build(self, key: InstanceKey, builder: Builder) -> Any:
         """Return the cached instance for ``key`` or call ``builder()`` and cache its result.
 
-        ``builder`` may be sync or async (awaitable). The lock is held for the full
-        build to deduplicate concurrent cold-starts on the same key — simple and safe.
-        Once warm, cache hits are fast and contention is minimal.
+        Per-key locks deduplicate concurrent cold-starts on the same key without
+        serializing builds for unrelated keys.
         """
-        evicted: list[Any] = []
-        async with self._lock:
+        async with self._meta_lock:
             if key in self._entries:
                 self._entries.move_to_end(key)
                 return self._entries[key]
+
+        build_lock = await self._get_build_lock(key)
+        async with build_lock:
+            async with self._meta_lock:
+                if key in self._entries:
+                    self._entries.move_to_end(key)
+                    return self._entries[key]
 
             instance = builder()
             if inspect.isawaitable(instance):
                 instance = await instance
 
-            self._entries[key] = instance
-            self._entries.move_to_end(key)
-
-            while len(self._entries) > self._max_entries:
-                _, victim = self._entries.popitem(last=False)
-                evicted.append(victim)
+            evicted: list[Any] = []
+            async with self._meta_lock:
+                self._entries[key] = instance
+                self._entries.move_to_end(key)
+                while len(self._entries) > self._max_entries:
+                    _, victim = self._entries.popitem(last=False)
+                    evicted.append(victim)
 
         for victim in evicted:
             await _close_instance(victim)
@@ -97,7 +112,7 @@ class InstanceCache:
     async def invalidate_checksum(self, checksum: str) -> None:
         """Drop all entries for ``checksum``. Use when a bundle is removed or replaced."""
         evicted: list[Any] = []
-        async with self._lock:
+        async with self._meta_lock:
             victim_keys = [k for k in self._entries if k[0] == checksum]
             for k in victim_keys:
                 evicted.append(self._entries.pop(k))
@@ -107,7 +122,7 @@ class InstanceCache:
     async def invalidate_principal(self, checksum: str, principal_id: str) -> None:
         """Drop all entries for ``(checksum, principal_id)`` regardless of updated_at."""
         evicted: list[Any] = []
-        async with self._lock:
+        async with self._meta_lock:
             victim_keys = [k for k in self._entries if k[0] == checksum and k[1] == principal_id]
             for k in victim_keys:
                 evicted.append(self._entries.pop(k))
@@ -116,7 +131,7 @@ class InstanceCache:
 
     async def clear(self) -> None:
         """Drop every entry. Call from lifespan shutdown."""
-        async with self._lock:
+        async with self._meta_lock:
             evicted = list(self._entries.values())
             self._entries.clear()
         for victim in evicted:

@@ -34,9 +34,7 @@ def validate_infra_env_key(key: str) -> None:
     if key in RESERVED_INFRA_ENV_KEYS:
         raise ValueError(f"env key {key!r} is reserved by the platform")
     if not _ENV_KEY_RE.match(key):
-        raise ValueError(
-            f"env key {key!r} must match [A-Z][A-Z0-9_]* (container env var name)"
-        )
+        raise ValueError(f"env key {key!r} must match [A-Z][A-Z0-9_]* (container env var name)")
 
 
 def normalize_stored_env(env: dict) -> dict[str, str]:

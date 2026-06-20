@@ -24,6 +24,8 @@
     - `resolve(kind, name, version, principal) -> ResolveResponse`
     - ETag + 로컬 LRU 캐시(크기·TTL 설정 가능). 조건부 요청(`If-None-Match`) 지원.
     - 등록(`register`)은 admin 서비스 담당으로 이전 — 이 클라이언트에서 제거.
+  - **`pool_resolve.py`** — `resolve_for_invoke()`: Envoy 경유 시 ext-authz가 내려준 `x-resolve` 헤더를 우선 사용, 없으면 `DeployApiClient.resolve()` 폴백.
+  - **`resolve_context.py`** — `x-resolve` 헤더(base64 `ResolveResponse`) encode/decode.
   - **`secrets.py`** — `SecretResolver` 프로토콜. `resolve(ref: str) -> str`. 구현: `EnvSecretResolver`, `VaultSecretResolver`, `AwsSecretsManagerResolver`. `user_meta.secrets_ref` 값을 런타임에 실제 비밀로 변환.
   - `logging.py` — structlog JSON 로깅 구성.
   - `telemetry.py` — OpenTelemetry tracer provider + OTLP exporter. **인프라 관찰가능성 전용** (HTTP 지표·trace → otel-collector → Prometheus/Grafana).

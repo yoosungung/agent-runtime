@@ -68,6 +68,9 @@ data:
                                   - exact: x-principal
                                   - exact: x-source-checksum
                                   - exact: x-source-version
+                                  - exact: x-runtime-cfg
+                                  - exact: x-runtime-secrets-ref
+                                  - exact: x-resolve
                                   - exact: x-grace-applied
                               allowed_client_headers:
                                 patterns:

@@ -22,6 +22,7 @@ from runtime_common.instance_cache import InstanceCache
 from runtime_common.loader import BundleFetchError, BundleImportError, BundleLoader
 from runtime_common.logging import configure_logging
 from runtime_common.opik_tracing import configure_opik, opik_span_context
+from runtime_common.pool_resolve import ResolveHeaderMismatchError, resolve_for_invoke
 from runtime_common.registry import ActiveCounter, RegistryPublisher
 from runtime_common.schemas import Principal
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
@@ -178,6 +179,7 @@ async def readyz() -> dict[str, str]:
 async def invoke(
     req: InvokeRequest,
     x_principal: Annotated[str | None, Header()] = None,
+    x_resolve: Annotated[str | None, Header()] = None,
 ) -> dict:
     settings: Settings = app.state.settings
     counter: ActiveCounter = app.state.counter
@@ -194,13 +196,18 @@ async def invoke(
         raise HTTPException(status_code=401, detail="missing principal")
 
     # Re-resolve (pool fetches meta itself — trust boundary at deploy-api)
+    principal_id = str(principal.user_id) if principal.user_id else principal.sub
     try:
-        resolved = await deploy.resolve(
+        resolved = await resolve_for_invoke(
+            deploy,
             kind="mcp",
             name=req.server,
             version=req.version,
-            principal=str(principal.user_id) if principal.user_id else principal.sub,
+            principal=principal_id,
+            x_resolve=x_resolve,
         )
+    except ResolveHeaderMismatchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"resolve failed: {exc}") from exc
 
@@ -215,9 +222,7 @@ async def invoke(
     secrets = build_secrets_resolver(user)
 
     try:
-        instance = await get_or_build_cached_instance(
-            cache, source, user, loader, secrets
-        )
+        instance = await get_or_build_cached_instance(cache, source, user, loader, secrets)
     except BundleFetchError as exc:
         raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
     except BundleImportError as exc:
@@ -263,11 +268,17 @@ async def _resolve_instance(
     deploy: DeployApiClient,
     loader: BundleLoader,
     cache: InstanceCache,
+    x_resolve: str | None = None,
 ) -> tuple[Any, str]:
     """Resolve + load bundle; returns (instance, expected_pool)."""
     expected_pool = f"mcp:{settings.runtime_kind}"
-    resolved = await deploy.resolve(
-        kind="mcp", name=server, version=version, principal=principal_sub
+    resolved = await resolve_for_invoke(
+        deploy,
+        kind="mcp",
+        name=server,
+        version=version,
+        principal=principal_sub,
+        x_resolve=x_resolve,
     )
     source = resolved.source
     if source.runtime_pool != expected_pool:
@@ -299,6 +310,7 @@ async def mcp_streamable(request: Request) -> Response:
     server = request.headers.get("X-Mcp-Server", "")
     version = request.headers.get("X-Mcp-Version") or None
     principal_sub = request.headers.get("X-Mcp-Principal", "anonymous")
+    x_resolve = request.headers.get("x-resolve")
     wants_sse = "text/event-stream" in request.headers.get("accept", "")
 
     try:
@@ -337,7 +349,7 @@ async def mcp_streamable(request: Request) -> Response:
     if method == "tools/list":
         try:
             instance, _ = await _resolve_instance(
-                server, version, principal_sub, settings, deploy, loader, cache
+                server, version, principal_sub, settings, deploy, loader, cache, x_resolve
             )
             tools = await runner_list_tools(settings.runtime_kind, instance)
         except Exception as exc:
@@ -358,7 +370,7 @@ async def mcp_streamable(request: Request) -> Response:
 
         try:
             instance, _ = await _resolve_instance(
-                server, version, principal_sub, settings, deploy, loader, cache
+                server, version, principal_sub, settings, deploy, loader, cache, x_resolve
             )
         except Exception as exc:
             return Response(

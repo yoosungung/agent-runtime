@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import asyncio
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,10 +19,10 @@ from backend.bundle_storage import make_bundle_storage
 from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
 from backend.routers import auth as auth_router_module
-from backend.routers import dashboard as dashboard_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
 from backend.routers import custom_images as custom_images_router_module
+from backend.routers import dashboard as dashboard_router_module
 from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
@@ -140,6 +141,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
     app.state.auth_client = AuthClient(base_url=settings.AUTH_URL)
+    app.state.http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=5.0),
+        limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+    )
 
     # Rate limiters exposed on app.state for testability
     app.state.rate_limiter = RateLimiter(max_calls=60, window_sec=60.0)
@@ -158,6 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.k8s_pool_manager = None
     try:
         from backend.k8s_client import K8sPoolManager, make_api_client
+
         api_client = await make_api_client(settings)
         app.state.k8s_pool_manager = K8sPoolManager(api_client, settings)
         logger.info("k8s_pool_manager initialised")
@@ -179,6 +185,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.k8s_pool_manager.aclose()
 
     await app.state.auth_client.aclose()
+    await app.state.http_client.aclose()
     await engine.dispose()
 
 

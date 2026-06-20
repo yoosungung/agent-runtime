@@ -40,6 +40,7 @@ from runtime_common.deploy_client import DeployApiClient
 from runtime_common.logging import configure_logging, make_request_id_middleware
 from runtime_common.ratelimit import RateLimiter
 from runtime_common.registry import RegistryQuery, RegistrySubscriber
+from runtime_common.resolve_context import encode_resolve_header
 from runtime_common.scheduling import Scheduler
 from runtime_common.schemas import Principal, parse_runtime_pool
 from runtime_common.telemetry import configure_metrics, configure_tracing
@@ -255,9 +256,7 @@ async def mcp_stream(request: Request) -> Response:
 
     if server:
         if not principal.can_access("mcp", server):
-            raise HTTPException(
-                status_code=403, detail=f"access denied to mcp server {server!r}"
-            )
+            raise HTTPException(status_code=403, detail=f"access denied to mcp server {server!r}")
 
         if not app.state.principal_limiter.allow(principal.sub):
             raise HTTPException(status_code=429, detail="rate limit exceeded for principal")
@@ -267,9 +266,7 @@ async def mcp_stream(request: Request) -> Response:
         with tracer.start_as_current_span("deploy.resolve") as span:
             span.set_attribute("server.name", server)
             try:
-                resolved = await app.state.deploy.resolve(
-                    kind="mcp", name=server, version=version
-                )
+                resolved = await app.state.deploy.resolve(kind="mcp", name=server, version=version)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
                     raise HTTPException(
@@ -282,9 +279,7 @@ async def mcp_stream(request: Request) -> Response:
         settings: Settings = app.state.settings
         pool_url = settings.mcp_pool_url(runtime_kind)
         if not pool_url:
-            raise HTTPException(
-                status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}"
-            )
+            raise HTTPException(status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}")
         warm_url = await app.state.mcp_scheduler.pick(
             runtime_kind=runtime_kind,
             checksum=source.checksum,
@@ -352,7 +347,9 @@ async def mcp_stream(request: Request) -> Response:
         except httpx.HTTPStatusError as exc:
             raise HTTPException(status_code=502, detail=f"pool mcp error: {exc}") from exc
 
-    return Response(content=resp.content, media_type="application/json", status_code=resp.status_code)
+    return Response(
+        content=resp.content, media_type="application/json", status_code=resp.status_code
+    )
 
 
 def _extract_identifier(body_json: dict[str, Any], kind: str) -> tuple[str | None, str | None]:
@@ -472,6 +469,8 @@ async def check(path: str, request: Request) -> Response:
         json.dumps(merged_cfg, separators=(",", ":")).encode("utf-8")
     ).decode("ascii")
 
+    resolve_b64 = encode_resolve_header(resolved)
+
     if pool_id.is_image_mode:
         # Image mode: skip warm-registry, derive Service URL from slug.
         pool_url = settings.image_mode_pool_url(pool_id.kind, pool_id.slug)
@@ -482,6 +481,7 @@ async def check(path: str, request: Request) -> Response:
             "x-principal": principal_b64,
             "x-source-version": source.version,
             "x-runtime-cfg": cfg_b64,
+            "x-resolve": resolve_b64,
         }
         if resolved.user and resolved.user.secrets_ref:
             resp_headers["x-runtime-secrets-ref"] = resolved.user.secrets_ref
@@ -490,9 +490,7 @@ async def check(path: str, request: Request) -> Response:
         return Response(status_code=200, headers=resp_headers)
 
     # Bundle mode: warm-registry → pool ClusterIP Service fallback
-    scheduler: Scheduler = (
-        app.state.agent_scheduler if kind == "agent" else app.state.mcp_scheduler
-    )
+    scheduler: Scheduler = app.state.agent_scheduler if kind == "agent" else app.state.mcp_scheduler
     ring_key = f"{kind}:{name}:{version or ''}:{source.checksum or ''}"
     pool_url = _pool_url(kind, pool_id.runtime_kind, settings)
     if not pool_url:
@@ -521,6 +519,7 @@ async def check(path: str, request: Request) -> Response:
         "x-source-checksum": source.checksum or "",
         "x-source-version": source.version,
         "x-runtime-cfg": cfg_b64,
+        "x-resolve": resolve_b64,
     }
     if resolved.user and resolved.user.secrets_ref:
         resp_headers["x-runtime-secrets-ref"] = resolved.user.secrets_ref

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import fnmatch
-import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def normalize_path(path: str) -> str:
@@ -16,6 +14,21 @@ def normalize_path(path: str) -> str:
     while "//" in path:
         path = path.replace("//", "/")
     return path or "/"
+
+
+def vfs_entry_metadata(path: str, content: bytes, *, is_dir: bool = False) -> tuple[str, str, int]:
+    """Return (parent_path, name, size) for a VFS row."""
+    norm = normalize_path(path)
+    trimmed = norm.rstrip("/")
+    if trimmed == "" or trimmed == "/":
+        return "/", "", 0
+    if "/" in trimmed[1:]:
+        parent, name = trimmed.rsplit("/", 1)
+        parent_path = parent + "/"
+    else:
+        parent_path, name = "/", trimmed.lstrip("/")
+    size = 0 if is_dir else len(content)
+    return parent_path, name, size
 
 
 def normalize_dir(path: str) -> str:
@@ -35,67 +48,43 @@ def path_under_dir(file_path: str, dir_path: str) -> bool:
     return file_path == dir_path.rstrip("/") or file_path.startswith(dir_path)
 
 
-def direct_children(paths: list[str], dir_path: str) -> list[dict]:
-    """List non-recursive children of ``dir_path`` from flat absolute paths."""
-    dir_path = normalize_dir(dir_path)
-    prefix = "" if dir_path == "/" else dir_path
-    seen: dict[str, dict] = {}
+def path_like_prefix(path: str | None) -> str | None:
+    """Return a SQL LIKE prefix for scoping glob/grep under a directory."""
+    if path is None:
+        return None
+    norm = normalize_dir(path)
+    if norm == "/":
+        return None
+    return norm
 
-    for raw in paths:
-        p = normalize_path(raw)
-        if not path_under_dir(p, dir_path):
-            continue
-        rel = p[len(prefix) :] if prefix else p
-        if rel.startswith("/"):
-            rel = rel[1:]
-        if not rel:
-            continue
-        parts = rel.split("/")
-        name = parts[0]
-        child = f"{prefix}/{name}" if prefix else f"/{name}"
-        child = normalize_path(child)
-        if len(parts) == 1:
-            seen[name] = {"path": child, "is_dir": False}
+
+def glob_to_pg_regex(pattern: str) -> str:
+    """Translate a fnmatch-style glob (absolute VFS path) to a Postgres regex."""
+    pattern = normalize_path(pattern)
+    parts: list[str] = ["^"]
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "*":
+            if i + 1 < len(pattern) and pattern[i + 1] == "*":
+                parts.append(".*")
+                i += 2
+                if i < len(pattern) and pattern[i] == "/":
+                    i += 1
+            else:
+                parts.append(".*")
+                i += 1
+        elif ch == "?":
+            parts.append(".")
+            i += 1
+        elif ch in ".^$+{}[]|()\\":
+            parts.append("\\" + ch)
+            i += 1
         else:
-            seen[name] = {"path": child + "/", "is_dir": True}
-
-    entries = list(seen.values())
-    entries.sort(key=lambda e: e["path"])
-    return entries
-
-
-def glob_paths(paths: list[str], pattern: str, base_path: str | None = None) -> list[str]:
-    """Return stored paths matching a glob pattern."""
-    if base_path:
-        base_path = normalize_dir(base_path)
-        paths = [p for p in paths if path_under_dir(p, base_path)]
-    norm_pattern = normalize_path(pattern)
-    matched = []
-    for p in paths:
-        if fnmatch.fnmatch(normalize_path(p), norm_pattern):
-            matched.append(normalize_path(p))
-    return sorted(matched)
-
-
-def grep_paths(
-    files: dict[str, str],
-    pattern: str,
-    path: str | None = None,
-    glob_filter: str | None = None,
-) -> list[dict]:
-    """Search file contents; returns GrepMatch-like dicts."""
-    regex = re.compile(re.escape(pattern))
-    matches: list[dict] = []
-    for file_path, content in sorted(files.items()):
-        fp = normalize_path(file_path)
-        if path and not path_under_dir(fp, path):
-            continue
-        if glob_filter and not fnmatch.fnmatch(fp, glob_filter):
-            continue
-        for i, line in enumerate(content.splitlines(), start=1):
-            if regex.search(line):
-                matches.append({"path": fp, "line": i, "text": line})
-    return matches
+            parts.append(ch)
+            i += 1
+    parts.append("$")
+    return "".join(parts)
 
 
 def format_read_content(content: str, offset: int = 0, limit: int = 2000) -> str:
@@ -112,4 +101,4 @@ def format_read_content(content: str, offset: int = 0, limit: int = 2000) -> str
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

@@ -13,16 +13,17 @@ from opentelemetry.metrics import Observation
 from pydantic import BaseModel
 
 from agent_base.context import reset_current_token, set_current_token
-from agent_base.general_agent import build_general_agent
+from agent_base.general_cache import get_or_build_general_agent
+from agent_base.http_client import close_mcp_http_client
 from agent_base.runner import run, run_stream
 from agent_base.settings import Settings
 from runtime_common.deploy_client import DeployApiClient
-from runtime_common.factory import merge_configs
 from runtime_common.instance_builder import build_secrets_resolver, get_or_build_cached_instance
 from runtime_common.instance_cache import InstanceCache
 from runtime_common.loader import BundleFetchError, BundleImportError, BundleLoader
 from runtime_common.logging import configure_logging
 from runtime_common.opik_tracing import configure_opik, opik_trace_context
+from runtime_common.pool_resolve import ResolveHeaderMismatchError, resolve_for_invoke
 from runtime_common.registry import ActiveCounter, RegistryPublisher
 from runtime_common.schemas import Principal
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
@@ -120,7 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     for agent_name in settings.warmup_agents:
         try:
             resolved = await deploy_client.resolve(kind="agent", name=agent_name)
-            loader.load(resolved.source)
+            await loader.aload(resolved.source)
             logger.info("warmup_loaded", extra={"agent": agent_name})
         except Exception as exc:
             logger.warning("warmup_failed", extra={"agent": agent_name, "error": str(exc)})
@@ -131,6 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await publisher.stop()
         await instance_cache.clear()
         await deploy_client.aclose()
+        await close_mcp_http_client()
         if vfs_pool is not None:
             await vfs_pool.close()
 
@@ -156,6 +158,7 @@ async def invoke(
     req: InvokeRequest,
     authorization: Annotated[str | None, Header()] = None,
     x_principal: Annotated[str | None, Header()] = None,
+    x_resolve: Annotated[str | None, Header()] = None,
 ) -> dict | StreamingResponse:
     settings: Settings = app.state.settings
     counter: ActiveCounter = app.state.counter
@@ -179,13 +182,18 @@ async def invoke(
 
     try:
         # Re-resolve: pool fetches meta itself (trust boundary at deploy-api)
+        principal_id = str(principal.user_id) if principal.user_id else principal.sub
         try:
-            resolved = await deploy.resolve(
+            resolved = await resolve_for_invoke(
+                deploy,
                 kind="agent",
                 name=req.agent,
                 version=req.version,
-                principal=str(principal.user_id) if principal.user_id else principal.sub,
+                principal=principal_id,
+                x_resolve=x_resolve,
             )
+        except ResolveHeaderMismatchError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"resolve failed: {exc}") from exc
 
@@ -197,8 +205,6 @@ async def invoke(
             )
 
         user = resolved.user
-        user_cfg = user.config if user else {}
-        merged_cfg = merge_configs(source.config, user_cfg)
         secrets = build_secrets_resolver(user)
 
         deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
@@ -215,8 +221,10 @@ async def invoke(
                     detail="VFS pool not configured (set VFS_DSN)",
                 )
             try:
-                instance = build_general_agent(
-                    merged_cfg,
+                instance = await get_or_build_general_agent(
+                    cache,
+                    source,
+                    user,
                     secrets,
                     kind=source.kind,
                     agent_name=source.name,
@@ -225,12 +233,12 @@ async def invoke(
                     mcp_gateway_url=settings.mcp_gateway_url,
                 )
             except (ValueError, RuntimeError) as exc:
-                raise HTTPException(status_code=500, detail=f"general agent build failed: {exc}") from exc
+                raise HTTPException(
+                    status_code=500, detail=f"general agent build failed: {exc}"
+                ) from exc
         else:
             try:
-                instance = await get_or_build_cached_instance(
-                    cache, source, user, loader, secrets
-                )
+                instance = await get_or_build_cached_instance(cache, source, user, loader, secrets)
             except BundleFetchError as exc:
                 raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
             except BundleImportError as exc:
