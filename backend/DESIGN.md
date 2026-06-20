@@ -38,7 +38,7 @@
   - DSN: `POSTGRES_DSN` (write, asyncpg URL). 읽기 replica 분리는 admin 규모에선 과하므로 MVP는 primary 단일.
   - `runtime_common.db.make_engine` / `session_scope` 재사용.
   - SQLAlchemy 모델: **`runtime_common.db.models` 공용 사용** (backend·deploy-api·auth 세 서비스가 같은 선언을 import). backend가 자체 `models.py`를 두지 않는다. 공용화는 [../packages/common/DESIGN.md](../packages/common/DESIGN.md) "공용 DB 모델 리팩토링" 참조.
-  - 마이그레이션: **`backend/migrations/0001_init.sql`** — 모든 테이블 단일 파일(과거 auth/deploy-api별 분할을 통합). 적용은 `make db-migrate` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
+  - 마이그레이션: **`backend/migrations/0001_init.sql`** (auth·메타 등), **`0002_vfs.sql`** (`vfs_agent_files`, `vfs_user_files` — `users` FK). path-graph 연동 시 **`path_graph_vfs.iter_migration_sql()`** 추가. 적용은 `make db-migrate` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
 - **auth 서비스**: `AUTH_URL` — `/login`, `/refresh`, `/logout`, `/verify` 프록시.
 - **deploy-api는 호출하지 않는다** — admin은 DB를 직접 보므로 proxy 단계를 거치지 않는다. deploy-api의 resolve 캐시(in-memory, 5s TTL)는 자연 만료로 eventual consistency. auth도 같은 이유로 `users`/`user_resource_access` read 캐시(TTL ~5s)가 admin write 이후 자연 만료.
 
