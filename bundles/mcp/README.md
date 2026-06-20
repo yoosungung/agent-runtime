@@ -57,7 +57,41 @@ VALUES (
 
 Admin: `PUT /api/user-meta` with `source_meta_id`, `principal_id`, `config`.
 
-**Naver search (전부 source)** — API 키는 shared이므로 `user_meta` 없이도 동작. 예: [deploy/examples/mcp-base/README.md](../../deploy/examples/mcp-base/README.md).
+## search_bundle — Naver Search + URL fetch
+
+[`search_bundle/`](search_bundle/) — `naver_search`, `fetch_url`.
+
+| 툴 | 설명 |
+|----|------|
+| `naver_search` | Naver 웹/블로그/뉴스 검색 |
+| `fetch_url` | HTTP GET (SSRF 차단, 8KB 기본 cap) |
+
+**deps**: `mcp>=1.27`, `httpx>=0.27`
+
+**source_meta 등록 예시**
+
+```json
+{
+  "mcp": {"mask_error_details": true},
+  "search": {"max_display": 10},
+  "naver": {
+    "client_id": "<naver-app-client-id>",
+    "client_secret": "<naver-app-client-secret>"
+  },
+  "fetch": {"max_bytes": 8192}
+}
+```
+
+```sql
+INSERT INTO source_meta (kind, name, version, runtime_pool, entrypoint, bundle_uri, checksum, config)
+VALUES (
+  'mcp', 'search-server', 'v1', 'mcp:mcp_sdk',
+  'app:build_server', 's3://bundles/search-server-v1.zip', 'sha256:<…>',
+  '{"mcp":{"mask_error_details":true},"naver":{"client_id":"...","client_secret":"..."}}'::jsonb
+);
+```
+
+API 키는 shared이므로 `user_meta` 없이도 동작. 상세: [`search_bundle/README.md`](search_bundle/README.md).
 
 ---
 

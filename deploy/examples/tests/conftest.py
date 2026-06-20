@@ -37,9 +37,17 @@ def resolve_bundle_app(rel_path: str) -> Path:
     )
 
 
+def _evict_bundle_local_modules() -> None:
+    """Drop ``models`` / ``providers.*`` / ``utils`` left by a prior bundle load."""
+    for name in list(sys.modules):
+        if name in ("models", "utils") or name.startswith("providers"):
+            del sys.modules[name]
+
+
 @pytest.fixture
 def load_bundle() -> Callable[[str, str], ModuleType]:
     def _load(rel_path: str, alias: str) -> ModuleType:
+        _evict_bundle_local_modules()
         path = resolve_bundle_app(rel_path)
         spec = importlib.util.spec_from_file_location(alias, path)
         assert spec and spec.loader, f"failed to spec {path}"

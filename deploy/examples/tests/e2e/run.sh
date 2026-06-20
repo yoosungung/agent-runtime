@@ -46,7 +46,7 @@ declare -a BUNDLES=(
   "$EXAMPLES_DIR/agent-base/compiled_graph_bundle|agent|research-orchestrator|v1|agent:compiled_graph|app:build_agent"
   "$EXAMPLES_DIR/agent-base/adk_bundle|agent|research-math-agent|v1|agent:adk|app:build_agent"
   "$EXAMPLES_DIR/mcp-base/fastmcp_bundle|mcp|utility-server|v1|mcp:fastmcp|app:build_server"
-  "$EXAMPLES_DIR/mcp-base/mcp_sdk_bundle|mcp|search-server|v1|mcp:mcp_sdk|app:build_server"
+  "$REPO_ROOT/bundles/mcp/search_bundle|mcp|search-server|v1|mcp:mcp_sdk|app:build_server"
 )
 
 # ---------------------------------------------------------------------------

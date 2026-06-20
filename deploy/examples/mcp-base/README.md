@@ -21,7 +21,7 @@ config 층 정의는 [ARCHITECTURE.md](../../../ARCHITECTURE.md) §5. 아래는 
 
 | 번들 | source_meta (기동·공통) | user_meta (invoke·개인) |
 |------|-------------------------|-------------------------|
-| search-server (Naver) | `naver.client_id`, `client_secret` — 모두 shared | 보통 없음 |
+| search-server ([`bundles/mcp/search_bundle/`](../../../bundles/mcp/search_bundle/)) | `naver.client_id`, `client_secret` — 모두 shared | 보통 없음 |
 | email-server ([`bundles/mcp/email_bundle/`](../../../bundles/mcp/email_bundle/)) | `email.provider`, `outlook.tenant_id`, `client_secret` | `outlook.mailbox`, `refresh_token`, `email.from_address` |
 
 Tool argument (`folder`, `limit`, `query`) 는 invoke payload — user_meta 가 아님.
@@ -71,7 +71,9 @@ VALUES (
 
 ---
 
-## mcp_sdk_bundle — Naver search 서버 (공식 MCP SDK)
+## mcp_sdk_bundle — Naver search 튜토리얼 (학습용)
+
+> **운영 번들**은 [`bundles/mcp/search_bundle/`](../../../bundles/mcp/search_bundle/) — SSRF 차단·blog/news·config 스키마 포함. 아래는 최소 MCP SDK 예제.
 
 `mcp.server.lowlevel.Server` + `@server.list_tools()` / `@server.call_tool()` 데코레이터. SDK Server 가 stdio/HTTP 전용이라 `_Adapter` 가 mcp-base 의 `dispatch()` / `list_tools()` 컨트랙트로 브릿지.
 

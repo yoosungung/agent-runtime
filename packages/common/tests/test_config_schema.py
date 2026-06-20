@@ -6,11 +6,14 @@ from pydantic import ValidationError
 from runtime_common.config_schema import (
     EmailSourceConfig,
     EmailUserConfig,
+    FetchSourceConfig,
     GeneralAgentSourceConfig,
     GeneralAgentUserConfig,
     GeneralVfsConfig,
+    NaverSourceConfig,
     OutlookSourceConfig,
     OutlookUserConfig,
+    SearchSourceConfig,
     SourceConfig,
     UserConfig,
 )
@@ -139,3 +142,35 @@ def test_user_config_includes_email_sections():
 def test_email_source_config_rejects_unknown_provider():
     with pytest.raises(ValidationError):
         EmailSourceConfig(provider="exchange")  # type: ignore[arg-type]
+
+
+def test_search_source_config_defaults():
+    cfg = SearchSourceConfig()
+    assert cfg.max_display == 10
+    assert cfg.default_category == "web"
+
+
+def test_naver_source_config_with_secret_ref():
+    cfg = NaverSourceConfig(client_id="app-id", client_secret_ref="NAVER_CLIENT_SECRET")
+    assert cfg.client_id == "app-id"
+    assert cfg.client_secret is None
+    assert cfg.client_secret_ref == "NAVER_CLIENT_SECRET"
+
+
+def test_fetch_source_config_ssrf_opt_in():
+    cfg = FetchSourceConfig(allow_private_network=True, max_bytes=4096)
+    assert cfg.allow_private_network is True
+    assert cfg.max_bytes == 4096
+
+
+def test_source_config_includes_search_sections():
+    cfg = SourceConfig(
+        search=SearchSourceConfig(max_display=25),
+        naver=NaverSourceConfig(client_id="id", client_secret="sec"),
+        fetch=FetchSourceConfig(),
+    )
+    assert cfg.search is not None
+    assert cfg.search.max_display == 25
+    assert cfg.naver is not None
+    assert cfg.naver.client_id == "id"
+    assert cfg.fetch is not None

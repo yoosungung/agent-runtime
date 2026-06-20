@@ -10,6 +10,7 @@ set -euo pipefail
 
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXAMPLES_DIR="$(cd "$E2E_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$EXAMPLES_DIR/../.." && pwd)"
 WORK_DIR="$E2E_DIR/work"
 COOKIE_JAR="$WORK_DIR/cookies.txt"
 STATE_FILE="$WORK_DIR/state.env"

@@ -268,6 +268,42 @@ class GmailUserConfig(BaseModel):
     refresh_token: str | None = None
 
 
+# ── Search MCP (mcp:mcp_sdk — search_bundle) ─────────────────────────────────
+
+class SearchSourceConfig(BaseModel):
+    """source_meta.config['search'] — Naver search defaults."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_display: int = Field(default=10, ge=1, le=100)
+    default_category: Literal["web", "blog", "news"] = "web"
+
+
+class NaverSourceConfig(BaseModel):
+    """source_meta.config['naver'] — Naver OpenAPI app credentials (shared)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    client_secret: str | None = None
+    client_secret_ref: str | None = Field(
+        default=None,
+        description="Env var name resolved via SecretResolver when client_secret omitted.",
+    )
+
+
+class FetchSourceConfig(BaseModel):
+    """source_meta.config['fetch'] — fetch_url safety and limits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_bytes: int = Field(default=8192, ge=1)
+    timeout_seconds: float = Field(default=10.0, gt=0)
+    user_agent: str = "agents-runtime-search-bundle/1.0"
+    allow_private_network: bool = False
+    max_redirects: int = Field(default=5, ge=0, le=10)
+
+
 # ── General Agent (deploy_mode: general) ─────────────────────────────────────
 
 class GeneralVfsConfig(BaseModel):
@@ -342,6 +378,9 @@ class SourceConfig(BaseModel):
     email: EmailSourceConfig | None = None
     outlook: OutlookSourceConfig | None = None
     gmail: GmailSourceConfig | None = None
+    search: SearchSourceConfig | None = None
+    naver: NaverSourceConfig | None = None
+    fetch: FetchSourceConfig | None = None
 
 
 class UserConfig(BaseModel):

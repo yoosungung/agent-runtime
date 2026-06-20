@@ -47,9 +47,9 @@ LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 st
 | `agent-base/compiled_graph_bundle` | agent | `research-orchestrator` | `agent:compiled_graph` | `app:build_agent` |
 | `agent-base/adk_bundle` | agent | `research-math-agent` | `agent:adk` | `app:build_agent` |
 | `mcp-base/fastmcp_bundle` | mcp | `utility-server` | `mcp:fastmcp` | `app:build_server` |
-| `mcp-base/mcp_sdk_bundle` | mcp | **`search-server`** | `mcp:mcp_sdk` | `app:build_server` |
+| `bundles/mcp/search_bundle` | mcp | **`search-server`** | `mcp:mcp_sdk` | `app:build_server` |
 
-⚠️ mcp_sdk 번들은 반드시 `search-server` 로 등록해야 한다 — agent 번들이 `cfg["mcp_server"]` 디폴트로 이 이름을 호출한다. fastmcp 번들(`utility-server`)은 풀 종류 검증용이지 agent 가 직접 부르지 않는다.
+⚠️ search-server 는 반드시 이 이름으로 등록해야 한다 — agent 번들이 `cfg["mcp_server"]` 디폴트로 이 이름을 호출한다. fastmcp 번들(`utility-server`)은 풀 종류 검증용이지 agent 가 직접 부르지 않는다.
 
 ## 키 / config 분리 컨벤션
 

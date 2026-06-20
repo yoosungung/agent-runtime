@@ -93,7 +93,7 @@ class TestFastmcpBundle:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# mcp_sdk_bundle (Naver search + URL fetch — keys via source_meta.config)
+# mcp_sdk_bundle (tutorial — Naver search + URL fetch)
 # ────────────────────────────────────────────────────────────────────────────
 
 
@@ -207,6 +207,211 @@ class TestMcpSdkBundle:
 
     async def test_mask_error_details_hides_original_error(self, load_bundle, secrets):
         mod = load_bundle("mcp-base/mcp_sdk_bundle", "mcp_sdk_bundle")
+        server = mod.build_server({"mcp": {"mask_error_details": True}}, secrets)
+        with pytest.raises(RuntimeError, match="tool call failed"):
+            await server.dispatch("not_a_tool", {})
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# search_bundle (production — Naver search + URL fetch)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestSearchBundle:
+    async def test_list_tools_exposes_both(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+        server = mod.build_server({}, secrets)
+
+        tools = await server.list_tools()
+        names = {t["name"] for t in tools}
+        assert names == {"naver_search", "fetch_url"}
+
+    async def test_naver_search_dispatches_with_credentials(
+        self, monkeypatch, load_bundle, secrets
+    ):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {
+                    "total": 2,
+                    "items": [
+                        {"title": "<b>날씨</b> 정보", "link": "https://a.example/1"},
+                        {"title": "서울 <b>날씨</b>", "link": "https://b.example/2"},
+                    ],
+                }
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def get(self, url, *, headers, params):
+                captured["url"] = url
+                captured["headers"] = headers
+                captured["params"] = params
+                return _Resp()
+
+        import importlib
+
+        naver_mod = importlib.import_module("providers.naver")
+        monkeypatch.setattr(naver_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(
+            {"naver": {"client_id": "id-123", "client_secret": "sec-456"}},
+            secrets,
+        )
+        result = await server.dispatch("naver_search", {"query": "서울 날씨", "display": 3})
+
+        assert captured["url"] == "https://openapi.naver.com/v1/search/webkr.json"
+        assert captured["headers"] == {
+            "X-Naver-Client-Id": "id-123",
+            "X-Naver-Client-Secret": "sec-456",
+        }
+        assert captured["params"] == {"query": "서울 날씨", "display": 3, "start": 1}
+        assert result["query"] == "서울 날씨"
+        assert result["category"] == "web"
+        assert result["total"] == 2
+        assert result["items"][0] == {"title": "날씨 정보", "link": "https://a.example/1"}
+        assert result["items"][1] == {"title": "서울 날씨", "link": "https://b.example/2"}
+
+    async def test_naver_search_blog_category(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {
+                    "total": 1,
+                    "items": [
+                        {
+                            "title": "<b>맛집</b>",
+                            "link": "https://blog.example/1",
+                            "description": "리뷰",
+                            "bloggername": "foodie",
+                            "postdate": "20240101",
+                        },
+                    ],
+                }
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def get(self, url, *, headers, params):
+                captured["url"] = url
+                captured["params"] = params
+                return _Resp()
+
+        import importlib
+
+        naver_mod = importlib.import_module("providers.naver")
+        monkeypatch.setattr(naver_mod.httpx, "AsyncClient", _Client)
+
+        server = mod.build_server(
+            {"naver": {"client_id": "id", "client_secret": "sec"}},
+            secrets,
+        )
+        result = await server.dispatch(
+            "naver_search",
+            {"query": "강남 맛집", "category": "blog", "sort": "date"},
+        )
+
+        assert captured["url"] == "https://openapi.naver.com/v1/search/blog.json"
+        assert captured["params"]["sort"] == "date"
+        assert result["category"] == "blog"
+        assert result["items"][0]["description"] == "foodie — 리뷰"
+        assert result["items"][0]["pub_date"] == "20240101"
+
+    async def test_naver_search_without_credentials_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+        server = mod.build_server({}, secrets)
+        with pytest.raises(RuntimeError, match="naver credentials missing"):
+            await server.dispatch("naver_search", {"query": "test"})
+
+    async def test_fetch_url_truncates_to_8kb(self, monkeypatch, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+
+        big = "x" * 20000
+
+        class _Resp:
+            text = big
+            is_redirect = False
+            headers = {"content-type": "text/plain"}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc) -> None:
+                return None
+
+            async def get(self, url):
+                return _Resp()
+
+        import importlib
+
+        fetch_mod = importlib.import_module("providers.fetch")
+        monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _Client)
+        monkeypatch.setattr(
+            importlib.import_module("utils"),
+            "validate_fetch_url",
+            lambda url, **_: url,
+        )
+
+        server = mod.build_server({}, secrets)
+        result = await server.dispatch("fetch_url", {"url": "https://example.com"})
+        assert isinstance(result, str)
+        assert len(result) == 8192
+
+    async def test_fetch_url_blocks_ssrf_localhost(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+        server = mod.build_server({}, secrets)
+        with pytest.raises(ValueError, match="blocked"):
+            await server.dispatch("fetch_url", {"url": "http://127.0.0.1/"})
+
+    async def test_fetch_url_blocks_ssrf_metadata_ip(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+        server = mod.build_server({}, secrets)
+        with pytest.raises(ValueError, match="blocked"):
+            await server.dispatch(
+                "fetch_url", {"url": "http://169.254.169.254/latest/meta-data/"}
+            )
+
+    async def test_dispatch_unknown_tool_raises(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
+        server = mod.build_server({}, secrets)
+        with pytest.raises(ValueError, match="unknown tool"):
+            await server.dispatch("not_a_tool", {})
+
+    async def test_mask_error_details_hides_original_error(self, load_bundle, secrets):
+        mod = load_bundle("mcp/search_bundle", "search_bundle")
         server = mod.build_server({"mcp": {"mask_error_details": True}}, secrets)
         with pytest.raises(RuntimeError, match="tool call failed"):
             await server.dispatch("not_a_tool", {})
