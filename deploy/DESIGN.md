@@ -125,6 +125,16 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 
 **`runtime/role: pool` 라벨**: 정적 bundle 모드 pool Deployment와 backend가 동적으로 생성하는 image 모드 pool pod 모두 이 라벨을 가진다. NetworkPolicy selector가 pod 이름 패턴이 아닌 라벨 기반이므로 신규 image pool 등록 시 NetworkPolicy 변경 불필요.
 
+## examples/ vs bundles/
+
+| | `deploy/examples/` | `bundles/` (repo root) |
+|---|---|---|
+| 목적 | 런타임·프레임워크 **학습용** 샘플 | **운영** 업무 번들 |
+| MCP | `mcp-base/` (fastmcp, mcp_sdk 튜토리얼) | `bundles/mcp/` (Outlook 등 외부 연동) |
+| Agent | `agent-base/` (DeepAgent, ADK 데모) | `bundles/agent/` (업무 agent) |
+
+배포·factory·`source_meta` 계약은 동일. zip → upload → admin 등록. 번들 테스트 로더는 examples를 먼저, 없으면 `bundles/` 를 탐색 ([conftest.py](examples/tests/conftest.py)).
+
 ## examples/
 
 `deploy/examples/custom-image/` — image 모드 raw contract를 만족하는 Dockerfile 예제:

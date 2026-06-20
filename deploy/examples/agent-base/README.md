@@ -1,6 +1,8 @@
 # agent-base 예제 번들
 
-각 디렉토리는 배포 가능한 agent 번들의 대표 예제다. **자체 tool + MCP server 호출** 패턴을 보여준다 — 에이전트는 자기 코드의 툴(reflection / 산술)과 mcp-pool 의 외부 툴(웹 검색 / URL fetch) 둘 다 사용.
+각 디렉토리는 배포 가능한 agent 번들의 **학습용** 대표 예제다. **자체 tool + MCP server 호출** 패턴을 보여준다 — 에이전트는 자기 코드의 툴(reflection / 산술)과 mcp-pool 의 외부 툴(웹 검색 / URL fetch) 둘 다 사용.
+
+> **운영 agent** (업무 자동화, 사내 MCP 연동)는 [`bundles/agent/`](../../../bundles/agent/) 에 둔다.
 
 **런타임 계약 요약**
 

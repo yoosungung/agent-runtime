@@ -65,7 +65,7 @@
               store=build_store(cfg, secrets),
           )
       ```
-    - 대표 사용 예시는 [deploy/examples/](../../deploy/examples/) 참조 — 4개 번들 모두 provider 사용 패턴 시연.
+    - provider 패턴 시연: [deploy/examples/](../../deploy/examples/) (학습용 4개 번들). 운영 번들은 [bundles/](../../bundles/).
   - **`factory.py`** — factory 호출 헬퍼.
     - `merge_configs(source_cfg: dict, user_cfg: dict | None) -> dict` — **1-depth 섹션 단위 merge, user wins**. 최상위 값이 둘 다 dict(= 섹션)이면 `{**source_section, **user_section}` 으로 병합해 source 섹션의 나머지 키를 보존. 스칼라·2단 이상 중첩은 user 값으로 교체. source_cfg·user_cfg 원본 불변. agent-base/mcp-base가 resolve 결과를 받은 직후 호출.
     - `call_factory(factory, cfg, secrets)` — zero-arg / `(cfg)` / `(cfg, secrets)` 세 시그니처를 인트로스펙션으로 분기해 하위호환 유지. `cfg`는 `merge_configs`의 결과.

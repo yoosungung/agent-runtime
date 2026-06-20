@@ -1,7 +1,7 @@
 # NetworkPolicy: enforce the trust boundary rules from DESIGN.md.
 # - postgres: auth + deploy-api + backend + agent-pool (VFS) ingress allowed
 # - pgbouncer-rw: deploy-api + auth + backend + agent-pool (VFS) ingress
-# - redis:    gateways + pools + ext-authz ingress (not auth/deploy-api)
+# - redis:    gateways + pools + ext-authz + backend (dashboard pool metrics) ingress
 # - deploy-api: gateways + pools + ext-authz + admin ingress
 # - auth: agent-gateway + ext-authz + admin ingress
 # - pool egress: deploy-api, redis, postgres/pgbouncer (VFS), external
@@ -125,6 +125,10 @@ spec:
         - podSelector:
             matchLabels:
               app: ext-authz
+        # admin dashboard reads warm-registry load from Redis
+        - podSelector:
+            matchLabels:
+              app: backend
         # image-mode pool pods carry runtime/role=pool; bundle-mode pools do too via their labels
         - podSelector:
             matchLabels:
