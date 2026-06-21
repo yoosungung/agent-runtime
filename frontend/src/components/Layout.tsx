@@ -84,9 +84,6 @@ export function Layout() {
       <NavLink to="/settings/infra" className={navLinkClass}>
         Platform Infra
       </NavLink>
-      <NavLink to="/bucket" className={navLinkClass}>
-        Bucket
-      </NavLink>
       <NavLink to="/users" className={navLinkClass}>
         User
       </NavLink>
@@ -149,9 +146,6 @@ export function Layout() {
                   <>
                     <NavLink to="/settings/infra" className={desktopNavLinkClass}>
                       Platform Infra
-                    </NavLink>
-                    <NavLink to="/bucket" className={desktopNavLinkClass}>
-                      Bucket
                     </NavLink>
                     <NavLink to="/users" className={desktopNavLinkClass}>
                       User

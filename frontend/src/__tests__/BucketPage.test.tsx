@@ -68,7 +68,6 @@ function renderPage() {
 describe("BucketPage", () => {
   it("renders backend badge and in-use row disabled", () => {
     renderPage();
-    expect(screen.getByText("Bucket")).toBeInTheDocument();
     expect(screen.getByText(/Local:/)).toBeInTheDocument();
     expect(screen.getAllByText("In use").length).toBeGreaterThan(0);
     const inUseCheckbox = screen.getByLabelText(`Select ${hex64}.zip`);

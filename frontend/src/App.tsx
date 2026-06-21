@@ -156,6 +156,9 @@ export function App() {
                           />
                         }
                       />
+                      <Route element={<RequireRole min="admin" />}>
+                        <Route path="/bundle/bucket" element={<BucketPage embedded />} />
+                      </Route>
                     </Route>
                     <Route
                       path="/bundle/agents/new"
@@ -204,6 +207,7 @@ export function App() {
                     <Route path="/custom-agents/new" element={<Navigate to="/container/agents/new" replace />} />
                     <Route path="/custom-mcp" element={<Navigate to="/container/mcp" replace />} />
                     <Route path="/custom-mcp/new" element={<Navigate to="/container/mcp/new" replace />} />
+                    <Route path="/bucket" element={<Navigate to="/bundle/bucket" replace />} />
                   </Route>
 
                   <Route element={<RequireRole min="admin" />}>
@@ -212,7 +216,6 @@ export function App() {
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings/infra" element={<InfraMetaPage />} />
-                    <Route path="/bucket" element={<BucketPage />} />
                   </Route>
                 </Route>
               </Route>

@@ -20,7 +20,11 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-export function BucketPage() {
+interface Props {
+  embedded?: boolean;
+}
+
+export function BucketPage({ embedded = false }: Props) {
   const [prefix, setPrefix] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [folderName, setFolderName] = useState("");
@@ -141,7 +145,7 @@ export function BucketPage() {
 
   return (
     <div>
-      <PageHeader title="Bucket">
+      <PageHeader title={embedded ? undefined : "Bucket"}>
         <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
           {backendBadge}
         </span>
