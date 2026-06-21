@@ -165,14 +165,6 @@ spec:
               runtime/role: pool
       ports:
         - port: 8080
-    # Public Ingress routes /v1/source-meta and /v1/user-meta to deploy-api;
-    # allow the ingress-nginx controller namespace to reach :8080.
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - port: 8080
 ---
 # --- auth NetworkPolicy ---
 apiVersion: networking.k8s.io/v1
@@ -246,3 +238,100 @@ spec:
         - port: 8080
   # Admin (9901) is *not* exposed — omit from policy so nothing can hit it except
   # process-local probes from the kubelet via container port.
+---
+# --- pool pods (bundle + image mode): ingress only from Envoy ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pool-ingress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      runtime/role: pool
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: envoy
+      ports:
+        - port: 8080
+---
+# --- pool pods: egress allowlist (deploy-api, redis, DB, bundles, MCP, external HTTPS) ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pool-egress
+  namespace: runtime
+spec:
+  podSelector:
+    matchLabels:
+      runtime/role: pool
+  policyTypes:
+    - Egress
+  egress:
+    # CoreDNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: deploy-api
+      ports:
+        - port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app: pgbouncer-rw
+      ports:
+        - port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app: envoy
+      ports:
+        - port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 8000
+    - to:
+        - podSelector:
+            matchLabels:
+              app: garage
+      ports:
+        - port: 3900
+    # OTLP metrics/traces (overlay sets monitoring namespace collector)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 4317
+    # LLM APIs, presigned object-store URLs, Opik, etc.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443

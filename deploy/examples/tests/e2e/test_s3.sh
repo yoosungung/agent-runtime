@@ -3,12 +3,14 @@
 #
 # Verifies:
 #   1. bundle_uri in source_meta is an HTTP URL (not s3://)
-#   2. GET /bundles/{sha256}.zip returns 307 redirect to NCP presigned URL
-#   3. presigned URL is directly downloadable (HEAD 200)
+#   1b. public Ingress blocks GET /bundles/* (403)
+#   2. in-cluster bundle URL (BACKEND_PF_URL or BUNDLE_URI) → 307 presigned redirect
+#   3. presigned URL host matches S3 backend
 #   4. Downloaded bundle content matches uploaded sha256
 #
 # Run after backend is deployed with BUNDLE_STORAGE_BACKEND=s3.
-# Prereqs: curl, jq, zip, sha256sum (or shasum on macOS).
+# For check 2: kubectl port-forward -n runtime svc/backend 8000:8000
+#   (or wire-dev.sh) and optionally BACKEND_PF_URL=http://127.0.0.1:8000
 
 set -euo pipefail
 
@@ -80,26 +82,48 @@ fi
 ok "bundle_uri is HTTP: $BUNDLE_URI"
 
 # ---------------------------------------------------------------------------
-# Assertion 2: GET /bundles/{sha256}.zip → 307 redirect to NCP presigned URL
+# Assertion 1b: public Ingress must not serve /bundles/*
+# ---------------------------------------------------------------------------
+log "--- check 1b: public Ingress blocks /bundles"
+PUB_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" \
+  "$AGENTS_HOST/bundles/${SHA_HEX}.zip" 2>/dev/null || true)
+[ "$PUB_HTTP" = "403" ] || fail "expected 403 from public Ingress for /bundles, got $PUB_HTTP"
+ok "public Ingress blocks /bundles → 403"
+
+# Resolve cluster-internal bundle URL for in-cluster-style fetch (port-forward).
+resolve_bundle_fetch_url() {
+  local uri="$1"
+  if [[ "$uri" == *".svc.cluster.local"* ]]; then
+    local pf="${BACKEND_PF_URL:-http://127.0.0.1:8000}"
+    local rest="${uri#http://}"
+    rest="${rest#https://}"
+    echo "${pf%/}/${rest#*/}"
+  else
+    echo "$uri"
+  fi
+}
+BUNDLE_FETCH_URL=$(resolve_bundle_fetch_url "$BUNDLE_URI")
+log "bundle_fetch_url=$BUNDLE_FETCH_URL"
+
+# ---------------------------------------------------------------------------
+# Assertion 2: GET bundle serve URL → 307 redirect to presigned URL
 # ---------------------------------------------------------------------------
 log "--- check 2: bundle serve → 307 presigned redirect"
 REDIRECT_URL=$(curl -sS --fail-with-body \
-  -b "$COOKIE_JAR" \
   -o /dev/null \
   -w "%{redirect_url}" \
-  "$AGENTS_HOST/bundles/${SHA_HEX}.zip")
+  "$BUNDLE_FETCH_URL")
 
-[ -n "$REDIRECT_URL" ] || fail "no redirect URL returned from /bundles/${SHA_HEX}.zip (expected 307)"
+[ -n "$REDIRECT_URL" ] || fail "no redirect URL returned from $BUNDLE_FETCH_URL (expected 307)"
 log "redirect_url=$REDIRECT_URL"
 
 HTTP_CODE=$(curl -sS \
-  -b "$COOKIE_JAR" \
   -o /dev/null \
   -w "%{http_code}" \
   --max-redirs 0 \
-  "$AGENTS_HOST/bundles/${SHA_HEX}.zip" 2>/dev/null || true)
-[ "$HTTP_CODE" = "307" ] || fail "expected 307, got $HTTP_CODE for /bundles/${SHA_HEX}.zip"
-ok "GET /bundles/${SHA_HEX}.zip → 307"
+  "$BUNDLE_FETCH_URL" 2>/dev/null || true)
+[ "$HTTP_CODE" = "307" ] || fail "expected 307, got $HTTP_CODE for $BUNDLE_FETCH_URL"
+ok "GET bundle serve URL → 307"
 
 # ---------------------------------------------------------------------------
 # Assertion 3: redirect URL points to the configured S3 endpoint

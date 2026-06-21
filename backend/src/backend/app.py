@@ -15,6 +15,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.bootstrap import run_bootstrap
+from backend.bundle_serve_guard import BlockPublicBundleMiddleware
 from backend.bundle_storage import make_bundle_storage
 from backend.object_store_browser import make_object_store_browser
 from backend.pool_status import PoolRegistryMonitor
@@ -214,6 +215,7 @@ app = FastAPI(title="admin-console-backend", lifespan=lifespan)
 # ---------------------------------------------------------------------------
 
 app.add_middleware(RateLimitMiddleware)  # type: ignore[arg-type]
+app.add_middleware(BlockPublicBundleMiddleware)  # type: ignore[arg-type]
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -252,7 +254,7 @@ app.include_router(audit_router_module.router)  # /api/audit
 app.include_router(custom_images_router_module.router)  # /api/admin/custom-images/*
 
 # ---------------------------------------------------------------------------
-# Bundle serving (no auth)
+# Bundle serving (cluster-internal — blocked at Ingress + proxy-header middleware)
 # ---------------------------------------------------------------------------
 
 app.include_router(bundles_router_module.router)  # /bundles/*

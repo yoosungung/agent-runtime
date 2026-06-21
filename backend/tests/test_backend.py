@@ -1308,6 +1308,61 @@ async def test_serve_bundle_invalid_sha_404(client: AsyncClient):
     assert resp.status_code == 404
 
 
+async def test_serve_bundle_blocked_when_forwarded(client: AsyncClient):
+    """Requests via Ingress/proxy (X-Forwarded-*) must not download bundles."""
+    import io
+    import json
+
+    meta = {
+        "kind": "agent",
+        "name": "fwd-block-agent",
+        "version": "v1",
+        "runtime_pool": "agent:compiled_graph",
+        "entrypoint": "main:build_graph",
+    }
+    zip_bytes = _make_zip_bytes()
+    upload = await client.post(
+        "/api/source-meta/bundle",
+        files={"file": ("bundle.zip", io.BytesIO(zip_bytes), "application/zip")},
+        data={"meta": json.dumps(meta)},
+        headers=_csrf_headers(),
+    )
+    assert upload.status_code == 201
+    sha256_hex = upload.json()["checksum"].removeprefix("sha256:")
+
+    resp = await client.get(
+        f"/bundles/{sha256_hex}.zip",
+        headers={"X-Forwarded-For": "203.0.113.1"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_serve_bundle_allowed_without_forwarded_headers(client: AsyncClient):
+    """In-cluster pool fetches (no proxy headers) still receive the bundle redirect."""
+    import io
+    import json
+
+    meta = {
+        "kind": "agent",
+        "name": "direct-bundle-agent",
+        "version": "v1",
+        "runtime_pool": "agent:compiled_graph",
+        "entrypoint": "main:build_graph",
+    }
+    zip_bytes = _make_zip_bytes()
+    upload = await client.post(
+        "/api/source-meta/bundle",
+        files={"file": ("bundle.zip", io.BytesIO(zip_bytes), "application/zip")},
+        data={"meta": json.dumps(meta)},
+        headers=_csrf_headers(),
+    )
+    assert upload.status_code == 201
+    sha256_hex = upload.json()["checksum"].removeprefix("sha256:")
+
+    resp = await client.get(f"/bundles/{sha256_hex}.zip", follow_redirects=False)
+    assert resp.status_code in {200, 307}
+
+
 # ---------------------------------------------------------------------------
 # S3BundleStorage URI generation
 # ---------------------------------------------------------------------------

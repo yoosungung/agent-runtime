@@ -9,6 +9,11 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # /bundles/* is cluster-internal only (pool → backend Service). Block on public Ingress.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~ ^/bundles/ {
+        return 403;
+      }
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
@@ -45,39 +50,9 @@ spec:
                 port:
                   number: 8080
 
-          - path: /v1/mcp/servers
-            pathType: Prefix
-            backend:
-              service:
-                name: envoy
-                port:
-                  number: 8080
-
-          - path: /v1/mcp/stream
-            pathType: Exact
-            backend:
-              service:
-                name: envoy
-                port:
-                  number: 8080
-
-          # deploy-api: source-meta and user-meta management APIs.
-          # Restrict to VPN/CIDR in production via an overlay annotation:
-          #   nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
-          - path: /v1/source-meta
-            pathType: Prefix
-            backend:
-              service:
-                name: deploy-api
-                port:
-                  number: 8080
-          - path: /v1/user-meta
-            pathType: Prefix
-            backend:
-              service:
-                name: deploy-api
-                port:
-                  number: 8080
+          # deploy-api (/v1/source-meta, /v1/user-meta) and unauthenticated MCP
+          # discovery (/v1/mcp/servers, /v1/mcp/stream) are NOT on public Ingress.
+          # Admin uses backend BFF (/api/*); pool uses in-cluster Services.
 
           # admin console SPA + backend API (must be last — catch-all)
           - path: /

@@ -120,11 +120,22 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 
 | overlay | 외부 호스트 | 용도 |
 |---------|------------|------|
-| dev | `http://agents.k8s-test` (HTTP only, no TLS) | admin SPA, `/api/*`, `/v1/agents/*` (agent call) |
+| dev | `http://agents.k8s-test` (HTTP only, no TLS) | admin SPA, `/api/*`, `/v1/agents/*`, `/v1/mcp/invoke` |
 | stage/prod (base) | `https://agents.didim365.app` | 동일 + Let's Encrypt |
 | stage/prod (base) | `agents.didim365.app` | 동일 라우팅 |
 
-Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend 레거시 chat proxy (`ENVOY_URL`, `/api/chat/invoke`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음. **Chat UI는 Ingress `/v1/agents/*`를 same-origin으로 호출**한다.
+### 공개 Ingress 경로 (dev~prod 공통)
+
+| 경로 | 백엔드 | 비고 |
+|------|--------|------|
+| `/v1/agents/*` | envoy | ext_authz — agent invoke |
+| `/v1/mcp/invoke` | envoy | ext_authz — MCP invoke |
+| `/` | backend | SPA + `/api/*` (BFF, 세션·CSRF) |
+| `/bundles/*` | — | **403** (`server-snippet`) — pool은 in-cluster `backend:8000` |
+| `/v1/source-meta`, `/v1/user-meta` | — | **미노출** — admin은 `/api/*` BFF |
+| `/v1/mcp/servers`, `/v1/mcp/stream` | — | **미노출** — backend·pool은 in-cluster envoy |
+
+Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend 레거시 chat proxy (`ENVOY_URL`, `/api/chat/invoke`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음. **Chat UI는 Ingress `/v1/agents/*`를 same-origin으로 호출**한다. Pool bundle fetch는 `BUNDLE_PUBLIC_BASE_URL=http://backend.runtime.svc.cluster.local:8000/bundles`.
 
 ## Envoy 데이터플레인
 
@@ -214,10 +225,12 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 | postgres | auth, deploy-api, backend, pgbouncer, migration-job |
 | redis | `runtime/role: pool` 라벨 pod (정적+동적 통합), ext-authz, backend |
 | garage S3 (:3900) | backend, `runtime/role: pool`, agent-pool, mcp-pool (presigned redirect 후 직접 fetch) |
-| deploy-api | `runtime/role: pool` 라벨 pod, ext-authz + ingress-nginx |
+| deploy-api | `runtime/role: pool` 라벨 pod, ext-authz |
 | auth | ext-authz, backend |
 | ext-authz | envoy만 |
 | envoy | 모든 클러스터 내 (포트 8080) |
+| pool (`runtime/role: pool`) ingress | envoy만 (:8080) |
+| pool (`runtime/role: pool`) egress | kube-system DNS, deploy-api, redis, pgbouncer-rw, envoy, backend (:8000 bundles), garage (:3900), monitoring OTLP (:4317), 외부 HTTPS (:443) |
 
 **`runtime/role: pool` 라벨**: 정적 bundle 모드 pool Deployment와 backend가 동적으로 생성하는 image 모드 pool pod 모두 이 라벨을 가진다. NetworkPolicy selector가 pod 이름 패턴이 아닌 라벨 기반이므로 신규 image pool 등록 시 NetworkPolicy 변경 불필요.
 
