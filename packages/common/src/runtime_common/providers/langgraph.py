@@ -10,9 +10,18 @@ objects to ``builder.compile(...)`` or ``create_deep_agent(...)``.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from runtime_common.secrets import SecretResolver
+
+DEFAULT_LLM_MODEL_SPEC = "anthropic:claude-sonnet-4-6"
+
+_LLM_CFG_KEY_TO_ENV = (
+    ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+    ("openai_api_key", "OPENAI_API_KEY"),
+    ("google_api_key", "GOOGLE_API_KEY"),
+)
 
 
 def _section(cfg: dict) -> dict:
@@ -27,6 +36,30 @@ def get_recursion_limit(cfg: dict) -> int:
 def get_model_spec(cfg: dict) -> str | None:
     """Return ``cfg.langgraph.model`` (used by DeepAgents)."""
     return _section(cfg).get("model")
+
+
+def export_llm_api_keys(cfg: dict) -> None:
+    """Copy provider API keys from merged cfg into process env for init_chat_model."""
+    for cfg_key, env_key in _LLM_CFG_KEY_TO_ENV:
+        if val := cfg.get(cfg_key):
+            os.environ[env_key] = val
+
+
+def resolve_model_spec(cfg: dict) -> str:
+    """Resolve DeepAgents/LangGraph model: cfg → platform env → repo default."""
+    explicit = get_model_spec(cfg)
+    if explicit:
+        return explicit
+    platform = os.environ.get("DEFAULT_LLM_MODEL", "").strip()
+    if platform:
+        return platform
+    return DEFAULT_LLM_MODEL_SPEC
+
+
+def prepare_langgraph_llm(cfg: dict) -> str:
+    """Export cfg API keys and return the model spec for ``create_deep_agent``."""
+    export_llm_api_keys(cfg)
+    return resolve_model_spec(cfg)
 
 
 def build_checkpointer(cfg: dict, secrets: SecretResolver) -> Any | None:

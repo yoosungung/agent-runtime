@@ -1,5 +1,6 @@
 """Tests for runtime_common.providers.langgraph."""
 
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -55,3 +56,27 @@ def test_build_checkpointer_postgres_requires_registry():
             {"langgraph": {"checkpointer": "postgres"}},
             _MapSecretResolver({"CHECKPOINTER_DSN": "postgresql://x"}),
         )
+
+
+def test_resolve_model_spec_prefers_cfg_then_platform_env(monkeypatch):
+    monkeypatch.delenv("DEFAULT_LLM_MODEL", raising=False)
+    assert lg.resolve_model_spec({"langgraph": {"model": "openai:gpt-4o-mini"}}) == "openai:gpt-4o-mini"
+
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:gpt-5.4-nano")
+    assert lg.resolve_model_spec({}) == "openai:gpt-5.4-nano"
+
+    monkeypatch.delenv("DEFAULT_LLM_MODEL", raising=False)
+    assert lg.resolve_model_spec({}) == lg.DEFAULT_LLM_MODEL_SPEC
+
+
+def test_export_llm_api_keys_sets_env(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    lg.export_llm_api_keys({"openai_api_key": "sk-test"})
+    assert os.environ["OPENAI_API_KEY"] == "sk-test"
+
+
+def test_prepare_langgraph_llm_combines_export_and_resolve(monkeypatch):
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:gpt-5.4-nano")
+    model = lg.prepare_langgraph_llm({"anthropic_api_key": "sk-ant"})
+    assert model == "openai:gpt-5.4-nano"
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant"

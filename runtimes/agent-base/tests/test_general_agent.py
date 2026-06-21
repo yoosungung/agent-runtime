@@ -9,6 +9,19 @@ import pytest
 os.environ.setdefault("MCP_GATEWAY_URL", "http://mcp-gateway.test")
 
 
+@pytest.fixture(autouse=True)
+def _shared_postgres_checkpointer():
+    pytest.importorskip("langgraph")
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from runtime_common.providers import pg_infra
+
+    pg_infra.reset_registry()
+    pg_infra.set_shared_checkpointer(MemorySaver())
+    yield
+    pg_infra.reset_registry()
+
+
 @pytest.fixture
 def secrets():
     from runtime_common.secrets import EnvSecretResolver

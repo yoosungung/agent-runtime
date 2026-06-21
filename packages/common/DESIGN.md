@@ -48,6 +48,7 @@
     - **`providers/pg_infra.py`** — agent-base pod lifespan용 shared Postgres: `init_checkpointer` / `get_shared_checkpointer`, `get_adk_session_service` cache.
     - **`providers/langgraph.py`** (LangGraph / DeepAgents 공용)
       - `get_recursion_limit(cfg)` / `get_model_spec(cfg)` — cfg 에서 단순 값 추출.
+      - `export_llm_api_keys(cfg)` / `resolve_model_spec(cfg)` / `prepare_langgraph_llm(cfg)` — LangGraph·DeepAgents·general agent 공통 LLM model + API key env wiring (`cfg.langgraph.model` → `DEFAULT_LLM_MODEL` env → repo default).
       - `build_checkpointer(cfg, secrets)` — `cfg.langgraph.checkpointer` 기본 **`postgres`**. `postgres` 는 agent-base lifespan의 shared `AsyncPostgresSaver` (`pg_infra`). `{none, memory, sqlite, redis, mongo}` 는 per-factory. DSN 은 `secrets["CHECKPOINTER_DSN"]` (redis/sqlite/mongo 등).
       - `build_store(cfg, secrets)` — `cfg.langgraph.store.{backend, index}` → `InMemoryStore` / `AsyncPostgresStore` / `AsyncRedisStore`. `index.embed`/`dims` 가 있으면 semantic search 활성. DSN 은 `secrets["STORE_DSN"]`.
       - `build_cache(cfg, secrets)` — `cfg.langgraph.cache ∈ {none, memory, sqlite, redis}` → `InMemoryCache` / `SqliteCache` / `RedisCache`. DSN 은 `secrets["CACHE_DSN"]`.

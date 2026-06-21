@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from deepagents import create_deep_agent
 
 from agent_base.mcp_tools import build_mcp_tools
 from runtime_common.config_schema import GeneralAgentSourceConfig
-from runtime_common.providers.langgraph import build_checkpointer, get_model_spec
+from runtime_common.providers.langgraph import build_checkpointer, prepare_langgraph_llm
 from runtime_common.secrets import SecretResolver
 from runtime_common.vfs.composite import build_general_vfs
 from runtime_common.vfs.store import (
@@ -19,22 +18,7 @@ from runtime_common.vfs.store import (
     UserVfsStore,
 )
 
-_DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 _DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
-
-
-def _resolve_model_spec(cfg: dict) -> str:
-    return get_model_spec(cfg) or os.environ.get("DEFAULT_LLM_MODEL") or _DEFAULT_MODEL
-
-
-def _export_llm_keys(cfg: dict) -> None:
-    for cfg_key, env_key in (
-        ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-        ("openai_api_key", "OPENAI_API_KEY"),
-        ("google_api_key", "GOOGLE_API_KEY"),
-    ):
-        if val := cfg.get(cfg_key):
-            os.environ[env_key] = val
 
 
 def _parse_general_cfg(cfg: dict) -> GeneralAgentSourceConfig:
@@ -75,8 +59,6 @@ def build_general_agent(
             user_id=user_id,
         )
 
-    _export_llm_keys(cfg)
-
     mcp_tool_entries = [
         {"server": t.server, "name": t.name, "description": t.description}
         for t in general.mcp_tools
@@ -85,7 +67,7 @@ def build_general_agent(
     checkpointer = build_checkpointer(cfg, secrets)
 
     return create_deep_agent(
-        model=_resolve_model_spec(cfg),
+        model=prepare_langgraph_llm(cfg),
         tools=tools,
         system_prompt=general.system_prompt or _DEFAULT_SYSTEM_PROMPT,
         backend=backend,

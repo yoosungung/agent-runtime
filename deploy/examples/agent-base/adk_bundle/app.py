@@ -45,6 +45,7 @@ from google.genai import types
 
 from agent_base.app import get_current_token
 from runtime_common.providers.adk import build_generate_content_config, get_model
+from runtime_common.providers.langgraph import export_llm_api_keys
 from runtime_common.secrets import SecretResolver
 
 _DEFAULT_MCP_SERVER = "search-server"
@@ -89,14 +90,7 @@ def _resolve_model(model_spec: str) -> Any:
 
 
 def build_agent(cfg: dict, secrets: SecretResolver) -> Any:  # noqa: ARG001 — secrets unused
-    # Export whichever provider keys are present so LiteLlm + ADK pick them up.
-    for cfg_key, env_key in (
-        ("google_api_key", "GOOGLE_API_KEY"),
-        ("openai_api_key", "OPENAI_API_KEY"),
-        ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-    ):
-        if val := cfg.get(cfg_key):
-            os.environ[env_key] = val
+    export_llm_api_keys(cfg)
 
     mcp_server = cfg.get("mcp_server", _DEFAULT_MCP_SERVER)
     mcp_gateway_url = os.environ["MCP_GATEWAY_URL"]

@@ -54,26 +54,14 @@ from agent_base.app import get_current_token
 from runtime_common.providers.langgraph import (
     build_checkpointer,
     build_store,
-    get_model_spec,
+    prepare_langgraph_llm,
 )
 from runtime_common.secrets import SecretResolver
 
-_DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 _DEFAULT_MCP_SERVER = "search-server"
 
 
 def build_agent(cfg: dict, secrets: SecretResolver) -> Any:
-    # init_chat_model (used by deepagents) picks up provider keys from env.
-    # We export whichever cfg keys are present so any of "anthropic:...",
-    # "openai:...", or "google:..." model specs work without further wiring.
-    for cfg_key, env_key in (
-        ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-        ("openai_api_key", "OPENAI_API_KEY"),
-        ("google_api_key", "GOOGLE_API_KEY"),
-    ):
-        if val := cfg.get(cfg_key):
-            os.environ[env_key] = val
-
     mcp_server = cfg.get("mcp_server", _DEFAULT_MCP_SERVER)
     mcp_gateway_url = os.environ["MCP_GATEWAY_URL"]
 
@@ -140,7 +128,7 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:
     # cap is applied at invoke time via RunnableConfig (set by agent-base runner).
     # ``get_recursion_limit(cfg)`` is wired through cfg → runner → invoke config.
     return create_deep_agent(
-        model=get_model_spec(cfg) or _DEFAULT_MODEL,
+        model=prepare_langgraph_llm(cfg),
         tools=tools,
         system_prompt=(
             "You orchestrate web research. Plan with write_todos, delegate topic-specific "
