@@ -12,6 +12,8 @@ import {
   formPrimaryButtonClassName,
   formSecondaryButtonClassName,
 } from "../components/FormPageLayout";
+import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import type { GeneralVisibility } from "../lib/generalVisibility";
 import {
   createSubmitLabel,
   createSubmitPendingLabel,
@@ -27,6 +29,7 @@ interface FormValues {
 export function GeneralAgentNewPage() {
   const navigate = useNavigate();
   const [mcpServers, setMcpServers] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState<GeneralVisibility>("private");
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
 
@@ -65,6 +68,7 @@ export function GeneralAgentNewPage() {
         version: values.version,
         system_prompt: values.system_prompt,
         mcp_servers: mcpServers,
+        visibility,
         config,
       });
       navigate(`/agents/${result.id}`);
@@ -168,6 +172,11 @@ export function GeneralAgentNewPage() {
             </div>
           )}
         </div>
+
+        <GeneralAgentVisibilityField
+          value={visibility}
+          onChange={setVisibility}
+        />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

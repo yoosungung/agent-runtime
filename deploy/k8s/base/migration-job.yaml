@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql, 0002_vfs.sql, 0003_user_meta_template.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0004_general_visibility.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -207,16 +207,32 @@ data:
 
     ALTER TABLE source_meta
         ADD COLUMN IF NOT EXISTS user_meta_template JSONB NOT NULL DEFAULT '{}'::jsonb;
+  0004_general_visibility.sql: |
+    -- General agent ownership + visibility (private | tenant | public)
+
+    ALTER TABLE source_meta
+        ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT REFERENCES users (id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS owner_tenant VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) NOT NULL DEFAULT 'private';
+
+    ALTER TABLE source_meta DROP CONSTRAINT IF EXISTS chk_source_meta_visibility;
+    ALTER TABLE source_meta
+        ADD CONSTRAINT chk_source_meta_visibility
+        CHECK (visibility IN ('private', 'tenant', 'public'));
+
+    CREATE INDEX IF NOT EXISTS ix_source_meta_general_visibility
+        ON source_meta (deploy_mode, visibility)
+        WHERE deploy_mode = 'general' AND retired = FALSE;
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0003
+  name: db-migrate-0004
   namespace: runtime
   annotations:
-    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0003)
+    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0004)
     # when migration scripts change; delete obsolete completed Jobs if desired.
-    migration-version: "0003"
+    migration-version: "0004"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -252,6 +268,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0002_vfs.sql
               echo "Applying /migrations/0003_user_meta_template.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0003_user_meta_template.sql
+              echo "Applying /migrations/0004_general_visibility.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0004_general_visibility.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

@@ -19,8 +19,11 @@ export interface SourceMeta {
   image_digest: string | null;
   slug: string | null;
   status: "pending" | "active" | "failed" | "retired";
+  created_by_user_id?: number | null;
+  owner_tenant?: string | null;
+  visibility?: "private" | "tenant" | "public";
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface AccessEntry {
@@ -88,12 +91,33 @@ export function useCreateGeneralAgent() {
       system_prompt: string;
       mcp_servers: string[];
       config?: Record<string, unknown>;
+      visibility?: "private" | "tenant" | "public";
     }) =>
       apiJson<SourceMeta>("/api/source-meta/general", {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["source-meta", "list"] });
+    },
+  });
+}
+
+export function usePatchGeneralAgent(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      system_prompt?: string;
+      mcp_servers?: string[];
+      config?: Record<string, unknown>;
+      visibility?: "private" | "tenant" | "public";
+    }) =>
+      apiJson<SourceMeta>(`/api/source-meta/general/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["source-meta", id] });
       qc.invalidateQueries({ queryKey: ["source-meta", "list"] });
     },
   });

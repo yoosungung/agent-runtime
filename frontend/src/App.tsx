@@ -61,6 +61,11 @@ const GeneralAgentNewPage = lazy(() =>
     default: m.GeneralAgentNewPage,
   })),
 );
+const GeneralAgentDetailPage = lazy(() =>
+  import("./pages/GeneralAgentDetailPage").then((m) => ({
+    default: m.GeneralAgentDetailPage,
+  })),
+);
 const CustomImageListPage = lazy(() =>
   import("./pages/CustomImageListPage").then((m) => ({
     default: m.CustomImageListPage,
@@ -130,7 +135,7 @@ export function App() {
                   />
                   <Route
                     path="/agents/:id"
-                    element={<SourceMetaDetailPage kind="agent" />}
+                    element={<GeneralAgentDetailPage />}
                   />
 
                   <Route element={<RequireRole min="developer" />}>

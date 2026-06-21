@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,12 @@ from runtime_common.config_schema import (
     UserMetaFormTemplate,
 )
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
+from runtime_common.general_visibility import (
+    GeneralVisibility,
+    can_manage_general_agent,
+    can_use_general_agent,
+    validate_tenant_visibility,
+)
 from runtime_common.roles import UserRole, role_at_least
 from runtime_common.schemas import AgentRuntimeKind, McpRuntimeKind, Principal
 
@@ -47,12 +53,43 @@ router = APIRouter(
 
 
 def _ensure_can_read_source_meta(row: SourceMetaRow, principal: Principal) -> None:
-    if row.deploy_mode != "general" and not role_at_least(principal.role, UserRole.DEVELOPER):
+    if row.deploy_mode == "general":
+        if not can_use_general_agent(
+            visibility=row.visibility,
+            created_by_user_id=row.created_by_user_id,
+            owner_tenant=row.owner_tenant,
+            principal_user_id=principal.user_id,
+            principal_tenant=principal.tenant,
+            is_admin=principal.is_admin,
+        ) and not role_at_least(principal.role, UserRole.DEVELOPER):
+            raise HTTPException(status_code=403, detail="Access denied")
+        return
+    if not role_at_least(principal.role, UserRole.DEVELOPER):
         raise HTTPException(status_code=403, detail="Developer access required")
 
 
 def _ensure_can_write_source_meta(row: SourceMetaRow, principal: Principal) -> None:
+    if row.deploy_mode == "general":
+        if not can_manage_general_agent(
+            created_by_user_id=row.created_by_user_id,
+            principal_user_id=principal.user_id,
+            is_admin=principal.is_admin,
+        ):
+            raise HTTPException(status_code=403, detail="Only the creator or admin can modify this agent")
+        return
     _ensure_can_read_source_meta(row, principal)
+
+
+def _general_visibility_filter(principal: Principal):
+    return or_(
+        SourceMetaRow.created_by_user_id == principal.user_id,
+        SourceMetaRow.visibility == GeneralVisibility.PUBLIC,
+        and_(
+            SourceMetaRow.visibility == GeneralVisibility.TENANT,
+            SourceMetaRow.owner_tenant.isnot(None),
+            SourceMetaRow.owner_tenant == principal.tenant,
+        ),
+    )
 
 
 def _apply_role_list_filter(
@@ -64,6 +101,9 @@ def _apply_role_list_filter(
         return q, count_q
     q = q.where(SourceMetaRow.deploy_mode == "general")
     count_q = count_q.where(SourceMetaRow.deploy_mode == "general")
+    visibility_filter = _general_visibility_filter(principal)
+    q = q.where(visibility_filter)
+    count_q = count_q.where(visibility_filter)
     return q, count_q
 
 
@@ -238,6 +278,18 @@ def _validate_config(config: dict | None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _validate_general_visibility(visibility: str, owner_tenant: str | None) -> None:
+    if visibility not in {v.value for v in GeneralVisibility}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"visibility must be one of {[v.value for v in GeneralVisibility]}",
+        )
+    try:
+        validate_tenant_visibility(visibility, owner_tenant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class SourceMetaResponse(BaseModel):
     id: int
     kind: str
@@ -256,6 +308,9 @@ class SourceMetaResponse(BaseModel):
     image_digest: str | None
     slug: str | None
     status: str
+    created_by_user_id: int | None = None
+    owner_tenant: str | None = None
+    visibility: str = GeneralVisibility.PRIVATE
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -471,6 +526,7 @@ class GeneralAgentCreateRequest(BaseModel):
     system_prompt: str
     mcp_servers: list[str]
     config: dict = {}
+    visibility: str = GeneralVisibility.PRIVATE
 
 
 @router.post("/general", response_model=SourceMetaResponse, status_code=201)
@@ -494,6 +550,8 @@ async def create_general_agent(
                 status_code=403,
                 detail=f"No access to MCP server '{server}'",
             )
+
+    _validate_general_visibility(body.visibility, principal.tenant)
 
     access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
     if not access_token:
@@ -524,6 +582,9 @@ async def create_general_agent(
         image_digest=None,
         slug=None,
         status="active",
+        created_by_user_id=principal.user_id,
+        owner_tenant=principal.tenant,
+        visibility=body.visibility,
     )
     db.add(row)
     db.add(
@@ -555,6 +616,101 @@ async def create_general_agent(
         name=body.name,
         version=body.version,
         mcp_tool_count=len(mcp_tools),
+    )
+    return _row_to_response(row)
+
+
+class GeneralAgentPatchRequest(BaseModel):
+    system_prompt: str | None = None
+    mcp_servers: list[str] | None = None
+    config: dict | None = None
+    visibility: str | None = None
+
+
+@router.patch("/general/{id}", response_model=SourceMetaResponse)
+async def patch_general_agent(
+    id: int,
+    request: Request,
+    body: GeneralAgentPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(get_principal),
+) -> SourceMetaResponse:
+    result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="source_meta not found")
+    if row.deploy_mode != "general" or row.kind != "agent":
+        raise HTTPException(status_code=400, detail="Not a general agent")
+    _ensure_can_write_source_meta(row, principal)
+
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if body.visibility is not None:
+        _validate_general_visibility(body.visibility, row.owner_tenant)
+        row.visibility = body.visibility
+
+    if body.mcp_servers is not None:
+        if not body.mcp_servers:
+            raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+        for server in body.mcp_servers:
+            if not principal.can_access("mcp", server):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"No access to MCP server '{server}'",
+                )
+
+    needs_config_rebuild = any(
+        field in update_data for field in ("system_prompt", "mcp_servers", "config")
+    )
+    if needs_config_rebuild:
+        general_cfg = row.config.get("general", {})
+        system_prompt = (
+            body.system_prompt.strip()
+            if body.system_prompt is not None
+            else general_cfg.get("system_prompt", "")
+        )
+        if not system_prompt:
+            raise HTTPException(status_code=400, detail="system_prompt is required")
+        mcp_servers = body.mcp_servers if body.mcp_servers is not None else general_cfg.get(
+            "mcp_servers", []
+        )
+        if not mcp_servers:
+            raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+
+        access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
+        if not access_token:
+            raise HTTPException(status_code=401, detail="access token required for MCP discovery")
+
+        mcp_tools = await _discover_mcp_tools(settings, access_token, mcp_servers)
+        extra_config = body.config if body.config is not None else {
+            k: v for k, v in row.config.items() if k != "general"
+        }
+        config = _build_general_config(system_prompt, mcp_servers, mcp_tools, extra_config)
+        _validate_config(config)
+        row.config = config
+
+    db.add(
+        make_audit_row(
+            "source_meta.patch_general",
+            principal.user_id,
+            principal.sub,
+            id=id,
+            changed_fields=list(update_data.keys()),
+        )
+    )
+    await db.flush()
+    await db.commit()
+    await db.refresh(row)
+
+    log_event(
+        "source_meta.patch_general",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        source_meta_id=row.id,
+        changed_fields=list(update_data.keys()),
     )
     return _row_to_response(row)
 

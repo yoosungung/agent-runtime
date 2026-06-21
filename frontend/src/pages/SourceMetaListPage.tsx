@@ -4,6 +4,7 @@ import { useSourceMetaList } from "../hooks/useSourceMeta";
 import { Paginator } from "../components/Paginator";
 import { usePagination } from "../hooks/usePagination";
 import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
+import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { PageHeader } from "../components/PageHeader";
 import { listNewButtonLabel } from "../lib/uiLabels";
 
@@ -132,12 +133,20 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Version
                     </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Runtime Pool
-                    </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Checksum
-                    </th>
+                    {deployMode === "general" ? (
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        사용 권한
+                      </th>
+                    ) : (
+                      <>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Runtime Pool
+                        </th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Checksum
+                        </th>
+                      </>
+                    )}
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Created
                     </th>
@@ -176,12 +185,20 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {item.version}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {item.runtime_pool}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-500">
-                        {formatChecksum(item.checksum)}
-                      </td>
+                      {deployMode === "general" ? (
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {generalVisibilityLabel(item.visibility)}
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.runtime_pool}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                            {formatChecksum(item.checksum)}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {formatDate(item.created_at)}
                       </td>

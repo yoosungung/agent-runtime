@@ -168,6 +168,7 @@ async def _insert_user(
     app_state,
     username: str = "alice",
     role: str = "user",
+    tenant: str | None = None,
 ) -> UserRow:
     from backend.app import app
     from backend.passwords import hash_password
@@ -176,7 +177,7 @@ async def _insert_user(
         row = UserRow(
             username=username,
             password_hash=hash_password("TestPass123!"),
-            tenant=None,
+            tenant=tenant,
             disabled=False,
             role=role,
             must_change_password=False,
@@ -1780,3 +1781,217 @@ async def test_create_general_agent_no_mcp_access_403(client: AsyncClient):
         },
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# General agent visibility
+# ---------------------------------------------------------------------------
+
+
+def _general_agent_config():
+    return {
+        "general": {
+            "system_prompt": "Hi",
+            "mcp_servers": ["s"],
+            "mcp_tools": [{"server": "s", "name": "t", "description": ""}],
+        }
+    }
+
+
+async def _set_test_principal(principal: dict) -> None:
+    from backend.app import app
+    from runtime_common.schemas import Principal
+
+    app.state.auth_client.verify.return_value = Principal.model_validate(principal)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_general_agent_sets_visibility_and_owner(client: AsyncClient):
+    from backend.app import app
+    from backend.deps import get_settings
+
+    settings = get_settings()
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/tools").mock(
+        return_value=Response(200, json={"tools": [{"name": "t", "description": ""}]})
+    )
+
+    owner = await _insert_user(app.state, "owner-user", tenant="acme")
+    await _set_test_principal(
+        {
+            **_ADMIN_PRINCIPAL,
+            "user_id": owner.id,
+            "sub": owner.username,
+            "tenant": "acme",
+            "role": "user",
+            "access": [{"kind": "mcp", "name": "s"}],
+        },
+    )
+
+    resp = await client.post(
+        "/api/source-meta/general",
+        headers=_csrf_headers(),
+        json={
+            "name": "team-bot",
+            "version": "v1",
+            "system_prompt": "Hello",
+            "mcp_servers": ["s"],
+            "visibility": "tenant",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["visibility"] == "tenant"
+    assert data["created_by_user_id"] == owner.id
+    assert data["owner_tenant"] == "acme"
+
+
+@pytest.mark.asyncio
+async def test_list_general_agents_respects_visibility(client: AsyncClient):
+    from backend.app import app
+
+    owner = await _insert_user(app.state, "owner-a", tenant="acme")
+    other = await _insert_user(app.state, "other-b", tenant="beta")
+
+    await _insert_source(
+        app.state,
+        {
+            "name": "private-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": "acme",
+            "visibility": "private",
+        },
+    )
+    await _insert_source(
+        app.state,
+        {
+            "name": "tenant-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": "acme",
+            "visibility": "tenant",
+        },
+    )
+    await _insert_source(
+        app.state,
+        {
+            "name": "public-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": "acme",
+            "visibility": "public",
+        },
+    )
+
+    await _set_test_principal(
+        {
+            **_ADMIN_PRINCIPAL,
+            "user_id": other.id,
+            "sub": other.username,
+            "tenant": "beta",
+            "role": "user",
+            "access": [],
+        },
+    )
+
+    resp = await client.get(
+        "/api/source-meta",
+        params={"kind": "agent", "deploy_mode": "general"},
+    )
+    assert resp.status_code == 200
+    names = {item["name"] for item in resp.json()["items"]}
+    assert names == {"public-bot"}
+
+
+@pytest.mark.asyncio
+async def test_get_private_general_agent_denies_non_owner(client: AsyncClient):
+    from backend.app import app
+
+    owner = await _insert_user(app.state, "owner-c", tenant="acme")
+    stranger = await _insert_user(app.state, "stranger-d", tenant="acme")
+    row = await _insert_source(
+        app.state,
+        {
+            "name": "secret-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": "acme",
+            "visibility": "private",
+        },
+    )
+
+    await _set_test_principal(
+        {
+            **_ADMIN_PRINCIPAL,
+            "user_id": stranger.id,
+            "sub": stranger.username,
+            "tenant": "acme",
+            "role": "user",
+            "access": [],
+        },
+    )
+
+    resp = await client.get(f"/api/source-meta/{row.id}")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_general_visibility_by_creator(client: AsyncClient):
+    from backend.app import app
+
+    owner = await _insert_user(app.state, "owner-e", tenant="acme")
+    row = await _insert_source(
+        app.state,
+        {
+            "name": "patch-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": "acme",
+            "visibility": "private",
+        },
+    )
+
+    await _set_test_principal(
+        {
+            **_ADMIN_PRINCIPAL,
+            "user_id": owner.id,
+            "sub": owner.username,
+            "tenant": "acme",
+            "role": "user",
+            "access": [{"kind": "mcp", "name": "s"}],
+        },
+    )
+
+    resp = await client.patch(
+        f"/api/source-meta/general/{row.id}",
+        headers=_csrf_headers(),
+        json={"visibility": "public"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["visibility"] == "public"

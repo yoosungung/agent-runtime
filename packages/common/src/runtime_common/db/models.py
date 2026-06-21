@@ -158,6 +158,13 @@ class SourceMetaRow(Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default="active"
     )
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    owner_tenant: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    visibility: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="private", server_default="private"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

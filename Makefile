@@ -121,11 +121,13 @@ db-migrate: ## apply 0001_init.sql to dev postgres
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0001_init.sql
 
-db-migrate-all: db-migrate ## apply 0001 + 0002_vfs + 0003 for existing DBs
+db-migrate-all: db-migrate ## apply 0001 + 0002_vfs + 0003 + 0004 for existing DBs
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0002_vfs.sql
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0003_user_meta_template.sql
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0004_general_visibility.sql
 
 # --- docs -----------------------------------------------------------------
 
