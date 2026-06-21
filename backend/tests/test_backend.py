@@ -237,6 +237,18 @@ async def test_create_source_meta_duplicate_409(client: AsyncClient):
     assert resp.status_code == 409
 
 
+async def test_create_source_meta_rejects_image_only_runtime_pool(client: AsyncClient):
+    body = {
+        **_VALID_SOURCE_BODY,
+        "kind": "mcp",
+        "name": "my-mcp",
+        "runtime_pool": "mcp:custom",
+    }
+    resp = await client.post("/api/source-meta", json=body, headers=_csrf_headers())
+    assert resp.status_code == 400
+    assert "runtime_pool" in resp.json()["detail"]
+
+
 async def test_list_source_meta(client: AsyncClient):
     from backend.app import app
 
@@ -796,6 +808,275 @@ async def test_upsert_user_meta_source_not_found_404(client: AsyncClient):
         headers=_csrf_headers(),
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# user_meta_template on source_meta
+# ---------------------------------------------------------------------------
+
+
+async def test_patch_source_meta_user_meta_template(client: AsyncClient):
+    from backend.app import app
+
+    row = await _insert_source(app.state, {"kind": "mcp", "name": "email-server"})
+    template = {
+        "description": "Connect your mailbox",
+        "fields": [
+            {
+                "path": "outlook.mailbox",
+                "label": "Mailbox",
+                "type": "string",
+                "required": True,
+            }
+        ],
+        "secrets_ref_enabled": False,
+    }
+    resp = await client.patch(
+        f"/api/source-meta/{row.id}",
+        json={"user_meta_template": template},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user_meta_template"]["description"] == "Connect your mailbox"
+    assert len(resp.json()["user_meta_template"]["fields"]) == 1
+
+
+async def test_patch_source_meta_user_meta_template_disabled(client: AsyncClient):
+    from backend.app import app
+
+    row = await _insert_source(app.state, {"kind": "mcp", "name": "utility-server"})
+    resp = await client.patch(
+        f"/api/source-meta/{row.id}",
+        json={"user_meta_template": {"enabled": False}},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user_meta_template"]["enabled"] is False
+
+
+async def test_patch_source_meta_user_meta_template_invalid(client: AsyncClient):
+    from backend.app import app
+
+    row = await _insert_source(app.state)
+    resp = await client.patch(
+        f"/api/source-meta/{row.id}",
+        json={"user_meta_template": {"fields": [{"path": "", "label": "x"}]}},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# /api/me/user-meta self-service
+# ---------------------------------------------------------------------------
+
+
+def _user_principal(username: str = "alice", access: list | None = None):
+    from runtime_common.schemas import Principal, ResourceRef
+
+    refs = [ResourceRef.model_validate(item) for item in (access or [])]
+    return Principal(
+        sub=username,
+        user_id=2,
+        tenant=None,
+        access=refs,
+        grace_applied=False,
+        role="user",
+        must_change_password=False,
+    )
+
+
+async def test_me_user_meta_forbidden_without_access(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(app.state, {"kind": "mcp", "name": "email-server"})
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal("alice", [])
+    try:
+        resp = await client.get(
+            "/api/me/user-meta",
+            params={"kind": "mcp", "name": "email-server"},
+            headers=_csrf_headers(),
+        )
+        assert resp.status_code == 403
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+async def test_me_user_meta_upsert_and_get(client: AsyncClient):
+    from backend.app import app
+
+    source = await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "email-server",
+            "user_meta_template": {
+                "fields": [
+                    {
+                        "path": "email.from_address",
+                        "label": "From",
+                        "required": True,
+                    }
+                ]
+            },
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "alice",
+        [{"kind": "mcp", "name": "email-server"}],
+    )
+    try:
+        put_resp = await client.put(
+            "/api/me/user-meta",
+            json={
+                "kind": "mcp",
+                "name": "email-server",
+                "config": {"email": {"from_address": "alice@company.com"}},
+            },
+            headers=_csrf_headers(),
+        )
+        assert put_resp.status_code == 200
+        data = put_resp.json()
+        assert data["config"]["email"]["from_address"] == "alice@company.com"
+        assert data["source_meta_id"] == source.id
+
+        get_resp = await client.get(
+            "/api/me/user-meta",
+            params={"kind": "mcp", "name": "email-server"},
+            headers=_csrf_headers(),
+        )
+        assert get_resp.status_code == 200
+        assert get_resp.json()["config"]["email"]["from_address"] == "alice@company.com"
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+async def test_me_access_resources(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "search-server",
+            "user_meta_template": {"description": "No keys needed"},
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "bob",
+        [{"kind": "mcp", "name": "search-server"}],
+    )
+    try:
+        resp = await client.get(
+            "/api/me/access-resources",
+            params={"kind": "mcp"},
+            headers=_csrf_headers(),
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "search-server"
+        assert items[0]["template_description"] == "No keys needed"
+        assert items[0]["user_meta_required"] is False
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+async def test_me_access_resources_user_meta_not_required(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "utility-server",
+            "user_meta_template": {"enabled": False},
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "bob",
+        [{"kind": "mcp", "name": "utility-server"}],
+    )
+    try:
+        resp = await client.get(
+            "/api/me/access-resources",
+            params={"kind": "mcp"},
+            headers=_csrf_headers(),
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["user_meta_required"] is False
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+async def test_me_user_meta_upsert_rejected_when_not_required(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "utility-server",
+            "user_meta_template": {"enabled": False},
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "alice",
+        [{"kind": "mcp", "name": "utility-server"}],
+    )
+    try:
+        resp = await client.put(
+            "/api/me/user-meta",
+            json={"kind": "mcp", "name": "utility-server", "config": {}},
+            headers=_csrf_headers(),
+        )
+        assert resp.status_code == 400
+        assert "not required" in resp.json()["detail"].lower()
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+async def test_me_user_meta_required_field_validation(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(
+        app.state,
+        {
+            "kind": "mcp",
+            "name": "email-server",
+            "user_meta_template": {
+                "fields": [
+                    {
+                        "path": "outlook.mailbox",
+                        "label": "Mailbox",
+                        "required": True,
+                    }
+                ]
+            },
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "alice",
+        [{"kind": "mcp", "name": "email-server"}],
+    )
+    try:
+        resp = await client.put(
+            "/api/me/user-meta",
+            json={"kind": "mcp", "name": "email-server", "config": {}},
+            headers=_csrf_headers(),
+        )
+        assert resp.status_code == 400
+        assert "outlook.mailbox" in resp.json()["detail"]
+    finally:
+        app.state.auth_client.verify.return_value = prev
 
 
 # ---------------------------------------------------------------------------

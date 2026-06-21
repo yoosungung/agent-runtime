@@ -16,6 +16,11 @@ from runtime_common.config_schema import (
     SearchSourceConfig,
     SourceConfig,
     UserConfig,
+    UserMetaFormField,
+    UserMetaFormTemplate,
+    get_nested_config,
+    is_user_meta_required,
+    validate_template_required_fields,
 )
 
 
@@ -174,3 +179,50 @@ def test_source_config_includes_search_sections():
     assert cfg.naver is not None
     assert cfg.naver.client_id == "id"
     assert cfg.fetch is not None
+
+
+def test_user_meta_form_template_defaults():
+    template = UserMetaFormTemplate()
+    assert template.enabled is None
+    assert is_user_meta_required(template) is False
+    assert template.fields == []
+    assert template.secrets_ref_enabled is False
+
+
+def test_user_meta_form_template_legacy_fields_imply_required():
+    template = UserMetaFormTemplate(
+        fields=[UserMetaFormField(path="outlook.mailbox", label="Mailbox")],
+    )
+    assert template.enabled is None
+    assert is_user_meta_required(template) is True
+
+
+def test_user_meta_form_template_not_required():
+    template = UserMetaFormTemplate(enabled=False)
+    assert is_user_meta_required(template) is False
+    validate_template_required_fields(template, {})
+
+
+def test_user_meta_form_field_rejects_empty_path():
+    with pytest.raises(ValidationError):
+        UserMetaFormField(path="", label="Mailbox")
+
+
+def test_validate_template_required_fields():
+    template = UserMetaFormTemplate(
+        fields=[
+            UserMetaFormField(path="outlook.mailbox", label="Mailbox", required=True),
+        ]
+    )
+    validate_template_required_fields(
+        template,
+        {"outlook": {"mailbox": "user@example.com"}},
+    )
+    with pytest.raises(ValueError, match="outlook.mailbox"):
+        validate_template_required_fields(template, {})
+
+
+def test_get_nested_config():
+    config = {"email": {"from_address": "a@b.com"}}
+    assert get_nested_config(config, "email.from_address") == "a@b.com"
+    assert get_nested_config(config, "email.missing") is None

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSourceMetaAccess } from "../hooks/useSourceMeta";
 import { useUserAccess, useGrantAccess, useRevokeAccess, useBulkRevokeAccess } from "../hooks/useUsers";
 import { Paginator } from "./Paginator";
@@ -36,11 +37,7 @@ function ResourceAccessList({
     offset,
   });
   const [addError, setAddError] = useState<string | null>(null);
-
-  const grantMut = useGrantAccess(0);
-
-  // We need per-user grant/revoke, so we create inline mutations by userId
-  // Instead, we'll use a helper that calls the raw API
+  const qc = useQueryClient();
 
   async function handleGrant(user: { id: number; username: string }) {
     if (!kind || !name) return;
@@ -50,8 +47,10 @@ function ResourceAccessList({
         method: "POST",
         body: JSON.stringify({ kind, name }),
       });
-      // Invalidate both
-      grantMut.reset();
+      await qc.invalidateQueries({
+        queryKey: ["source-meta", sourceMetaId, "access"],
+      });
+      await qc.invalidateQueries({ queryKey: ["users", user.id, "access"] });
     } catch (e: unknown) {
       setAddError(e instanceof Error ? e.message : "Failed to grant access");
     }

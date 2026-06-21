@@ -115,6 +115,10 @@ class SourceMeta(BaseModel):
         default_factory=dict,
         description="Bundle-default config. Runtime merges with user_meta.config (user wins).",
     )
+    user_meta_template: dict = Field(
+        default_factory=dict,
+        description="Admin UI form template for end-user user_meta input. Not merged at runtime.",
+    )
     # Image mode fields
     deploy_mode: str = Field(default="bundle", description="'general' | 'bundle' | 'image'")
     image_uri: str | None = Field(default=None, description="OCI image URI for image mode")
@@ -139,6 +143,7 @@ class SourceMeta(BaseModel):
             checksum=row.checksum,
             sig_uri=row.sig_uri,
             config=row.config,
+            user_meta_template=row.user_meta_template,
             deploy_mode=row.deploy_mode,
             image_uri=row.image_uri,
             image_digest=row.image_digest,

@@ -69,16 +69,11 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /                                      로그인 필요, 대시보드 (admin만)
 /agents                                source_meta list (kind=agent)
 /agents/new                            생성 폼 (bundle_uri 입력 또는 zip 업로드)
-/agents/:id                            상세 + 버전 목록 + retire/delete + access(이 agent 사용 가능한 user 목록)
-/agents/:id/user-meta/:principal       user_meta 편집 (config JSON + secrets_ref)
-/mcp-servers                           source_meta list (kind=mcp)
-/mcp-servers/new                       생성
-/mcp-servers/:id                       상세 + access
-/mcp-servers/:id/user-meta/:principal  user_meta 편집
-/users                                 사용자 리스트 (admin만)
-/users/new                             사용자 생성 (username + password + tenant + is_admin)
-/users/:id                             사용자 상세 + password 리셋 + disabled/is_admin 토글 + access 관리
-/me                                    본인 프로필 (비번 변경)
+/agents/:id                            상세 + User Meta Template 탭 + access
+/mcp-servers/:id                       상세 + User Meta Template 탭 + access
+/me                                    본인 프로필 + integrations + 비번 변경
+/me/integrations                       → /me 리다이렉트
+/me/user-meta/:kind/:name              본인 user_meta 편집 (template 기반 폼)
 /chat                                  agent 선택 → 대화 (SSE 스트리밍)
 ```
 
@@ -88,7 +83,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 |---|---|
 | 세션 없음 | `/login` |
 | 세션 있음 + `must_change_password==true` | `/me` (비번 변경 강제 — 다른 모든 라우트 접근 차단) |
-| 세션 있음 + `is_admin==false` | `/me` 와 `/chat` 만 허용 |
+| 세션 있음 + `is_admin==false` | `/me`, `/me/user-meta/*`, `/chat` 허용 |
 | 세션 있음 + `is_admin==true` + `must_change_password==false` | 모든 라우트 허용 |
 
 구현은 `<RequireAuth />` → `<RequireNotForcedChangePassword />` → `<RequireAdmin />` 중첩 가드. 각 라우트 정의에서 필요한 레벨까지만 감쌈. `useSession()` 훅이 `{user_id, username, tenant, is_admin, must_change_password}` 노출.
@@ -119,21 +114,20 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 **source_meta 상세 (`/agents/:id`)**
 - 메타 정보 + 현재 버전 + 같은 `(kind, name)`의 다른 버전 리스트.
-- **편집 가능 필드 (PATCH 화이트리스트)**: `entrypoint` · `runtime_pool` · `sig_uri` · `config`. 나머지(`name`/`version`/`checksum`/`bundle_uri` 등)는 **readonly 표시**로 UI에서 편집 불가. 실수로 body에 섞여도 서버 400.
+- **편집 가능 필드 (PATCH 화이트리스트)**: `entrypoint` · `runtime_pool` · `sig_uri` · `config` · `user_meta_template`. 나머지(`name`/`version`/`checksum`/`bundle_uri` 등)는 **readonly 표시**로 UI에서 편집 불가. 실수로 body에 섞여도 서버 400.
 - **`config` 섹션**: 번들 기본 config JSON 편집기(`PATCH /api/source-meta/{id}` 로 저장). 경고 문구: "의미 변경이면 새 버전 권장 — 현재 로직은 `PATCH` 허용이지만 runtime 캐시/checksum 기반 warm pod는 재로드되지 않음".
 - 액션 (상세 페이지 우측 패널):
   - `서명 파일 교체`: `<input type=file accept=".sig">` 다이얼로그 → `POST /api/source-meta/{id}/signature` (multipart `sig`). 성공 시 `sig_uri` 업데이트된 카드.
   - `무결성 검증` (nice-to-have): `POST /api/source-meta/{id}/verify` → 저장 파일의 sha256 재계산 + 서명 재검증. 결과를 토스트/패널로.
   - `retire`: `POST /api/source-meta/{id}/retire` → confirm dialog → `retired=true` 표시.
   - `delete`: `DELETE /api/source-meta/{id}` (dev/stage only, `ALLOW_HARD_DELETE=true`일 때만 서버가 수락). confirm dialog. 409 → "다른 버전이 같은 bundle을 참조 중" 메시지.
-- `user_meta` 섹션: principal별 설정 테이블 + **Add User Meta** (principal 입력 → 편집 페이지). 상단 안내: source=기동·공통, user=invoke·개인.
-- 열: `principal_id`, `config` 요약(키 수), `secrets_ref`, `updated_at`. row → 편집. 페이지네이션 표준.
+- **User Meta Template 탭**: `enabled`로 필요 여부 선택. `enabled: true`일 때만 필드 path/label/type/required 정의 + live preview. `enabled: false`면 사용자 Integrations에 "Not required" 표시.
+- **Access 탭**: grant/revoke (`AccessList`).
 
-**user_meta 편집 (`/.../user-meta/:principal`)**
-- `GET /api/user-meta?source_meta_id=&principal_id=` (items 비면 404 → 빈 폼).
-- **2-pane 레이아웃** — 좌측 `source.config`(기동 시 공통, read-only), 우측 `user.config`(호출 시 사용자별). email MCP 예시 collapsible help.
-- `secrets_ref`: 단일 문자열 입력 (`vault://...` / `env://...` 등).
-- 저장: `PUT /api/user-meta` (upsert). 성공 시 invalidate `user-meta` + `source-meta` 쿼리.
+**본인 프로필 (`/me`)**
+- Account Info + Change Password (2열) + **Integrations** 테이블 (전체 너비). Agent → MCP 탭 순. `user_meta_required`인 리소스만 표시.
+- `GET /api/me/access-resources?kind=` — JWT `Principal.access` 기준 목록.
+- user-meta 편집: `/me/user-meta/:kind/:name` — **모달**로 열림 (URL·뒤로가기 지원). template + 본인 config.
 
 **사용자 리스트 (`/users`)**
 - `GET /api/users?username=<prefix>&tenant=&disabled=&limit=50&offset=0` (표준 페이지네이션).
@@ -229,7 +223,8 @@ src/
   hooks/
     useSession.ts                    GET /api/me (is_admin + must_change_password 포함)
     useSourceMeta.ts                 list / get / create / patch / retire / delete / signature / verify
-    useUserMeta.ts                   get / upsert / delete
+    useMyUserMeta.ts                 self-service access-resources / user-meta
+    useUserMeta.ts                   admin get / upsert / delete (break-glass)
     useUsers.ts                      list / create / patch / password / delete
     useAccess.ts                     grant / revoke (양쪽 쿼리 동시 invalidate)
     usePagination.ts                 limit/offset 상태 + URL sync

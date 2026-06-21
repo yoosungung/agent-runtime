@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSourceMetaList } from "../hooks/useSourceMeta";
+import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { invokeAgentStream } from "../lib/agentsInvoke";
 
 interface Message {
@@ -22,11 +22,7 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const { data: agentList, isLoading: agentsLoading } = useSourceMetaList({
-    kind: "agent",
-    retired: false,
-    limit: 100,
-  });
+  const { data: agentList, isLoading: agentsLoading } = useMyAccessResources("agent");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -146,7 +142,7 @@ export function ChatPage() {
             {agentsLoading ? "Loading agents..." : "Select agent..."}
           </option>
           {agents.map((a) => (
-            <option key={a.id} value={a.name}>
+            <option key={a.source_meta_id} value={a.name}>
               {a.name} ({a.version})
             </option>
           ))}

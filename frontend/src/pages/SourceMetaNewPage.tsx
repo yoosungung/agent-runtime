@@ -94,6 +94,8 @@ export function SourceMetaNewPage({ kind }: Props) {
     register,
     handleSubmit,
     watch,
+    getValues,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(sourceMetaCreateSchema),
@@ -124,28 +126,21 @@ export function SourceMetaNewPage({ kind }: Props) {
       setGlobalError("Please select a ZIP file");
       return;
     }
+    const valid = await trigger(["name", "version", "runtime_pool", "entrypoint"]);
+    if (!valid) return;
+
     setGlobalError(null);
     const fd = new FormData();
     fd.append("file", zipFile);
     if (sigFile) fd.append("sig", sigFile);
-    // Get current form values
-    const nameEl = document.getElementById("zip-name") as HTMLInputElement;
-    const versionEl = document.getElementById(
-      "zip-version",
-    ) as HTMLInputElement;
-    const runtimePoolEl = document.getElementById(
-      "zip-runtime-pool",
-    ) as HTMLSelectElement;
-    const entrypointEl = document.getElementById(
-      "zip-entrypoint",
-    ) as HTMLInputElement;
 
+    const { name, version, runtime_pool, entrypoint } = getValues();
     const meta = {
       kind,
-      name: nameEl?.value,
-      version: versionEl?.value,
-      runtime_pool: runtimePoolEl?.value,
-      entrypoint: entrypointEl?.value,
+      name,
+      version,
+      runtime_pool,
+      entrypoint,
       config,
     };
     fd.append("meta", JSON.stringify(meta));
@@ -166,6 +161,7 @@ export function SourceMetaNewPage({ kind }: Props) {
     <FormPageLayout title={title}>
         <div className="flex gap-4 border-b border-gray-200 mb-6 overflow-x-auto">
           <button
+            type="button"
             onClick={() => setTab("uri")}
             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
               tab === "uri"
@@ -176,6 +172,7 @@ export function SourceMetaNewPage({ kind }: Props) {
             External URI
           </button>
           <button
+            type="button"
             onClick={() => setTab("zip")}
             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
               tab === "zip"
@@ -189,284 +186,235 @@ export function SourceMetaNewPage({ kind }: Props) {
 
         {globalError && <FormError message={globalError} />}
 
-        {tab === "uri" && (
-          <form onSubmit={handleSubmit(onSubmitUri)} className="space-y-5">
-            <input type="hidden" {...register("kind")} value={kind} />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (tab === "uri") {
+              void handleSubmit(onSubmitUri)(e);
+            } else {
+              void onSubmitZip();
+            }
+          }}
+          className="space-y-5"
+        >
+          <input type="hidden" {...register("kind")} value={kind} />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register("name")}
-                  className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="my-agent"
-                />
-                {errors.name && (
-                  <p className="text-xs text-red-600 mt-1">
-                    {errors.name.message}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Version <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register("version")}
-                  className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="1.0.0"
-                />
-                {errors.version && (
-                  <p className="text-xs text-red-600 mt-1">
-                    {errors.version.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Runtime Pool <span className="text-red-500">*</span>
-              </label>
-              <select
-                {...register("runtime_pool")}
-                className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <label
+                htmlFor="source-meta-name"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
-                <option value="">Select runtime pool...</option>
-                {runtimeKinds.map((rk) => (
-                  <option key={rk} value={rk}>
-                    {rk}
-                  </option>
-                ))}
-              </select>
-              {errors.runtime_pool && (
-                <p className="text-xs text-red-600 mt-1">
-                  {errors.runtime_pool.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Entrypoint <span className="text-red-500">*</span>
+                Name <span className="text-red-500">*</span>
               </label>
               <input
-                {...register("entrypoint")}
+                id="source-meta-name"
+                {...register("name")}
                 className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="module.path:factory"
+                placeholder="my-agent"
               />
-              {errors.entrypoint && (
+              {errors.name && (
                 <p className="text-xs text-red-600 mt-1">
-                  {errors.entrypoint.message}
+                  {errors.name.message}
                 </p>
               )}
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bundle URI
+              <label
+                htmlFor="source-meta-version"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Version <span className="text-red-500">*</span>
               </label>
               <input
-                {...register("bundle_uri")}
+                id="source-meta-version"
+                {...register("version")}
                 className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="s3://bucket/path/bundle.zip"
+                placeholder="1.0.0"
               />
-              {errors.bundle_uri && (
+              {errors.version && (
                 <p className="text-xs text-red-600 mt-1">
-                  {errors.bundle_uri.message}
+                  {errors.version.message}
                 </p>
               )}
             </div>
+          </div>
 
-            {requiresChecksum && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Checksum <span className="text-red-500">*</span>{" "}
-                  <span className="text-xs text-gray-400">
-                    (required for s3/oci)
-                  </span>
-                </label>
-                <input
-                  {...register("checksum")}
-                  className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  placeholder="sha256:abc123..."
-                />
-                {errors.checksum && (
-                  <p className="text-xs text-red-600 mt-1">
-                    {errors.checksum.message}
-                  </p>
-                )}
-              </div>
+          <div>
+            <label
+              htmlFor="source-meta-runtime-pool"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Runtime Pool <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="source-meta-runtime-pool"
+              {...register("runtime_pool")}
+              className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select runtime pool...</option>
+              {runtimeKinds.map((rk) => (
+                <option key={rk} value={rk}>
+                  {rk}
+                </option>
+              ))}
+            </select>
+            {errors.runtime_pool && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.runtime_pool.message}
+              </p>
             )}
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Config (JSON)
-              </label>
-              <JsonEditor
-                value={config}
-                onChange={(v) => {
-                  setConfig(v);
-                  setConfigError(undefined);
-                }}
-                error={configError}
-              />
-            </div>
+          <div>
+            <label
+              htmlFor="source-meta-entrypoint"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Entrypoint <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="source-meta-entrypoint"
+              {...register("entrypoint")}
+              className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="module.path:factory"
+            />
+            {errors.entrypoint && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.entrypoint.message}
+              </p>
+            )}
+          </div>
 
-            <FormActions>
-              <button
-                type="button"
-                onClick={() => navigate(listPath)}
-                className={formSecondaryButtonClassName}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting || createMut.isPending}
-                className={formPrimaryButtonClassName}
-              >
-                {isSubmitting || createMut.isPending
-                  ? createSubmitPendingLabel(kind)
-                  : createSubmitLabel(kind)}
-              </button>
-            </FormActions>
-          </form>
-        )}
-
-        {tab === "zip" && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {tab === "uri" && (
+            <>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
+                  Bundle URI
                 </label>
                 <input
-                  id="zip-name"
+                  {...register("bundle_uri")}
                   className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="my-agent"
+                  placeholder="s3://bucket/path/bundle.zip"
                 />
+                {errors.bundle_uri && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {errors.bundle_uri.message}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Version <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="zip-version"
-                  className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="1.0.0"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Runtime Pool <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="zip-runtime-pool"
-                className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select runtime pool...</option>
-                {runtimeKinds.map((rk) => (
-                  <option key={rk} value={rk}>
-                    {rk}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Entrypoint <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="zip-entrypoint"
-                className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="module.path:factory"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bundle ZIP <span className="text-red-500">*</span>
-              </label>
-              <FileDropZone
-                accept=".zip"
-                maxMb={100}
-                onFile={handleZipFile}
-                label="Drag & drop your .zip bundle"
-              />
-              {zipStatsError && (
-                <p className="text-xs text-red-600 mt-1">{zipStatsError}</p>
-              )}
-              {zipStats && (
-                <div className={`mt-2 rounded px-3 py-2 text-xs ${
-                  zipStats.decompressedMb > DECOMPRESSED_WARN_MB
-                    ? "bg-amber-50 border border-amber-200 text-amber-800"
-                    : "bg-gray-50 border border-gray-200 text-gray-600"
-                }`}>
-                  <span className="font-medium">ZIP 분석:</span>{" "}
-                  {zipStats.fileCount}개 파일 · 압축: {zipStats.compressedMb.toFixed(1)} MB · 압축 해제 추정: {zipStats.decompressedMb.toFixed(1)} MB
-                  {zipStats.decompressedMb > DECOMPRESSED_WARN_MB && (
-                    <span className="ml-2 font-semibold">
-                      ⚠ {DECOMPRESSED_WARN_MB} MB 초과 — 디스크 용량을 확인하세요.
+              {requiresChecksum && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Checksum <span className="text-red-500">*</span>{" "}
+                    <span className="text-xs text-gray-400">
+                      (required for s3/oci)
                     </span>
+                  </label>
+                  <input
+                    {...register("checksum")}
+                    className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    placeholder="sha256:abc123..."
+                  />
+                  {errors.checksum && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {errors.checksum.message}
+                    </p>
                   )}
                 </div>
               )}
-            </div>
+            </>
+          )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Signature File{" "}
-                <span className="text-xs text-gray-400">(optional)</span>
-              </label>
-              <FileDropZone
-                accept=".sig"
-                maxMb={10}
-                onFile={setSigFile}
-                label="Drag & drop .sig file (optional)"
-              />
-            </div>
+          {tab === "zip" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Bundle ZIP <span className="text-red-500">*</span>
+                </label>
+                <FileDropZone
+                  accept=".zip"
+                  maxMb={100}
+                  onFile={handleZipFile}
+                  label="Drag & drop your .zip bundle"
+                />
+                {zipStatsError && (
+                  <p className="text-xs text-red-600 mt-1">{zipStatsError}</p>
+                )}
+                {zipStats && (
+                  <div className={`mt-2 rounded px-3 py-2 text-xs ${
+                    zipStats.decompressedMb > DECOMPRESSED_WARN_MB
+                      ? "bg-amber-50 border border-amber-200 text-amber-800"
+                      : "bg-gray-50 border border-gray-200 text-gray-600"
+                  }`}>
+                    <span className="font-medium">ZIP 분석:</span>{" "}
+                    {zipStats.fileCount}개 파일 · 압축: {zipStats.compressedMb.toFixed(1)} MB · 압축 해제 추정: {zipStats.decompressedMb.toFixed(1)} MB
+                    {zipStats.decompressedMb > DECOMPRESSED_WARN_MB && (
+                      <span className="ml-2 font-semibold">
+                        ⚠ {DECOMPRESSED_WARN_MB} MB 초과 — 디스크 용량을 확인하세요.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Config (JSON)
-              </label>
-              <JsonEditor
-                value={config}
-                onChange={(v) => {
-                  setConfig(v);
-                  setConfigError(undefined);
-                }}
-                error={configError}
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Signature File{" "}
+                  <span className="text-xs text-gray-400">(optional)</span>
+                </label>
+                <FileDropZone
+                  accept=".sig"
+                  maxMb={10}
+                  onFile={setSigFile}
+                  label="Drag & drop .sig file (optional)"
+                />
+              </div>
+            </>
+          )}
 
-            <FormActions>
-              <button
-                type="button"
-                onClick={() => navigate(listPath)}
-                className={formSecondaryButtonClassName}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onSubmitZip}
-                disabled={uploadMut.isPending}
-                className={formPrimaryButtonClassName}
-              >
-                {uploadMut.isPending
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Config (JSON)
+            </label>
+            <JsonEditor
+              value={config}
+              onChange={(v) => {
+                setConfig(v);
+                setConfigError(undefined);
+              }}
+              error={configError}
+            />
+          </div>
+
+          <FormActions>
+            <button
+              type="button"
+              onClick={() => navigate(listPath)}
+              className={formSecondaryButtonClassName}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={
+                tab === "uri"
+                  ? isSubmitting || createMut.isPending
+                  : uploadMut.isPending
+              }
+              className={formPrimaryButtonClassName}
+            >
+              {tab === "uri"
+                ? isSubmitting || createMut.isPending
+                  ? createSubmitPendingLabel(kind)
+                  : createSubmitLabel(kind)
+                : uploadMut.isPending
                   ? uploadSubmitPendingLabel(kind)
                   : uploadSubmitLabel(kind)}
-              </button>
-            </FormActions>
-          </div>
-        )}
+            </button>
+          </FormActions>
+        </form>
     </FormPageLayout>
   );
 }

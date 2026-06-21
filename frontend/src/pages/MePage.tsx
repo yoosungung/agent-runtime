@@ -1,11 +1,22 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useMatch } from "react-router-dom";
 import { useSession } from "../hooks/useSession";
 import { useChangeSelfPassword } from "../hooks/useUsers";
 import { queryClient } from "../lib/queryClient";
+import { MyIntegrationsPanel } from "../components/MyIntegrationsPanel";
+import { UserMetaEditDialog } from "../components/UserMetaEditDialog";
 
 export function MePage() {
   const navigate = useNavigate();
+  const editMatch = useMatch("/me/user-meta/:kind/:name");
+  const editKind =
+    editMatch?.params.kind === "agent" || editMatch?.params.kind === "mcp"
+      ? editMatch.params.kind
+      : undefined;
+  const editName = editMatch?.params.name
+    ? decodeURIComponent(editMatch.params.name)
+    : undefined;
+
   const { data: session } = useSession();
   const changePwMut = useChangeSelfPassword();
 
@@ -34,7 +45,6 @@ export function MePage() {
         new_password: newPassword,
       });
       setSuccess(true);
-      // Auto logout after password change
       setTimeout(() => {
         queryClient.clear();
         navigate("/login", { replace: true });
@@ -57,7 +67,6 @@ export function MePage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Session info */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Account Info
@@ -86,7 +95,6 @@ export function MePage() {
           </div>
         </div>
 
-        {/* Change password */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Change Password
@@ -162,14 +170,27 @@ export function MePage() {
               <button
                 type="submit"
                 disabled={changePwMut.isPending}
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
               >
                 {changePwMut.isPending ? "Changing..." : "Change Password"}
               </button>
             </form>
           )}
         </div>
+
+        <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
+          <MyIntegrationsPanel embedded />
+        </div>
       </div>
+
+      {editKind && editName && (
+        <UserMetaEditDialog
+          open
+          kind={editKind}
+          name={editName}
+          onClose={() => navigate("/me")}
+        />
+      )}
     </div>
   );
 }

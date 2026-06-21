@@ -30,11 +30,6 @@ const SourceMetaDetailPage = lazy(() =>
     default: m.SourceMetaDetailPage,
   })),
 );
-const UserMetaEditPage = lazy(() =>
-  import("./pages/UserMetaEditPage").then((m) => ({
-    default: m.UserMetaEditPage,
-  })),
-);
 const UsersListPage = lazy(() =>
   import("./pages/UsersListPage").then((m) => ({ default: m.UsersListPage })),
 );
@@ -104,6 +99,14 @@ export function App() {
               >
                 {/* /me and /chat accessible even during forced password change */}
                 <Route path="/me" element={<MePage />} />
+                <Route
+                  path="/me/integrations"
+                  element={<Navigate to="/me" replace />}
+                />
+                <Route
+                  path="/me/user-meta/:kind/:name"
+                  element={<MePage />}
+                />
                 <Route path="/chat" element={<ChatPage />} />
 
                 <Route element={<RequireNotForcedChangePassword />}>
@@ -125,10 +128,6 @@ export function App() {
                   <Route
                     path="/agents/:id"
                     element={<SourceMetaDetailPage kind="agent" />}
-                  />
-                  <Route
-                    path="/agents/:sourceMetaId/user-meta/:principal"
-                    element={<UserMetaEditPage />}
                   />
 
                   <Route element={<RequireRole min="developer" />}>
@@ -166,10 +165,6 @@ export function App() {
                     <Route
                       path="/mcp-servers/:id"
                       element={<SourceMetaDetailPage kind="mcp" />}
-                    />
-                    <Route
-                      path="/mcp-servers/:sourceMetaId/user-meta/:principal"
-                      element={<UserMetaEditPage />}
                     />
 
                     <Route path="/container" element={<Navigate to="/container/agents" replace />} />

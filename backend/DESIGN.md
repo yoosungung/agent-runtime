@@ -67,8 +67,12 @@
 | `PATCH` | `/api/source-meta/{id}` | 필드별 부분 수정 (아래 "PATCH 화이트리스트") | `name`/`version`/`checksum`/`bundle_uri`/`password_*`는 400 거절 |
 | `POST` | `/api/source-meta/{id}/retire` | `retired=true` toggle | soft delete |
 | `DELETE` | `/api/source-meta/{id}` | Postgres DELETE + bundle 파일 정리(ours) | dev/stage only (`ALLOW_HARD_DELETE`) |
-| `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | |
-| `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | `config`/`secrets_ref` 갱신 |
+| `GET` | `/api/me/access-resources` | `Principal.access` ∩ routable `source_meta` | self-service |
+| `GET` | `/api/me/user-meta` | 본인 `user_meta` + template | ACL `kind`+`name` |
+| `PUT` | `/api/me/user-meta` | 본인 UPSERT (`principal_id=username`) | template required 검증 |
+| `DELETE` | `/api/me/user-meta` | 본인 DELETE | |
+| `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | admin only |
+| `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | admin break-glass / e2e |
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
 | `GET` | `/api/infra-meta` | Postgres SELECT global infra row | secret 값 없음, `secret_keys`만 |
 | `PUT` | `/api/infra-meta` | Postgres UPSERT + K8s reconcile | `{env?, secrets?}` — secrets는 K8s Secret만, DB에는 key 이름 |
@@ -100,9 +104,9 @@
 
 **General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/tools`로 tool manifest를 조회해 `config.general.mcp_tools`에 캐시. 런타임은 agent-base 내장 factory + VFS(`vfs_agent_files`, `vfs_user_files`).
 
-**불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config` 오기재 수정 정도만 허용(감사 로그에 before/after 기록).
+**불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config`/`user_meta_template` 오기재 수정만 허용(감사 로그에 before/after 기록).
 
-**`config` 필드**: **source_meta** = 기동·공통 (provider, shared credential). **user_meta** = invoke·principal별 (mailbox, OAuth refresh). runtime이 shallow merge(user wins) 후 factory에 주입 — [ARCHITECTURE.md](../ARCHITECTURE.md) "source_meta / user_meta config 병합" 및 email-server 예시 참조. `PUT /api/user-meta` 시 `UserConfig.model_validate`. admin UI는 2-pane + merge 프리뷰.
+**`config` 필드**: **source_meta** = 기동·공통 (provider, shared credential). **user_meta** = invoke·principal별 (mailbox, OAuth refresh). runtime이 shallow merge(user wins) 후 factory에 주입 — [ARCHITECTURE.md](../ARCHITECTURE.md) "source_meta / user_meta config 병합" 및 email-server 예시 참조. `PUT /api/me/user-meta`·`PUT /api/user-meta` 시 `UserConfig.model_validate`. **`user_meta_template`**: `UserMetaFormTemplate` 검증 — admin UI 전용. `enabled: false`이면 사용자별 설정 불필요(Integrations "Not required", `PUT /api/me/user-meta` 거절).
 
 ### Custom Image 관리
 
@@ -286,7 +290,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 
 불변 필드가 body에 섞여 들어와도 조용히 무시하지 않고 **400으로 거절**한다 — 의도치 않은 상태 변경 감지가 목적.
 
-- `PATCH /api/source-meta/{id}` 허용: `{entrypoint?, sig_uri?, runtime_pool?, config?}`. 거절: `name`, `version`, `kind`, `checksum`, `bundle_uri`, `retired`, `created_at` (+ 알 수 없는 키).
+- `PATCH /api/source-meta/{id}` 허용: `{entrypoint?, sig_uri?, runtime_pool?, config?, user_meta_template?}`. 거절: `name`, `version`, `kind`, `checksum`, `bundle_uri`, `retired`, `created_at` (+ 알 수 없는 키).
 - `PATCH /api/users/{id}` 허용: `{tenant?, disabled?, is_admin?}`. 거절: `password`, `password_hash`, `username`, `id`, `created_at`, `updated_at` (+ 알 수 없는 키). 비밀번호는 전용 엔드포인트(`POST /api/users/{id}/password` 또는 `POST /api/me/password`)로만.
 - `PUT /api/user-meta` 허용: `{source_meta_id, principal_id, config?, secrets_ref?}`. 거절: `id`, `updated_at`.
 

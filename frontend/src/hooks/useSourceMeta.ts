@@ -12,6 +12,7 @@ export interface SourceMeta {
   checksum: string | null;
   sig_uri: string | null;
   config: Record<string, unknown>;
+  user_meta_template?: Record<string, unknown>;
   retired: boolean;
   deploy_mode: "general" | "bundle" | "image";
   image_uri: string | null;

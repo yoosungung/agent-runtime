@@ -412,6 +412,66 @@ class UserConfig(BaseModel):
     # fastmcp / mcp SDK sections: no per-principal overrides beyond bundle-specific keys
 
 
+# ── user_meta form template (admin UI — not merged at runtime) ───────────────
+
+
+class UserMetaFormField(BaseModel):
+    """Single field in the end-user user_meta input form."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(..., min_length=1, description="Dot path in user_meta.config")
+    label: str = Field(..., min_length=1)
+    type: Literal["string", "password", "number", "boolean"] = "string"
+    required: bool = False
+    placeholder: str | None = None
+    help: str | None = None
+
+
+class UserMetaFormTemplate(BaseModel):
+    """Admin-defined form template shown to users at /me/user-meta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    description: str | None = None
+    fields: list[UserMetaFormField] = Field(default_factory=list)
+    secrets_ref_enabled: bool = False
+    secrets_ref_help: str | None = None
+
+
+def is_user_meta_required(template: UserMetaFormTemplate) -> bool:
+    """Return False when admin marked user_meta as not needed for this resource."""
+    if template.enabled is not None:
+        return template.enabled
+    return bool(template.fields) or template.secrets_ref_enabled
+
+
+def get_nested_config(config: dict, path: str) -> object | None:
+    """Return a value from a nested dict using dot-separated *path*."""
+    current: object = config
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def validate_template_required_fields(template: UserMetaFormTemplate, config: dict) -> None:
+    """Raise ValueError when a required template field is missing from *config*."""
+    if not is_user_meta_required(template):
+        return
+    missing: list[str] = []
+    for field in template.fields:
+        if not field.required:
+            continue
+        value = get_nested_config(config, field.path)
+        if value is None or value == "":
+            missing.append(field.path)
+    if missing:
+        raise ValueError(f"Missing required user_meta fields: {', '.join(missing)}")
+
+
 # ── infra_meta (platform env) ───────────────────────────────────────────────
 
 

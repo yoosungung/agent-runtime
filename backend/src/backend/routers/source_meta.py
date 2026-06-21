@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,11 @@ from backend.deps import (
     require_developer,
 )
 from backend.settings import Settings
-from runtime_common.config_schema import GeneralAgentSourceConfig, McpToolManifestEntry
+from runtime_common.config_schema import (
+    GeneralAgentSourceConfig,
+    McpToolManifestEntry,
+    UserMetaFormTemplate,
+)
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
 from runtime_common.roles import UserRole, role_at_least
 from runtime_common.schemas import AgentRuntimeKind, McpRuntimeKind, Principal
@@ -124,9 +128,9 @@ def _build_general_config(
 
 VALID_KINDS = {"agent", "mcp"}
 VALID_DEPLOY_MODES = {"bundle", "general", "image"}
-VALID_BUNDLE_RUNTIME_POOLS = {f"agent:{k}" for k in AgentRuntimeKind} | {
-    f"mcp:{k}" for k in McpRuntimeKind
-}
+VALID_BUNDLE_RUNTIME_POOLS = {
+    f"agent:{k}" for k in AgentRuntimeKind if k != AgentRuntimeKind.CUSTOM
+} | {f"mcp:{k}" for k in McpRuntimeKind if k != McpRuntimeKind.CUSTOM}
 
 RE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,127}$")
 RE_VERSION = re.compile(r"^[a-zA-Z0-9._-]{1,64}$")
@@ -245,6 +249,7 @@ class SourceMetaResponse(BaseModel):
     checksum: str | None
     sig_uri: str | None
     config: dict
+    user_meta_template: dict
     retired: bool
     deploy_mode: str
     image_uri: str | None
@@ -720,7 +725,7 @@ async def upload_signature(
 # PATCH /api/source-meta/{id}
 # ---------------------------------------------------------------------------
 
-ALLOWED_PATCH_FIELDS = {"entrypoint", "sig_uri", "runtime_pool", "config"}
+ALLOWED_PATCH_FIELDS = {"entrypoint", "sig_uri", "runtime_pool", "config", "user_meta_template"}
 REJECTED_PATCH_FIELDS = {
     "name",
     "version",
@@ -739,6 +744,7 @@ class SourceMetaPatchRequest(BaseModel):
     sig_uri: str | None = None
     runtime_pool: str | None = None
     config: dict | None = None
+    user_meta_template: dict | None = None
 
 
 @router.patch("/{id}", response_model=SourceMetaResponse)
@@ -762,6 +768,11 @@ async def patch_source_meta(
         _validate_runtime_pool(body.runtime_pool, row.kind)
     if body.config is not None:
         _validate_config(body.config)
+    if body.user_meta_template is not None:
+        try:
+            UserMetaFormTemplate.model_validate(body.user_meta_template)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     for field, value in update_data.items():
         setattr(row, field, value)

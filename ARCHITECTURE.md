@@ -127,6 +127,7 @@ CREATE TABLE source_meta (
     checksum      VARCHAR(128),
     sig_uri       VARCHAR(512),
     config        JSONB        NOT NULL DEFAULT '{}',
+    user_meta_template JSONB   NOT NULL DEFAULT '{}',  -- admin UI form template (runtime merge 제외)
     retired       BOOLEAN      NOT NULL DEFAULT FALSE,
     deploy_mode   VARCHAR(16)  NOT NULL DEFAULT 'bundle',   -- 'bundle' | 'image'
     image_uri     VARCHAR(512),
@@ -225,7 +226,9 @@ CREATE TABLE api_keys (
 |---|---|---|
 | 정의자 | 번들 작성자 | 사용자/관리자 |
 | 수명 | 버전과 동일 — immutable | 매 invoke fresh — mutable |
-| write | admin backend (source 생성 시) | admin backend (`/api/user-meta`) |
+| write | admin backend (source 생성 시) | **사용자 self-service** (`/api/me/user-meta`) + admin break-glass (`/api/user-meta`) |
+
+**`source_meta.user_meta_template`**: admin이 `/me` self-service 폼에 노출할 필드 정의(UI-only). runtime merge 대상 아님. `PATCH /api/source-meta/{id}` 화이트리스트.
 
 **런타임 factory 입력** = shallow merge `{**source.config, **user.config}` — user 키가 같으면 source를 덮어씀. 병합은 agent-base / mcp-base가 resolve 직후 수행. MVP는 1단 shallow merge만.
 
