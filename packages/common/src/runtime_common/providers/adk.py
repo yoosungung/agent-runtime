@@ -10,6 +10,7 @@ into ``LlmAgent(...)`` and (eventually) ``Runner(...)`` construction.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from runtime_common.secrets import SecretResolver
 
@@ -23,14 +24,19 @@ def sqlalchemy_asyncpg_dsn(dsn: str) -> str:
 
     ADK ``DatabaseSessionService`` uses ``create_async_engine``; without the
     ``+asyncpg`` scheme SQLAlchemy defaults to psycopg2, which we do not ship.
+
+    libpq/psycopg query params such as ``sslmode`` are stripped — asyncpg passes
+    unknown keys through to ``connect()`` and rejects ``sslmode``.
     """
-    if dsn.startswith("postgresql+asyncpg://"):
-        return dsn
     if dsn.startswith("postgres://"):
-        return "postgresql+asyncpg://" + dsn[len("postgres://") :]
-    if dsn.startswith("postgresql://"):
-        return "postgresql+asyncpg://" + dsn[len("postgresql://") :]
-    return dsn
+        dsn = "postgresql://" + dsn[len("postgres://") :]
+    if not dsn.startswith("postgresql://") and not dsn.startswith("postgresql+asyncpg://"):
+        return dsn
+
+    parsed = urlparse(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
+    filtered = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "sslmode"]
+    normalized = parsed._replace(query=urlencode(filtered))
+    return "postgresql+asyncpg://" + urlunparse(normalized)[len("postgresql://") :]
 
 
 def get_model(cfg: dict) -> str:

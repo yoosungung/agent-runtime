@@ -26,7 +26,11 @@ class _MapSecretResolver:
         ),
         (
             "postgresql://u:p@localhost/db?sslmode=disable",
+            "postgresql+asyncpg://u:p@localhost/db",
+        ),
+        (
             "postgresql+asyncpg://u:p@localhost/db?sslmode=disable",
+            "postgresql+asyncpg://u:p@localhost/db",
         ),
         (
             "postgresql+asyncpg://u:p@localhost/db",
