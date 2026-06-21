@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     BUNDLE_PUBLIC_BASE_URL: str = ""
     MAX_BUNDLE_SIZE_MB: int = 200
     MAX_DECOMPRESSED_MB: int = 500
+    MAX_BUCKET_OBJECT_MB: int = 200
     BUNDLE_STORAGE_BACKEND: str = "local"  # k8s: "s3" via s3-creds secret (default Garage)
 
     # S3-compatible bundle storage (BUNDLE_STORAGE_BACKEND="s3")

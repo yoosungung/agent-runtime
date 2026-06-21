@@ -16,10 +16,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.bootstrap import run_bootstrap
 from backend.bundle_storage import make_bundle_storage
+from backend.object_store_browser import make_object_store_browser
 from backend.pool_status import PoolRegistryMonitor
 from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
 from backend.routers import auth as auth_router_module
+from backend.routers import bucket as bucket_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
 from backend.routers import custom_images as custom_images_router_module
@@ -84,7 +86,11 @@ class RateLimitMiddleware:
         self._upload_limiter = RateLimiter(max_calls=5, window_sec=60.0)
 
     def _is_upload_path(self, path: str) -> bool:
-        return path == "/api/source-meta/bundle" or path.endswith("/signature")
+        return (
+            path == "/api/source-meta/bundle"
+            or path == "/api/bucket/upload"
+            or path.endswith("/signature")
+        )
 
     def _get_key(self, scope: Scope) -> str:
         # Prefer access_token cookie as the rate-limit key
@@ -156,6 +162,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     bundle_storage = make_bundle_storage(settings)
     await bundle_storage.ensure_ready()
     app.state.bundle_storage = bundle_storage
+    app.state.object_store_browser = make_object_store_browser(settings, bundle_storage)
 
     # Bootstrap seed admin
     async with session_scope(app.state.session_factory) as session:
@@ -236,6 +243,7 @@ app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
 app.include_router(user_meta_router_module.router)  # /api/user-meta/*
 app.include_router(infra_meta_router_module.router)  # /api/infra-meta/*
+app.include_router(bucket_router_module.router)  # /api/bucket/*
 app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password
 app.include_router(chat_router_module.router)  # /api/chat/*

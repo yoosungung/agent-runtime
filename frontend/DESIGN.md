@@ -75,7 +75,13 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /me/integrations                       → /me 리다이렉트
 /me/user-meta/:kind/:name              본인 user_meta 편집 (template 기반 폼)
 /chat                                  agent 선택 → 대화 (SSE 스트리밍)
+/bucket                                admin: bundle object store 브라우저 (S3 또는 local)
+/settings/infra                        admin: Platform Infra env
+/users                                 admin: 사용자 관리
+/audit                                 admin: 감사 로그
 ```
+
+**Bucket (`/bucket`, admin)** — `GET /api/bucket/info` 배지(S3/local). breadcrumb + 1-depth listing. toolbar: New Folder · Upload · Move · Delete. `in_use` 행(checkbox disabled, "In use" badge) — `source_meta` 참조 중 번들. delete/move 409 → "Source Meta가 참조 중인 번들입니다…" toast.
 
 **가드 매트릭스**:
 

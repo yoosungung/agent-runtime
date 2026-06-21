@@ -53,6 +53,9 @@ const AuditLogPage = lazy(() =>
 const InfraMetaPage = lazy(() =>
   import("./pages/InfraMetaPage").then((m) => ({ default: m.InfraMetaPage })),
 );
+const BucketPage = lazy(() =>
+  import("./pages/BucketPage").then((m) => ({ default: m.BucketPage })),
+);
 const GeneralAgentNewPage = lazy(() =>
   import("./pages/GeneralAgentNewPage").then((m) => ({
     default: m.GeneralAgentNewPage,
@@ -209,6 +212,7 @@ export function App() {
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings/infra" element={<InfraMetaPage />} />
+                    <Route path="/bucket" element={<BucketPage />} />
                   </Route>
                 </Route>
               </Route>

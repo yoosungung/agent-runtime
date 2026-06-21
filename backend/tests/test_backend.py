@@ -85,6 +85,9 @@ async def client(monkeypatch):
     bundle_storage = LocalBundleStorage(_settings.BUNDLE_STORAGE_DIR)
     await bundle_storage.ensure_ready()
     app.state.bundle_storage = bundle_storage
+    from backend.object_store_browser import make_object_store_browser
+
+    app.state.object_store_browser = make_object_store_browser(_settings, bundle_storage)
 
     # 5. Create a mock AuthClient whose verify() always returns admin principal
     from unittest.mock import AsyncMock
@@ -429,6 +432,9 @@ async def test_csrf_missing_header_returns_403(monkeypatch):
     bundle_storage = LocalBundleStorage(_settings.BUNDLE_STORAGE_DIR)
     await bundle_storage.ensure_ready()
     app.state.bundle_storage = bundle_storage
+    from backend.object_store_browser import make_object_store_browser
+
+    app.state.object_store_browser = make_object_store_browser(_settings, bundle_storage)
 
     try:
         transport = ASGITransport(app=app)

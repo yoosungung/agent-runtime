@@ -197,6 +197,26 @@ admin backend가 **bundle 파일의 물리적 저장**도 책임진다. deploy-a
            → pool pod: S3에서 직접 다운로드 (presigned URL, 별도 인증 불필요)
   ```
 - **S3 클라이언트 호환성 — checksum trailer opt-out**: aioboto3/boto3 1.36부터 `PutObject`/`UploadPart`에 `Content-Encoding: aws-chunked` + `x-amz-trailer: x-amz-checksum-crc32` 트레일러를 기본 삽입한다. NCP Object Storage(IBM Cleversafe 백엔드)는 이 트레일러를 인가되지 않은 페이로드로 보고 **403 AccessDenied**를 반환한다 — 자격증명·ACL이 모두 정상이고 List/Head/Delete는 통과해도 PutObject만 핀포인트로 실패하는 게 진단 시그니처. `S3BundleStorage._client_kwargs`에서 `botocore.config.Config(request_checksum_calculation="when_required", response_checksum_validation="when_required")`로 트레일러를 끈다. 같은 패턴이 일부 MinIO·GCS interop·Backblaze 환경에서도 보고되므로 default로 유지하고, 트레일러 체크섬을 명시적으로 원하는 백엔드가 등장하면 그때 재고.
+
+#### Bucket object browser (admin)
+
+`BUNDLE_STORAGE_BACKEND=s3`이면 `S3_BUCKET`+`S3_PREFIX`, `local`이면 `BUNDLE_STORAGE_DIR`를 admin SPA에서 폴더·파일 단위로 CRUD/MV한다. 라우터: `/api/bucket/*` (`require_admin` + CSRF). 구현: `object_store_browser.py` + `bundle_ref_guard.py`.
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/bucket/info` | backend 종류·root label |
+| GET | `/api/bucket/objects` | 1-depth listing (`prefix`, `cursor`) |
+| POST | `/api/bucket/folders` | 폴더 생성 |
+| POST | `/api/bucket/upload` | multipart 업로드 (`MAX_BUCKET_OBJECT_MB`) |
+| DELETE | `/api/bucket/objects` | batch delete (폴더 recursive) |
+| POST | `/api/bucket/move` | copy+delete(S3) / rename(local) |
+| GET | `/api/bucket/download-url` | presigned(S3) 또는 local download URL |
+| GET | `/api/bucket/download` | local 모드 inline download |
+
+- **범위**: S3는 `S3_PREFIX` 밖 key 거부. local은 `tmp/` 숨김·CRUD 금지.
+- **참조 보호**: `{sha256}.zip`/`.sig`가 `source_meta.checksum`으로 참조 중이면 delete/move **409**.
+- **감사**: `bucket.mkdir`, `bucket.upload`, `bucket.delete`, `bucket.move`.
+
 - **업로드 플로우 (zip 전용 `POST /api/source-meta/bundle`)**:
   1. 프런트엔드: `<input type=file>` → `FormData`로 POST (multipart). 파트는 `file`(zip), 선택적으로 `sig`(서명 blob), `meta`(JSON: `{kind,name,version,runtime_pool,entrypoint,config?}`).
   2. backend: Starlette streaming으로 tmp 파일에 기록 + sha256 누적. 같은 방식으로 sig 받음.
@@ -358,6 +378,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 | `BUNDLE_STORAGE_DIR` | `/var/lib/admin/bundles` | 로컬 저장 경로 (`local` 모드) |
 | `BUNDLE_PUBLIC_BASE_URL` | — | pool이 bundle을 fetch할 HTTP base URL (예: `http://backend.runtime.svc/bundles`). 로컬·S3 공통 |
 | `MAX_BUNDLE_SIZE_MB` | `200` | |
+| `MAX_BUCKET_OBJECT_MB` | `200` | Bucket UI arbitrary upload limit (`/api/bucket/upload`) |
 | `S3_BUCKET` | — | S3 버킷명 (`s3` 모드). k8s Garage 기본: `runtime-bundles` |
 | `S3_ENDPOINT_URL` | — | S3 호환 엔드포인트. k8s Garage 기본: `http://garage-s3.runtime.svc.cluster.local:3900`. 비워두면 AWS |
 | `S3_REGION` | `us-east-1` | S3 리전 |
