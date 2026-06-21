@@ -205,7 +205,17 @@ class PodState:
     active: int
     max: int
     checksums: set[str] = field(default_factory=set)
+    runtime_kind: str = ""
     last_seen: float = field(default_factory=time.monotonic)
+
+
+def _runtime_kind_from_event_channel(kind: str, channel: str | None) -> str:
+    if not channel:
+        return ""
+    prefix = f"rt:events:{kind}_"
+    if channel.startswith(prefix):
+        return channel[len(prefix) :]
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +294,7 @@ class RegistrySubscriber:
                 async for raw in pubsub.listen():
                     if raw["type"] != "pmessage":
                         continue
-                    await self._handle_event(raw["data"])
+                    await self._handle_event(raw["data"], channel=raw.get("channel"))
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -292,7 +302,7 @@ class RegistrySubscriber:
                 self._healthy = False
                 await asyncio.sleep(1)
 
-    async def _handle_event(self, data: str) -> None:
+    async def _handle_event(self, data: str, channel: str | None = None) -> None:
         try:
             msg = json.loads(data)
         except json.JSONDecodeError:
@@ -307,12 +317,16 @@ class RegistrySubscriber:
                 checksums: set[str] = set(msg.get("checksums", []))
                 prev = self._pods.get(pod_id)
                 old_checksums = prev.checksums if prev else set()
+                runtime_kind = _runtime_kind_from_event_channel(self._kind, channel) or (
+                    prev.runtime_kind if prev else ""
+                )
                 self._pods[pod_id] = PodState(
                     pod_id=pod_id,
                     addr=addr,
                     active=active,
                     max=max_c,
                     checksums=checksums,
+                    runtime_kind=runtime_kind,
                     last_seen=time.monotonic(),
                 )
                 # Update warm index
@@ -338,6 +352,7 @@ class RegistrySubscriber:
             pattern = f"rt:warm:{self._kind}_*"
             cursor = 0
             pod_checksums: dict[str, set[str]] = {}
+            pod_runtime_kind: dict[str, str] = {}
             while True:
                 cursor, keys = await self._client.scan(cursor, match=pattern, count=100)
                 for key in keys:
@@ -345,10 +360,12 @@ class RegistrySubscriber:
                     parts = key.split(":")
                     if len(parts) < 3:
                         continue
+                    runtime_kind = parts[2].removeprefix(f"{self._kind}_")
                     checksum = parts[-1]
                     members: set[str] = await self._client.smembers(key)  # type: ignore[misc]
                     for pod_id in members:
                         pod_checksums.setdefault(pod_id, set()).add(checksum)
+                        pod_runtime_kind[pod_id] = runtime_kind
                 if cursor == 0:
                     break
 
@@ -372,6 +389,7 @@ class RegistrySubscriber:
                             active=active,
                             max=max_c,
                             checksums=checksums,
+                            runtime_kind=pod_runtime_kind.get(pod_id, ""),
                             last_seen=time.monotonic(),
                         )
                         for cs in checksums:

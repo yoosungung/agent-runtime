@@ -365,6 +365,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 | `RUNTIME_NAMESPACE` | `runtime` | image 모드 pool을 배포할 K8s 네임스페이스 |
 | `CLUSTER_DOMAIN` | `cluster.local` | K8s 클러스터 DNS 도메인 |
 | `DEPLOY_API_URL` | `http://deploy-api.runtime.svc.cluster.local:8080` | image 모드 pod가 사용할 deploy-api URL (K8s Deployment env로 주입) |
+| `REDIS_URL` | — | 설정 시 lifespan에서 `RegistrySubscriber`(agent/mcp) 기동 — dashboard pool 섹션은 in-memory snapshot 조회(Pub/Sub). 요청마다 Redis SCAN 없음 |
 | `ALLOW_HARD_DELETE` | `false` | prod는 false, dev는 true |
 | `BACKEND_SERVE_SPA` | `true` | true면 `dist/`를 `/`에 mount (prod). dev(`uv run uvicorn ...`)는 `false` 권장 — Vite 5173을 씀 |
 | `LOG_LEVEL` | `INFO` | |

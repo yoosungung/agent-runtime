@@ -1,11 +1,16 @@
-"""Read warm-registry pool stats from Redis for the admin dashboard."""
+"""In-memory warm-registry pool stats for the admin dashboard.
+
+Subscribes to the same Pub/Sub events as ext-authz (RegistrySubscriber) and
+aggregates pod load by runtime_kind on read — no Redis SCAN on the request path.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
-import redis.asyncio as aioredis
+from runtime_common.registry import RegistrySubscriber
 
 logger = logging.getLogger(__name__)
 
@@ -26,76 +31,87 @@ class PoolSummary:
     mcp: list[PoolRuntimeStatus]
 
 
-async def fetch_pool_summary(redis_url: str) -> PoolSummary:
-    """Aggregate warm-registry pod load by runtime kind."""
-    if not redis_url:
-        return PoolSummary(
-            available=False,
-            error="REDIS_URL not configured",
-            agents=[],
-            mcp=[],
+def aggregate_subscriber_pools(subscriber: RegistrySubscriber) -> list[PoolRuntimeStatus]:
+    """Roll up in-memory pod states by runtime_kind."""
+    pods, _ = subscriber.snapshot()
+    totals: dict[str, dict[str, int]] = {}
+
+    for state in pods.values():
+        if state.max <= 0:
+            continue
+        runtime_kind = state.runtime_kind or "unknown"
+        bucket = totals.setdefault(
+            runtime_kind,
+            {"pod_count": 0, "active": 0, "max": 0},
         )
+        bucket["pod_count"] += 1
+        bucket["active"] += state.active
+        bucket["max"] += state.max
 
-    client = aioredis.from_url(redis_url, decode_responses=True)
-    try:
-        agents = await _collect_kind_pools(client, "agent")
-        mcp = await _collect_kind_pools(client, "mcp")
-        return PoolSummary(available=True, error=None, agents=agents, mcp=mcp)
-    except Exception as exc:
-        logger.warning("failed to fetch pool summary from redis: %s", exc)
-        return PoolSummary(
-            available=False,
-            error=str(exc),
-            agents=[],
-            mcp=[],
+    return [
+        PoolRuntimeStatus(
+            runtime_kind=runtime_kind,
+            pod_count=values["pod_count"],
+            active_requests=values["active"],
+            max_capacity=values["max"],
         )
-    finally:
-        await client.aclose()
+        for runtime_kind, values in sorted(totals.items())
+        if runtime_kind != "unknown" or values["pod_count"] > 0
+    ]
 
 
-async def _collect_kind_pools(
-    client: aioredis.Redis,
-    kind: str,
-) -> list[PoolRuntimeStatus]:
-    pod_ids_by_runtime: dict[str, set[str]] = {}
-    cursor = 0
-    while True:
-        cursor, keys = await client.scan(cursor, match=f"rt:warm:{kind}_*", count=100)
-        for key in keys:
-            parts = key.split(":")
-            if len(parts) < 3:
-                continue
-            runtime_kind = parts[2].removeprefix(f"{kind}_")
-            members: set[str] = await client.smembers(key)  # type: ignore[misc]
-            if members:
-                pod_ids_by_runtime.setdefault(runtime_kind, set()).update(members)
-        if cursor == 0:
-            break
+class PoolRegistryMonitor:
+    """Background warm-registry mirror for dashboard pool metrics."""
 
-    pools: list[PoolRuntimeStatus] = []
-    for runtime_kind in sorted(pod_ids_by_runtime):
-        pod_ids = pod_ids_by_runtime[runtime_kind]
-        pipe = client.pipeline()
-        for pod_id in pod_ids:
-            pipe.hgetall(f"rt:load:{pod_id}")
-        load_rows = await pipe.execute()
+    def __init__(self, redis_url: str, registry_ttl_sec: float = 3.0) -> None:
+        self._redis_url = redis_url
+        self._registry_ttl_sec = registry_ttl_sec
+        self._agent_sub: RegistrySubscriber | None = None
+        self._mcp_sub: RegistrySubscriber | None = None
+        self._started = False
 
-        active = 0
-        max_capacity = 0
-        live_pods = 0
-        for load in load_rows:
-            if not load:
-                continue
-            live_pods += 1
-            active += int(load.get("active", 0))
-            max_capacity += int(load.get("max", 0))
+    async def start(self) -> None:
+        if not self._redis_url:
+            return
+        self._agent_sub = RegistrySubscriber(
+            redis_url=self._redis_url,
+            kind="agent",
+            ttl_sec=self._registry_ttl_sec,
+        )
+        self._mcp_sub = RegistrySubscriber(
+            redis_url=self._redis_url,
+            kind="mcp",
+            ttl_sec=self._registry_ttl_sec,
+        )
+        await asyncio.gather(self._agent_sub.start(), self._mcp_sub.start())
+        self._started = True
+        logger.info("pool registry monitor started")
 
-        pools.append(
-            PoolRuntimeStatus(
-                runtime_kind=runtime_kind,
-                pod_count=live_pods,
-                active_requests=active,
-                max_capacity=max_capacity,
+    async def stop(self) -> None:
+        for sub in (self._agent_sub, self._mcp_sub):
+            if sub is not None:
+                await sub.stop()
+        self._started = False
+
+    def summary(self) -> PoolSummary:
+        if not self._redis_url:
+            return PoolSummary(
+                available=False,
+                error="REDIS_URL not configured",
+                agents=[],
+                mcp=[],
             )
+        if not self._started or self._agent_sub is None or self._mcp_sub is None:
+            return PoolSummary(
+                available=False,
+                error="pool registry not started",
+                agents=[],
+                mcp=[],
+            )
+
+        return PoolSummary(
+            available=True,
+            error=None,
+            agents=aggregate_subscriber_pools(self._agent_sub),
+            mcp=aggregate_subscriber_pools(self._mcp_sub),
         )
-    return pools

@@ -105,6 +105,10 @@ async def client(monkeypatch):
     )
     app.state.auth_client = mock_auth
 
+    from backend.pool_status import PoolRegistryMonitor
+
+    app.state.pool_monitor = PoolRegistryMonitor("")
+
     # 6. Build the ASGI test client
     transport = ASGITransport(app=app)
     async with AsyncClient(

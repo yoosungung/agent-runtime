@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # How long to wait for Deployment to become ready during POST
     K8S_DEPLOY_READY_TIMEOUT_SEC: int = 60
 
-    # Warm-registry (optional — pool monitoring on dashboard)
+    # Warm-registry Pub/Sub mirror for dashboard pool metrics (optional)
     REDIS_URL: str = ""
 
     # Feature flags

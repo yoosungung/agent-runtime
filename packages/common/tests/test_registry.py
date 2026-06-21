@@ -172,11 +172,12 @@ async def test_subscriber_handle_snapshot_event():
             "ts": time.time(),
         }
     )
-    await subscriber._handle_event(snapshot_msg)
+    await subscriber._handle_event(snapshot_msg, channel="rt:events:agent_compiled_graph")
 
     pods, warm = subscriber.snapshot()
     assert "pod-1" in pods
     assert pods["pod-1"].active == 2
+    assert pods["pod-1"].runtime_kind == "compiled_graph"
     assert "sha256:abc" in warm
     assert "pod-1" in warm["sha256:abc"]
 

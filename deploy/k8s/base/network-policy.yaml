@@ -1,7 +1,7 @@
 # NetworkPolicy: enforce the trust boundary rules from DESIGN.md.
 # - postgres: auth + deploy-api + backend + agent-pool (VFS) ingress allowed
 # - pgbouncer-rw: deploy-api + auth + backend + agent-pool (VFS) ingress
-# - redis:    gateways + pools + ext-authz + backend (dashboard pool metrics) ingress
+# - redis:    gateways + pools + ext-authz + backend (warm-registry Pub/Sub) ingress
 # - deploy-api: gateways + pools + ext-authz + admin ingress
 # - auth: agent-gateway + ext-authz + admin ingress
 # - pool egress: deploy-api, redis, postgres/pgbouncer (VFS), external

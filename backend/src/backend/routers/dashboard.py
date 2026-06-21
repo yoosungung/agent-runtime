@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.deps import check_csrf, get_db, get_principal, get_settings
-from backend.pool_status import PoolRuntimeStatus, fetch_pool_summary
-from backend.settings import Settings
+from backend.deps import check_csrf, get_db, get_principal
+from backend.pool_status import PoolRegistryMonitor, PoolRuntimeStatus
 from runtime_common.db.models import SourceMetaRow
 
 router = APIRouter(
@@ -146,12 +145,13 @@ def _pool_response(pool: PoolRuntimeStatus) -> PoolRuntimeStatusResponse:
 
 @router.get("/summary", response_model=DashboardSummaryResponse)
 async def dashboard_summary(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
 ) -> DashboardSummaryResponse:
     resources = await _resource_summary(db)
     recent_issues = await _recent_issues(db)
-    pools = await fetch_pool_summary(settings.REDIS_URL)
+    monitor: PoolRegistryMonitor = request.app.state.pool_monitor
+    pools = monitor.summary()
 
     return DashboardSummaryResponse(
         resources=resources,

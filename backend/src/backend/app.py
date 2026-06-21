@@ -16,6 +16,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.bootstrap import run_bootstrap
 from backend.bundle_storage import make_bundle_storage
+from backend.pool_status import PoolRegistryMonitor
 from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
 from backend.routers import auth as auth_router_module
@@ -173,7 +174,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Background reconciler for image-mode state machine
     reconciler_task = asyncio.create_task(run_reconciler(app))
 
+    pool_monitor = PoolRegistryMonitor(settings.REDIS_URL)
+    await pool_monitor.start()
+    app.state.pool_monitor = pool_monitor
+
     yield
+
+    await pool_monitor.stop()
 
     reconciler_task.cancel()
     try:
