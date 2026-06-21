@@ -166,7 +166,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
                   : "-",
               ],
               ["Created", formatDate(item.created_at)],
-              ["Updated", formatDate(item.updated_at)],
+              ["Updated", formatDate(item.updated_at ?? item.created_at)],
             ].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-gray-500">{label}</p>
