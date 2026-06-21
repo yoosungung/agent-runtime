@@ -27,7 +27,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **LangGraph 체크포인터는 Redis**. 대화 상태가 pod-local이 아니므로 session affinity 불필요.
 - **데이터플레인은 Envoy(C++)**. ext-authz는 스케줄링·인가 결정만. 바디 릴레이·SSE 패스스루는 Envoy.
 - **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `/invoke-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
-- **scope 경계**: LLM/RAG/번들 저장소는 외부. 관리 콘솔 `frontend/`·`backend/`는 예외.
+- **scope 경계**: LLM/RAG는 scope 밖. **번들 object store 기본값은 in-cluster Garage(S3 호환)** — 배포 시 env/secret으로 외부 S3(NCP·AWS 등)로 대체 가능. 관리 콘솔 `frontend/`·`backend/`는 예외.
 
 ### 이것만은 하지 말 것
 
@@ -63,11 +63,11 @@ Image 모드(`custom`) pool은 admin이 빌드한 OCI 이미지가 직접 운영
 
 ### deploy/
 
-Kustomize base + overlays. 네임스페이스 `runtime`. Postgres는 auth·deploy-api만 접근. [상세](deploy/DESIGN.md).
+Kustomize base + overlays. 네임스페이스 `runtime` + **내장 Garage** (`garage`). Postgres는 auth·deploy-api만 접근. [상세](deploy/DESIGN.md).
 
 ### 외부 의존 (scope 밖)
 
-LLM serving, RAG 스토리지, OTEL collector, bundle 저장소(S3/OCI), 사용자 Chat UI. 이 저장소는 엔드포인트 주소만 env로 받는다.
+LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 object store**는 k8s 배포 시 **Garage(내장, S3 API)** 가 기본 — `BUNDLE_STORAGE_BACKEND`·`S3_*` env로 외부 S3로 교체 가능.
 
 ---
 

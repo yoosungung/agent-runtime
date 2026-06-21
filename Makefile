@@ -13,7 +13,7 @@ KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts
         ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         ext-authz-image auth-image deploy-api-image \
         agent-base-image mcp-base-image backend-image \
-        k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
+        k8s-apply-garage k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
         k8s-rollout-restart k8s-redeploy-dev \
         db-migrate db-migrate-all \
         diagram diagram-png
@@ -124,7 +124,7 @@ git-secret: ## create/update GitHub token secret for Kaniko  (GIT_TOKEN=<token> 
 
 ncr-secret: registry-secret ## deprecated alias — use registry-secret (GHCR)
 
-s3-secret: ## create/update S3 credentials secret from .s3-config.json  (S3_BUCKET=<bucket> make s3-secret)
+s3-secret: ## override embedded Garage with external S3 (.s3-config.json + S3_BUCKET=)
 	kubectl create secret generic s3-creds \
 		--namespace $(NAMESPACE) \
 		--from-literal=BUNDLE_STORAGE_BACKEND=s3 \
@@ -138,13 +138,16 @@ s3-secret: ## create/update S3 credentials secret from .s3-config.json  (S3_BUCK
 
 # --- k8s ------------------------------------------------------------------
 
-k8s-apply-dev: ensure-jwt-secret ensure-registry-secret ## apply dev overlay (bootstrap jwt-keys + registry-creds if absent)
+k8s-apply-garage: ## apply embedded Garage object store (namespace: garage)
+	kubectl apply -k deploy/k8s/garage
+
+k8s-apply-dev: ensure-jwt-secret ensure-registry-secret k8s-apply-garage ## apply dev overlay (+ garage)
 	kubectl apply -k deploy/k8s/overlays/dev
 
-k8s-apply-stage: ensure-jwt-secret ensure-registry-secret
+k8s-apply-stage: ensure-jwt-secret ensure-registry-secret k8s-apply-garage
 	kubectl apply -k deploy/k8s/overlays/stage
 
-k8s-apply-prod: ensure-jwt-secret ensure-registry-secret
+k8s-apply-prod: ensure-jwt-secret ensure-registry-secret k8s-apply-garage
 	kubectl apply -k deploy/k8s/overlays/prod
 
 k8s-delete-dev:
@@ -161,9 +164,9 @@ db-migrate: ## apply 0001_init.sql to dev postgres
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0001_init.sql
 
-db-migrate-all: db-migrate ## apply 0001 + upgrade migrations for existing DBs
+db-migrate-all: db-migrate ## apply 0001 + 0002_vfs for existing DBs
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
-		psql -U runtime -d runtime < backend/migrations/0002_vfs_metadata.sql
+		psql -U runtime -d runtime < backend/migrations/0002_vfs.sql
 
 # --- docs -----------------------------------------------------------------
 

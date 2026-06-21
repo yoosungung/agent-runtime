@@ -102,13 +102,18 @@ HTTP_CODE=$(curl -sS \
 ok "GET /bundles/${SHA_HEX}.zip → 307"
 
 # ---------------------------------------------------------------------------
-# Assertion 3: redirect URL points to NCP Object Storage
+# Assertion 3: redirect URL points to the configured S3 endpoint
 # ---------------------------------------------------------------------------
-log "--- check 3: presigned URL is NCP endpoint"
-if [[ "$REDIRECT_URL" != *ncloudstorage.com* ]]; then
-  fail "redirect URL does not point to NCP: $REDIRECT_URL"
-fi
-ok "presigned URL domain: $(echo "$REDIRECT_URL" | grep -oE '[^/]+\.ncloudstorage\.com')"
+log "--- check 3: presigned URL host matches S3 backend"
+REDIRECT_HOST=$(echo "$REDIRECT_URL" | sed -E 's#^https?://([^/?]+).*#\1#')
+case "$REDIRECT_HOST" in
+  *ncloudstorage.com*|*garage*|*garage.local*)
+    ok "presigned URL host: $REDIRECT_HOST"
+    ;;
+  *)
+    fail "unexpected presigned URL host (not NCP/Garage): $REDIRECT_URL"
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Assertion 4: presigned URL is downloadable and sha256 matches

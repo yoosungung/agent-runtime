@@ -435,16 +435,33 @@ class S3BundleStorage:
             )
         return RedirectResponse(url=url, status_code=307)
 
-    async def ensure_ready(self) -> None:
-        """Verify S3 bucket is accessible at startup."""
+    async def ensure_ready(
+        self,
+        *,
+        max_attempts: int = 30,
+        retry_delay_sec: float = 2.0,
+    ) -> None:
+        """Verify S3 bucket is accessible at startup (retries for in-cluster Garage)."""
+        import asyncio
+
         import aioboto3  # noqa: PLC0415
 
-        try:
-            session = aioboto3.Session()
-            async with session.client("s3", **self._client_kwargs()) as s3:
-                await s3.head_bucket(Bucket=self._bucket)
-        except Exception as exc:
-            raise RuntimeError(f"S3 bucket '{self._bucket}' not accessible: {exc}") from exc
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                session = aioboto3.Session()
+                async with session.client("s3", **self._client_kwargs()) as s3:
+                    await s3.head_bucket(Bucket=self._bucket)
+                return
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= max_attempts:
+                    break
+                await asyncio.sleep(retry_delay_sec)
+
+        raise RuntimeError(
+            f"S3 bucket '{self._bucket}' not accessible after {max_attempts} attempts: {last_exc}"
+        ) from last_exc
 
 
 # ---------------------------------------------------------------------------

@@ -183,8 +183,9 @@ RBAC: `backend-k8s-rbac.yaml`에 `configmaps`/`secrets` create/update/get/patch/
 
 admin backend가 **bundle 파일의 물리적 저장**도 책임진다. deploy-api는 `bundle_uri`만 읽고 파일을 소유하지 않는다.
 
-- **MVP**: 로컬 디스크(`BUNDLE_STORAGE_DIR=/var/lib/admin/bundles`). k8s에서는 PVC(ReadOnlyMany로 pool에도 마운트) 또는 admin backend가 read-only HTTP `GET /bundles/{sha256}.zip` 제공.
-- **S3/MinIO**: `BUNDLE_STORAGE_BACKEND=s3` 설정 시 admin backend가 업로드를 받아 S3에 stream 저장. `bundle_uri`는 **항상 HTTP URL** (`{BUNDLE_PUBLIC_BASE_URL}/{sha256}.zip`) 형태로 저장 — pool pod의 `BundleLoader`가 `http/https` scheme만 지원하므로 `s3://` URI를 직접 저장하지 않는다. pool pod이 해당 URL을 GET하면 backend가 presigned URL을 생성해 **307 redirect** → pool pod이 S3에서 직접 다운로드. S3 자격증명은 **admin backend 전용**, deploy-api·agent-base·mcp-base에는 불필요.
+- **k8s 기본 (Garage)**: `deploy/k8s/garage/`가 in-cluster Garage(S3 API)를 배포한다. backend는 `BUNDLE_STORAGE_BACKEND=s3`, `S3_ENDPOINT_URL=http://garage-s3.garage.svc.cluster.local:3900` (`s3-creds` secret). **외부 S3**는 동일 env 키로 endpoint·자격증명만 바꾸면 된다 (`make s3-secret`).
+- **로컬 dev (wire-dev / uvicorn)**: `BUNDLE_STORAGE_BACKEND=local`, `BUNDLE_STORAGE_DIR` — k8s Garage 불필요.
+- **S3 호환 (Garage·NCP·MinIO·AWS 등)**: `BUNDLE_STORAGE_BACKEND=s3` 설정 시 admin backend가 업로드를 받아 S3에 stream 저장. `bundle_uri`는 **항상 HTTP URL** (`{BUNDLE_PUBLIC_BASE_URL}/{sha256}.zip`) 형태로 저장 — pool pod의 `BundleLoader`가 `http/https` scheme만 지원하므로 `s3://` URI를 직접 저장하지 않는다. pool pod이 해당 URL을 GET하면 backend가 presigned URL을 생성해 **307 redirect** → pool pod이 S3에서 직접 다운로드. S3 자격증명은 **admin backend 전용**, deploy-api·agent-base·mcp-base에는 불필요.
 - **번들 다운로드 흐름 (S3 모드)**:
   ```
   pool pod → GET {BUNDLE_PUBLIC_BASE_URL}/{sha256}.zip
@@ -349,12 +350,12 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 | `CORS_ORIGINS` | `http://localhost:5173` | 프런트엔드 origin |
 | `SESSION_COOKIE_SECURE` | `true` | dev에서만 `false` |
 | `CSRF_COOKIE_NAME` | `csrf_token` | |
-| `BUNDLE_STORAGE_BACKEND` | `local` | `local` \| `s3` |
+| `BUNDLE_STORAGE_BACKEND` | `local` | `local` \| `s3`. **k8s 배포 기본은 `s3`** (`s3-creds` secret). 로컬 uvicorn/wire-dev는 `local` |
 | `BUNDLE_STORAGE_DIR` | `/var/lib/admin/bundles` | 로컬 저장 경로 (`local` 모드) |
-| `BUNDLE_PUBLIC_BASE_URL` | — | pool이 bundle을 fetch할 HTTP base URL (예: `http://backend.runtime.svc/bundles`). 로컬·S3 공통 사용 — `bundle_uri`에 저장되는 값의 prefix |
+| `BUNDLE_PUBLIC_BASE_URL` | — | pool이 bundle을 fetch할 HTTP base URL (예: `http://backend.runtime.svc/bundles`). 로컬·S3 공통 |
 | `MAX_BUNDLE_SIZE_MB` | `200` | |
-| `S3_BUCKET` | — | S3 버킷명 (`s3` 모드) |
-| `S3_ENDPOINT_URL` | — | MinIO 등 호환 엔드포인트 (예: `https://kr.object.ncloudstorage.com`). 비워두면 AWS 기본값 |
+| `S3_BUCKET` | — | S3 버킷명 (`s3` 모드). k8s Garage 기본: `runtime-bundles` |
+| `S3_ENDPOINT_URL` | — | S3 호환 엔드포인트. k8s Garage 기본: `http://garage-s3.garage.svc.cluster.local:3900`. 비워두면 AWS |
 | `S3_REGION` | `us-east-1` | S3 리전 |
 | `S3_PREFIX` | `bundles/` | 버킷 내 object key prefix |
 | `S3_ACCESS_KEY_ID` | — | 명시 자격증명. 비워두면 IAM Role / 인스턴스 프로파일 사용 |

@@ -43,10 +43,10 @@ spec:
         - podSelector:
             matchLabels:
               app: pgbouncer-ro
-        # migration job runs under the deploy-api service account
+        # migration Job pods (name suffix changes per migration-version)
         - podSelector:
             matchLabels:
-              job-name: db-migrate
+              app: db-migrate
       ports:
         - port: 5432
 ---

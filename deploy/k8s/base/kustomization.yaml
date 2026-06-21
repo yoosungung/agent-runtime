@@ -25,3 +25,9 @@ resources:
   - hpa.yaml
   - keda.yaml
   - ingress.yaml
+secretGenerator:
+  - name: s3-creds
+    envs:
+      - s3-creds.env
+    options:
+      disableNameSuffixHash: true

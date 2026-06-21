@@ -36,11 +36,12 @@ class Settings(BaseSettings):
     BUNDLE_PUBLIC_BASE_URL: str = ""
     MAX_BUNDLE_SIZE_MB: int = 200
     MAX_DECOMPRESSED_MB: int = 500
-    BUNDLE_STORAGE_BACKEND: str = "local"  # "local" | "s3"
+    BUNDLE_STORAGE_BACKEND: str = "local"  # k8s: "s3" via s3-creds secret (default Garage)
 
-    # S3/MinIO bundle storage (used when BUNDLE_STORAGE_BACKEND="s3")
+    # S3-compatible bundle storage (BUNDLE_STORAGE_BACKEND="s3")
+    # k8s default: in-cluster Garage — see deploy/k8s/garage/
     S3_BUCKET: str = ""
-    S3_ENDPOINT_URL: str = ""  # empty = AWS; set for MinIO e.g. http://minio:9000
+    S3_ENDPOINT_URL: str = ""  # empty = AWS; k8s Garage: http://garage-s3.garage.svc.cluster.local:3900
     S3_REGION: str = "us-east-1"
     S3_PREFIX: str = "bundles/"  # key prefix in bucket
     S3_ACCESS_KEY_ID: str = ""  # empty = use IAM/env credentials

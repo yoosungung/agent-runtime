@@ -1,0 +1,49 @@
+# Garage S3 API: only runtime backend and pool pods may connect.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: garage-s3-ingress
+  namespace: garage
+spec:
+  podSelector:
+    matchLabels:
+      app: garage
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: runtime
+          podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 3900
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: runtime
+          podSelector:
+            matchLabels:
+              runtime/role: pool
+      ports:
+        - port: 3900
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: runtime
+          podSelector:
+            matchLabels:
+              app: agent-pool
+      ports:
+        - port: 3900
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: runtime
+          podSelector:
+            matchLabels:
+              app: mcp-pool
+      ports:
+        - port: 3900

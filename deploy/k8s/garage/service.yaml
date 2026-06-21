@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-headless
+  namespace: garage
+spec:
+  clusterIP: None
+  selector:
+    app: garage
+  ports:
+    - name: rpc
+      port: 3901
+      targetPort: 3901
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-s3
+  namespace: garage
+spec:
+  selector:
+    app: garage
+  ports:
+    - name: s3
+      port: 3900
+      targetPort: 3900

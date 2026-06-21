@@ -1063,6 +1063,54 @@ def test_s3_bundle_uri_fallback_without_base_url():
     assert not storage._bundle_uri(sha).startswith("s3://")
 
 
+async def test_s3_ensure_ready_retries_until_bucket_available(monkeypatch):
+    """Garage may start slightly after backend; S3 startup should retry head_bucket."""
+    import asyncio
+
+    from backend.bundle_storage import S3BundleStorage
+
+    storage = S3BundleStorage(
+        bucket="runtime-bundles",
+        prefix="bundles/",
+        endpoint_url="http://garage-s3.garage.svc.cluster.local:3900",
+        region="garage",
+        access_key="GKdev",
+        secret_key="secret",
+        presign_expiry=3600,
+        base_url="http://backend.runtime.svc.cluster.local:8000/bundles",
+    )
+
+    attempts = {"count": 0}
+
+    class _FakeS3:
+        async def head_bucket(self, *, Bucket: str) -> None:
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise RuntimeError("connection refused")
+            assert Bucket == "runtime-bundles"
+
+    class _FakeClient:
+        async def __aenter__(self) -> _FakeS3:
+            return _FakeS3()
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    class _FakeSession:
+        def client(self, _service: str, **_kwargs: object) -> _FakeClient:
+            return _FakeClient()
+
+    async def _noop_sleep(_sec: float) -> None:
+        return None
+
+    monkeypatch.setattr("aioboto3.Session", lambda: _FakeSession())
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+
+    await storage.ensure_ready(max_attempts=5, retry_delay_sec=0)
+
+    assert attempts["count"] == 3
+
+
 # ---------------------------------------------------------------------------
 # Signature upload
 # ---------------------------------------------------------------------------

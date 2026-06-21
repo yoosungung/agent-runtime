@@ -14,8 +14,6 @@ spec:
         app: backend
     spec:
       serviceAccountName: backend
-      securityContext:
-        fsGroup: 1000
       containers:
         - name: backend
           image: agents-runtime/backend:latest
@@ -35,7 +33,6 @@ spec:
                 name: postgres-credentials
             - secretRef:
                 name: s3-creds
-                optional: true
           env:
             - name: SERVICE_NAME
               value: backend
@@ -43,8 +40,6 @@ spec:
               value: http://auth:8080
             - name: BACKEND_SERVE_SPA
               value: "true"
-            - name: BUNDLE_STORAGE_DIR
-              value: /data/bundles
             # Pool pods fetch bundles via the loader's http scheme handler;
             # without a public base URL, stored bundle_uri lacks a scheme
             # and the loader rejects it ("unsupported bundle scheme: ").
@@ -53,8 +48,6 @@ spec:
             - name: INITIAL_ADMIN_PASSWORD_FILE
               value: /run/secrets/initial-admin-password
           volumeMounts:
-            - name: bundle-storage
-              mountPath: /data/bundles
             - name: initial-admin-password
               mountPath: /run/secrets/initial-admin-password
               subPath: password
@@ -68,9 +61,6 @@ spec:
               path: /healthz
               port: 8000
       volumes:
-        - name: bundle-storage
-          persistentVolumeClaim:
-            claimName: backend-bundle-pvc
         - name: initial-admin-password
           secret:
             secretName: initial-admin-password
@@ -87,15 +77,3 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: backend-bundle-pvc
-  namespace: runtime
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi

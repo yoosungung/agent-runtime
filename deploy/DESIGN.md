@@ -1,18 +1,24 @@
 # deploy
 
-런타임의 Kubernetes 배포 매니페스트(`k8s/`) + 배포 가능한 사용자 번들 샘플(`examples/`). Kustomize 기반. 네임스페이스 `runtime`.
+런타임의 Kubernetes 배포 매니페스트(`k8s/`) + 배포 가능한 사용자 번들 샘플(`examples/`). Kustomize 기반. 네임스페이스 `runtime` + **Garage object store** (`garage`).
 
 ## K8s 디렉터리 (`k8s/`)
 
 ```
 deploy/k8s/
+  garage/               # 내장 S3 호환 번들 저장소 (기본)
+    namespace.yaml
+    statefulset.yaml    # Garage v2.3 --single-node --default-bucket
+    service.yaml        # garage-s3 :3900
+    garage-secrets.env  # dev 기본 access key / bucket (prod overlay에서 교체)
+    # backend s3-creds: deploy/k8s/base/s3-creds.env (garage-secrets.env와 key 동기화)
   base/                 # 공통 정의 (namespace: runtime)
     namespace.yaml
     postgres.yaml
     redis.yaml
     auth.yaml
     deploy-api.yaml
-    backend.yaml
+    backend.yaml        # BUNDLE_STORAGE_BACKEND=s3 (s3-creds secret)
     ext-authz.yaml
     envoy.yaml
     agent-pool-compiled-graph.yaml
@@ -34,7 +40,30 @@ make k8s-apply-dev
 make k8s-rollout-restart   # Release 후 :latest pull
 ```
 
-`k8s-apply-*`는 `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
+`k8s-apply-*`는 **`k8s-apply-garage`(내장 Garage) → overlay** 순으로 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
+
+### Garage (기본 번들 object store)
+
+| 항목 | 값 |
+|------|-----|
+| NS | `garage` |
+| S3 API | `http://garage-s3.garage.svc.cluster.local:3900` |
+| Bucket | `runtime-bundles` |
+| Bootstrap | Garage v2.3 `--single-node --default-bucket` (layout/ bucket/key 자동) |
+| backend secret | `runtime/s3-creds` (`BUNDLE_STORAGE_BACKEND=s3` + endpoint + key) |
+| dev credentials | `deploy/k8s/garage/*.env` — **k8s-test 전용**, prod는 overlay secret 교체 |
+
+**외부 S3로 교체** (NCP·AWS 등):
+
+```bash
+# .s3-config.json 작성 후
+S3_BUCKET=my-bucket make s3-secret
+kubectl -n runtime rollout restart deployment/backend
+```
+
+Garage StatefulSet은 그대로 두거나 `kubectl -n garage scale sts/garage --replicas=0`으로 중지.
+
+**prod HA (RF=3)**: overlay에서 `garage` StatefulSet `replicas`·`replication_factor`·zone layout을 수동/Job으로 확장 — base는 dev 단일 노드(RF=1).
 
 ### dev overlay 차이
 
@@ -177,7 +206,8 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 | 수신자 | 허용 송신자 |
 |---|---|
 | postgres | auth, deploy-api, backend, pgbouncer, migration-job |
-| redis | `runtime/role: pool` 라벨 pod (정적+동적 통합), ext-authz |
+| redis | `runtime/role: pool` 라벨 pod (정적+동적 통합), ext-authz, backend |
+| garage S3 (:3900) | backend, `runtime/role: pool`, agent-pool, mcp-pool (presigned redirect 후 직접 fetch) |
 | deploy-api | `runtime/role: pool` 라벨 pod, ext-authz + ingress-nginx |
 | auth | ext-authz, backend |
 | ext-authz | envoy만 |
