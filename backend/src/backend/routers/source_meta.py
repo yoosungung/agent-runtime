@@ -290,6 +290,20 @@ def _validate_general_visibility(visibility: str, owner_tenant: str | None) -> N
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+async def _resolve_creator_tenant(
+    db: AsyncSession,
+    principal: Principal,
+    *,
+    fallback: str | None = None,
+) -> str | None:
+    """JWT tenant claim can be stale; prefer DB for visibility checks."""
+    if principal.tenant:
+        return principal.tenant
+    result = await db.execute(select(UserRow.tenant).where(UserRow.id == principal.user_id))
+    tenant = result.scalar_one_or_none()
+    return tenant if tenant else fallback
+
+
 class SourceMetaResponse(BaseModel):
     id: int
     kind: str
@@ -551,7 +565,8 @@ async def create_general_agent(
                 detail=f"No access to MCP server '{server}'",
             )
 
-    _validate_general_visibility(body.visibility, principal.tenant)
+    owner_tenant = await _resolve_creator_tenant(db, principal)
+    _validate_general_visibility(body.visibility, owner_tenant)
 
     access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
     if not access_token:
@@ -583,7 +598,7 @@ async def create_general_agent(
         slug=None,
         status="active",
         created_by_user_id=principal.user_id,
-        owner_tenant=principal.tenant,
+        owner_tenant=owner_tenant,
         visibility=body.visibility,
     )
     db.add(row)
@@ -649,8 +664,11 @@ async def patch_general_agent(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     if body.visibility is not None:
-        _validate_general_visibility(body.visibility, row.owner_tenant)
+        owner_tenant = await _resolve_creator_tenant(db, principal, fallback=row.owner_tenant)
+        _validate_general_visibility(body.visibility, owner_tenant)
         row.visibility = body.visibility
+        if body.visibility == GeneralVisibility.TENANT:
+            row.owner_tenant = owner_tenant
 
     if body.mcp_servers is not None:
         if not body.mcp_servers:

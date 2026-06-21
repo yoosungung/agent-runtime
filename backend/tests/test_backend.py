@@ -1995,3 +1995,47 @@ async def test_patch_general_visibility_by_creator(client: AsyncClient):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["visibility"] == "public"
+
+
+@pytest.mark.asyncio
+async def test_patch_general_tenant_visibility_uses_db_tenant(client: AsyncClient):
+    """JWT may omit tenant while users.tenant is set (stale token)."""
+    from backend.app import app
+
+    owner = await _insert_user(app.state, "tenant-owner", tenant="acme")
+    row = await _insert_source(
+        app.state,
+        {
+            "name": "stale-token-bot",
+            "deploy_mode": "general",
+            "runtime_pool": "agent:compiled_graph",
+            "entrypoint": None,
+            "bundle_uri": None,
+            "checksum": None,
+            "config": _general_agent_config(),
+            "created_by_user_id": owner.id,
+            "owner_tenant": None,
+            "visibility": "private",
+        },
+    )
+
+    await _set_test_principal(
+        {
+            **_ADMIN_PRINCIPAL,
+            "user_id": owner.id,
+            "sub": owner.username,
+            "tenant": None,
+            "role": "user",
+            "access": [{"kind": "mcp", "name": "s"}],
+        },
+    )
+
+    resp = await client.patch(
+        f"/api/source-meta/general/{row.id}",
+        headers=_csrf_headers(),
+        json={"visibility": "tenant"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["visibility"] == "tenant"
+    assert data["owner_tenant"] == "acme"
