@@ -289,9 +289,15 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 - `PATCH /api/users/{id}` 허용: `{tenant?, disabled?, is_admin?}`. 거절: `password`, `password_hash`, `username`, `id`, `created_at`, `updated_at` (+ 알 수 없는 키). 비밀번호는 전용 엔드포인트(`POST /api/users/{id}/password` 또는 `POST /api/me/password`)로만.
 - `PUT /api/user-meta` 허용: `{source_meta_id, principal_id, config?, secrets_ref?}`. 거절: `id`, `updated_at`.
 
-### Chat invoke (Envoy 스트리밍 프록시)
+### Chat invoke
 
-`POST /api/chat/invoke` — 프런트엔드 `/chat`이 이 한 경로로 agent를 호출. Envoy(`ENVOY_URL`) → ext-authz(auth+routing) → agent-pool로 연결되고, pool 응답을 단순 패스스루하지 않고 **클라이언트가 그대로 렌더할 수 있는 단일 SSE 포맷으로 정규화**한다. agent-base의 emit 포맷이 runtime_kind별로 다르고(LangGraph `astream_events` v2 / ADK Event / CUSTOM) 그걸 프런트가 알 필요 없게 BFF에서 추상화하는 게 목적.
+**Chat UI 경로 (기본)**: Ingress `/v1/agents/invoke` → Envoy. 프런트는 `GET /api/auth/access-token`으로 httpOnly JWT를 Bearer로 받은 뒤 직접 POST. SSE 정규화는 [frontend/DESIGN.md](../frontend/DESIGN.md) `lib/chatStream.ts`.
+
+**`GET /api/auth/access-token`**: 세션 쿠키의 access JWT(또는 refresh 직후 `request.state.new_access_token`)를 JSON `{access_token}`으로 반환. refresh 발생 시 Set-Cookie로 쿠키 갱신. Chat UI 전용 — 일반 admin API는 cookie+CSRF 유지.
+
+#### 레거시: `POST /api/chat/invoke` (BFF 프록시)
+
+서버·스크립트용으로 유지. Envoy(`ENVOY_URL`) → ext-authz → agent-pool 연결 후 **단일 SSE 포맷으로 정규화**해 반환. Chat SPA는 더 이상 기본 경로로 쓰지 않는다.
 
 **Request body (`ChatInvokeRequest`)**:
 - `agent: str` (필수), `version: str | None`, `input: dict` (예: `{"message": "..."}`), `session_id: str | None`, `stream: bool = True`.

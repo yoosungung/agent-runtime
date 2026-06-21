@@ -41,6 +41,26 @@ class MeResponse(BaseModel):
     must_change_password: bool
 
 
+class AccessTokenResponse(BaseModel):
+    access_token: str
+
+
+def _apply_refreshed_tokens(
+    request: Request, response: Response, settings: Settings
+) -> None:
+    new_access = getattr(request.state, "new_access_token", None)
+    if not new_access:
+        return
+    new_refresh = getattr(
+        request.state, "new_refresh_token", None
+    ) or request.cookies.get(settings.REFRESH_TOKEN_COOKIE, "")
+    _set_auth_cookies(
+        response,
+        settings,
+        {"access_token": new_access, "refresh_token": new_refresh},
+    )
+
+
 def _set_auth_cookies(response: Response, settings: Settings, tokens: dict) -> None:
     access_token = tokens.get("access_token", "")
     refresh_token = tokens.get("refresh_token", "")
@@ -176,3 +196,24 @@ async def me(
         role=UserRole(row.role),
         must_change_password=bool(row.must_change_password),
     )
+
+
+@me_router.get("/auth/access-token", response_model=AccessTokenResponse)
+async def access_token(
+    request: Request,
+    response: Response,
+    settings: Settings = Depends(get_settings),
+) -> AccessTokenResponse:
+    """Return the session access JWT for Bearer calls to `/v1/agents/*`.
+
+    Chat UI reads httpOnly cookies only via this BFF bridge, then calls Envoy
+    on the public Ingress path directly.
+    """
+    await get_principal(request, settings)
+    token = getattr(request.state, "new_access_token", None) or request.cookies.get(
+        settings.ACCESS_TOKEN_COOKIE
+    )
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    _apply_refreshed_tokens(request, response, settings)
+    return AccessTokenResponse(access_token=token)

@@ -1,5 +1,7 @@
 # Stage 1: Build frontend SPA
 FROM node:20-alpine AS frontend-builder
+ARG VITE_AGENTS_INVOKE_URL=/v1/agents/invoke
+ENV VITE_AGENTS_INVOKE_URL=$VITE_AGENTS_INVOKE_URL
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci

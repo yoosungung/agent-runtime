@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSourceMetaList } from "../hooks/useSourceMeta";
-import { apiFetch } from "../lib/api";
+import { invokeAgentStream } from "../lib/agentsInvoke";
 
 interface Message {
   role: "user" | "assistant";
@@ -59,84 +59,52 @@ export function ChatPage() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    try {
-      const resp = await apiFetch("/api/chat/invoke", {
-        method: "POST",
-        body: JSON.stringify({
-          agent: selectedAgent,
-          input: { message: text },
-          session_id: sessionId,
-          stream: true,
-        }),
-        signal: ac.signal,
-      });
+    let accumulated = "";
 
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body?.detail ?? `HTTP ${resp.status}`);
-      }
-
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let accumulated = "";
-      let buf = "";
-
-      const flushAccumulated = () => {
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = {
-              ...last,
-              content: accumulated,
-              streaming: true,
-            };
-          }
-          return next;
-        });
-      };
-
-      streamLoop: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-
-        let sep: number;
-        while ((sep = buf.indexOf("\n\n")) !== -1) {
-          const block = buf.slice(0, sep);
-          buf = buf.slice(sep + 2);
-
-          for (const line of block.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-            const data = line.slice(5).trimStart();
-            if (data === "[DONE]") break streamLoop;
-            let event: { text?: string; error?: string };
-            try {
-              event = JSON.parse(data);
-            } catch {
-              continue;
-            }
-            if (typeof event.error === "string") {
-              throw new Error(event.error);
-            }
-            if (typeof event.text === "string") {
-              accumulated += event.text;
-              flushAccumulated();
-            }
-          }
-        }
-      }
-
+    const flushAccumulated = () => {
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last?.role === "assistant") {
-          next[next.length - 1] = { ...last, streaming: false };
+          next[next.length - 1] = {
+            ...last,
+            content: accumulated,
+            streaming: true,
+          };
         }
         return next;
       });
+    };
+
+    try {
+      await invokeAgentStream(
+        {
+          agent: selectedAgent,
+          input: { message: text },
+          sessionId,
+          stream: true,
+        },
+        {
+          onText: (delta) => {
+            accumulated += delta;
+            flushAccumulated();
+          },
+          onError: (message) => {
+            throw new Error(message);
+          },
+          onDone: () => {
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.role === "assistant") {
+                next[next.length - 1] = { ...last, streaming: false };
+              }
+              return next;
+            });
+          },
+        },
+        ac.signal,
+      );
     } catch (e: unknown) {
       if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Request failed");

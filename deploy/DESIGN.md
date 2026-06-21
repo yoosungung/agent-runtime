@@ -52,9 +52,10 @@ make k8s-rollout-restart   # Release 후 :latest pull
 | 용도 | URL |
 |------|-----|
 | Browser / admin SPA / `/api/*` | `http://agents.k8s-test/` (dev, `/etc/hosts`) |
+| Chat UI agent invoke | `http://agents.k8s-test/v1/agents/invoke` (Ingress → Envoy, BFF 미경유) |
 | External agent invoke | `http://agents.k8s-test/v1/agents/...` |
 | Pod-to-pod MCP (`MCP_GATEWAY_URL`) | `http://envoy.runtime.svc.cluster.local:8080` |
-| Backend chat invoke (`ENVOY_URL`) | 동일 internal envoy |
+| Backend legacy chat proxy (`ENVOY_URL`) | 동일 internal envoy ( `/api/chat/invoke` 전용) |
 
 `/v1/mcp/invoke-internal`은 공개 Ingress에 없음 — agent pool이 클러스터 내 envoy Service로 직접 호출.
 
@@ -88,7 +89,7 @@ make k8s-rollout-restart   # Release 후 :latest pull
 | stage/prod (base) | `https://agents.didim365.app` | 동일 + Let's Encrypt |
 | stage/prod (base) | `agents.didim365.app` | 동일 라우팅 |
 
-Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend chat (`ENVOY_URL`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음.
+Pod 간 MCP (`MCP_GATEWAY_URL`) 및 backend 레거시 chat proxy (`ENVOY_URL`, `/api/chat/invoke`)는 **클러스터 내부** `http://envoy.runtime.svc.cluster.local:8080` — Ingress 경유하지 않음. **Chat UI는 Ingress `/v1/agents/*`를 same-origin으로 호출**한다.
 
 ## Envoy 데이터플레인
 
@@ -160,7 +161,7 @@ ext-authz가 `x-pod-addr`(warm pod IP)과 함께 `x-pod-fallback-addr`(pool Serv
 - `POSTGRES_DSN`은 **auth / deploy-api에만** 주입. gateway·pool은 받지 않는다.
 - ext-authz에는 `DEPLOY_API_URL`, `AUTH_URL`, `REDIS_URL` + bundle 모드 pool 서비스 URL 환경 변수. `POOL_CUSTOM_URL`/`POOL_MCP_CUSTOM_URL`은 삭제 — image 모드 URL은 slug에서 동적 derive.
 - pool에는 `DEPLOY_API_URL`, `REDIS_URL`, `POD_NAME`, `POD_IP`, `POD_PORT`, `MAX_CONCURRENT`, `REGISTRY_HEARTBEAT_INTERVAL_SEC=2`, `REGISTRY_TTL_SEC=3`.
-- backend(BFF)에는 `ENVOY_URL=http://envoy.runtime.svc.cluster.local:8080` — chat invoke 시 Envoy를 직접 호출.
+- backend(BFF)에는 `ENVOY_URL=http://envoy.runtime.svc.cluster.local:8080` — 레거시 `/api/chat/invoke` 프록시용. SPA 빌드 시 `VITE_AGENTS_INVOKE_URL=/v1/agents/invoke`(Dockerfile ARG).
 
 ## RBAC
 

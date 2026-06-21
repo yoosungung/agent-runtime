@@ -73,21 +73,22 @@ LLM serving, RAG 스토리지, OTEL collector, bundle 저장소(S3/OCI), 사용�
 
 ## 3. 런타임 흐름 (Chat invoke)
 
-사용자가 Chat UI에서 로그인한 뒤 agent와 한 턴 주고받는 경로.
+사용자가 Chat UI에서 로그인한 뒤 agent와 한 턴 주고받는 경로. **Chat invoke는 BFF를 경유하지 않는다** — Ingress에 공개된 `/v1/agents/*`로 Envoy에 직접 POST하고, BFF는 httpOnly 세션 쿠키 → Bearer JWT 브릿지(`GET /api/auth/access-token`)만 담당.
 
 ```
-[User/Chat UI] ──login──> [auth] ──> (Postgres)
-     │ POST /api/chat/invoke + Bearer JWT
+[User/Chat UI] ──login──> [backend BFF] ──> [auth] ──> (Postgres)
+     │ GET /api/auth/access-token  (Bearer JWT handoff)
+     │ POST /v1/agents/invoke + Bearer JWT  (same origin / Ingress)
      ▼
-[backend BFF] ──> [Envoy] ──ext_authz──> [ext-authz]
-     │              verify → access → resolve → scheduler.pick
-     │              x-pod-addr → dynamic_forward_proxy
+[Envoy] ──ext_authz──> [ext-authz]
+     │ verify → access → resolve → scheduler.pick
+     │ x-pod-addr → dynamic_forward_proxy
      ▼
 [agent-pool pod] ──resolve──> [deploy-api]
      │ BundleLoader → factory(cfg, secrets) → runner
      │ (MCP tool 필요 시) ──> Envoy /v1/mcp/invoke-internal ──> [mcp-pool pod]
      ▼
-[backend BFF] ── SSE ──> [Chat UI]
+[User/Chat UI]  ← SSE (agent-base emit; UI가 runtime_kind별 포맷 정규화)
 ```
 
 **핵심**: pool은 gateway 경유 payload의 번들 정보를 신뢰하지 않는다. Envoy+ext-authz 경로에서는 **`x-resolve` 스냅샷**으로 deploy-api 왕복을 줄이되, 헤더가 없거나 검증 실패 시 **deploy-api 재조회**로 폴백한다. agent와 MCP invoke는 ext-authz / Envoy / pool / deploy-api 네 축이 `kind` 하나로만 분기 — 대칭 구조.

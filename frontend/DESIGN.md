@@ -29,8 +29,10 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 ### 백엔드 통신
 
-- **모든 호출은 `/api/*`** — Vite dev 서버는 `http://localhost:8000`으로 프록시(기존 `vite.config.ts` 설정 그대로).
-- 프로덕션은 같은 origin에서 BFF가 SPA 정적 파일까지 서빙하거나, 별 origin이면 BFF의 `CORS_ORIGINS`에 SPA origin 등록.
+- **관리 API는 `/api/*`** — Vite dev 서버는 `http://localhost:8000`으로 프록시(기존 `vite.config.ts` 설정 그대로).
+- **Chat invoke는 `/v1/agents/*`** — Ingress → Envoy 직접. BFF `/api/chat/invoke`를 거치지 않는다. 호출 URL은 빌드 env `VITE_AGENTS_INVOKE_URL`(기본 `/v1/agents/invoke`)로 지정. 로컬 dev는 Vite가 `/v1/agents`를 `VITE_DEV_ENVOY_PROXY_TARGET`(기본 `http://127.0.0.1:8084`, wire-dev Envoy PF)으로 프록시.
+- **Bearer JWT**: httpOnly `access_token` 쿠키는 JS에서 읽을 수 없으므로, invoke 직전 `GET /api/auth/access-token`으로 JWT를 받아 `Authorization: Bearer …` + `x-runtime-name` 헤더로 Envoy에 전달. refresh가 발생하면 응답 Set-Cookie로 쿠키도 갱신.
+- 프로덕션은 same origin(`agents.*`)에서 SPA·`/api/*`·`/v1/agents/*`가 동일 Ingress host. cross-origin dev는 BFF `CORS_ORIGINS`에 SPA origin 등록(`/api/*`만 해당 — invoke는 Vite proxy로 same-origin 유지 권장).
 - **인증 쿠키는 자동 전송**. fetch는 `credentials: "include"` 기본값 유지(same-origin이면 불필요, cross-origin이면 필수).
 - **CSRF**: state-changing 요청(POST/PUT/DELETE/PATCH)은 `X-CSRF-Token` 헤더 필수. 로그인 응답으로 받은 `csrf_token` cookie 값을 읽어서 첨부(double-submit cookie). 이는 httpOnly가 아니므로 JS에서 읽힘.
 - **페이지네이션 표준** (모든 list GET):
@@ -171,13 +173,17 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 **챗 (`/chat`)**
 - agent 선택 드롭다운 → `GET /api/source-meta?kind=agent&retired=false`로 사용 가능한 agent 리스트(BFF가 `Principal.access` 기준으로 필터). 현재 드롭다운 표시는 `{name} ({version})`이지만 송신 페이로드에는 `name`만 포함 → 항상 latest로 라우팅(버전 핀 정책 결정은 ROADMAP 참조).
-- 입력 → `POST /api/chat/invoke` body `{agent, input: {message}, session_id, stream: true}`. 응답은 `text/event-stream` 단일 채널, 세 가지 이벤트만 처리:
-  - `data: {"text": "<delta>"}` — 누적 append, assistant 메시지의 streaming flag 유지.
-  - `data: {"error": "<detail>"}` — throw해서 기존 빨간 에러 배너 경로 재사용. 받은 직후 종료.
-  - `data: [DONE]` — 정상 종료, streaming flag false 전환.
-  - 그 외(주석/빈 라인 등)는 무시. 포맷 정규화는 BFF가 책임 — 자세한 규약은 [backend/DESIGN.md](../backend/DESIGN.md)의 "Chat invoke" 참조.
-- 파싱은 fetch + `ReadableStream`으로 직접 처리(`EventSource`는 cookie 인증·POST 미지원). `\n\n` 단위 버퍼링, `data:` prefix 라인만 JSON.parse.
+- invoke 흐름: `GET /api/auth/access-token` → `POST ${VITE_AGENTS_INVOKE_URL}`(기본 `/v1/agents/invoke`) body `{agent, input: {message}, session_id, stream: true}` + Bearer/`x-runtime-name`/`x-runtime-session-id` 헤더. Ingress → Envoy → ext-authz → pool.
+- 응답은 `text/event-stream`. agent-base emit 포맷(runtime_kind별 LangGraph/ADK/CUSTOM)을 `lib/chatStream.ts`의 `extractTextFromAgentEvent()`로 UI용 텍스트 델타로 정규화(BFF `/api/chat/invoke`에 있던 규칙과 동일). `[DONE]`·`{"error":…}`·BFF 레거시 `{"text":…}` 모두 처리.
+- 파싱은 fetch + `ReadableStream`(`lib/agentsInvoke.ts`). `\n\n` 단위 버퍼링.
 - `session_id`는 페이지 진입 시 `crypto.randomUUID()`로 발급해 동일 대화 동안 재사용. "New Chat" 버튼이 abort + 새 UUID + messages 초기화. 새로고침에 유지할 필요 있으면 localStorage(JWT와 달리 민감정보 아님).
+
+**Frontend env**
+
+| 변수 | 기본 | 용도 |
+|---|---|---|
+| `VITE_AGENTS_INVOKE_URL` | `/v1/agents/invoke` | Chat invoke POST URL (Docker build ARG로 prod 주입) |
+| `VITE_DEV_ENVOY_PROXY_TARGET` | `http://127.0.0.1:8084` | Vite dev만 — `/v1/agents` 프록시 대상(wire-dev Envoy PF) |
 
 ### 폴더 구조
 
@@ -191,6 +197,9 @@ src/
     schemas.ts              zod 스키마 (backend Validation 표와 1:1)
     enums.ts                AgentRuntimeKind / McpRuntimeKind (runtime_common.schemas 동기화)
     mergeConfigs.ts         shallow merge(user wins) — 2-pane 프리뷰용
+    env.ts                  VITE_AGENTS_INVOKE_URL
+    chatStream.ts           agent-base SSE → text delta
+    agentsInvoke.ts         Bearer handoff + Envoy invoke
   pages/
     LoginPage.tsx
     DashboardPage.tsx

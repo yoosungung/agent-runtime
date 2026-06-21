@@ -32,7 +32,7 @@ classes: {
 user: User {
   chat_ui: Chat UI
   bff: "backend (BFF)"
-  chat_ui -> bff: "invoke (REST/SSE)"
+  chat_ui -> bff: "login, /api/*\nGET /api/auth/access-token"
 }
 
 admin: Admin {
@@ -88,8 +88,8 @@ runtime.deploy_api -> runtime.postgres: "source_meta,\nuser_meta\n(read-only)"
 # --- login -----------------------------------------------------------------
 user.bff -> runtime.auth: "POST /login → JWT"
 
-# --- agent data-plane: BFF → Envoy → pool --------------------------------
-user.bff -> runtime.envoy: "POST /v1/agents/invoke\n+ Bearer JWT"
+# --- agent data-plane: Chat UI → Ingress/Envoy → pool ----------------------
+user.chat_ui -> runtime.envoy: "POST /v1/agents/invoke\n+ Bearer JWT"
 runtime.envoy -> runtime.agent_pools: "POST /invoke\n(id only, x-pod-addr)"
 runtime.agent_pools -> runtime.deploy_api: "resolve (re-fetch)" { class: meta }
 runtime.agent_pools -> infra.llm

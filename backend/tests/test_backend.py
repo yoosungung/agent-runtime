@@ -1172,6 +1172,13 @@ async def test_get_me(client: AsyncClient):
     assert data["username"] == "me-user"
 
 
+async def test_get_access_token(client: AsyncClient):
+    """GET /api/auth/access-token returns Bearer JWT from the session cookie."""
+    resp = await client.get("/api/auth/access-token")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["access_token"] == "valid-token"
+
 # ---------------------------------------------------------------------------
 # Bulk access grant / revoke
 # ---------------------------------------------------------------------------
