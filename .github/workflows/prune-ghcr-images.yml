@@ -10,37 +10,22 @@ permissions:
 jobs:
   prune:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - agent-runtime/backend
+          - agent-runtime/auth
+          - agent-runtime/deploy-api
+          - agent-runtime/ext-authz
+          - agent-runtime/agent-base
+          - agent-runtime/mcp-base
     steps:
-      - name: Keep only latest version per agent-runtime package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          mapfile -t packages < <(
-            gh api "/repos/${REPO}/packages?package_type=container" --paginate \
-              --jq '.[].name' || true
-          )
-          if [ "${#packages[@]}" -eq 0 ]; then
-            echo "No container packages linked to ${REPO}"
-            exit 0
-          fi
-          echo "Found ${#packages[@]} package(s): ${packages[*]}"
-          for pkg in "${packages[@]}"; do
-            encoded="${pkg//\//%2F}"
-            echo "=== ${pkg} ==="
-            mapfile -t ids < <(
-              gh api "/repos/${REPO}/packages/container/${encoded}/versions" --paginate \
-                --jq 'sort_by(.updated_at) | reverse | .[].id'
-            )
-            if [ "${#ids[@]}" -le 1 ]; then
-              echo "Only ${#ids[@]} version(s), nothing to delete"
-              continue
-            fi
-            echo "Keeping version ${ids[0]}, deleting $(( ${#ids[@]} - 1 )) older version(s)"
-            for id in "${ids[@]:1}"; do
-              echo "Deleting version ${id}"
-              gh api --method DELETE --input /dev/null \
-                "/repos/${REPO}/packages/container/${encoded}/versions/${id}"
-            done
-          done
+      - name: Keep only latest version (${{ matrix.package }})
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
