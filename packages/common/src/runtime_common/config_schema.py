@@ -71,7 +71,7 @@ class LangGraphSourceConfig(BaseModel):
         description="Max graph steps before GraphRecursionError.",
     )
     checkpointer: Literal["none", "memory", "sqlite", "postgres", "mongo", "redis"] = Field(
-        default="none",
+        default="postgres",
         description="Checkpoint backend. DSN supplied via secrets_ref['checkpointer_dsn'].",
     )
     store: StoreConfig = Field(
@@ -120,7 +120,7 @@ class AdkSourceConfig(BaseModel):
         description="Hard cap on LLM calls per run. 0 = unlimited.",
     )
     session_service: Literal["memory", "database", "vertexai"] = Field(
-        default="memory",
+        default="database",
         description="Session storage backend. DSN via secrets_ref['session_db_dsn'].",
     )
     memory_service: Literal["memory", "vertexai"] = Field(

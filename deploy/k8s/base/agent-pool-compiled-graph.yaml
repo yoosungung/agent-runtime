@@ -67,6 +67,16 @@ spec:
                   key: VFS_DSN
             - name: VFS_PGBOUNCER
               value: "true"
+            - name: CHECKPOINTER_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+            - name: SESSION_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
           volumeMounts:
             - name: bundles
               mountPath: /var/cache/agent-bundles

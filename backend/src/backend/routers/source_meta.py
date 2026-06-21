@@ -488,6 +488,13 @@ async def create_general_agent(
     if not body.mcp_servers:
         raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
 
+    for server in body.mcp_servers:
+        if not principal.can_access("mcp", server):
+            raise HTTPException(
+                status_code=403,
+                detail=f"No access to MCP server '{server}'",
+            )
+
     access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
     if not access_token:
         raise HTTPException(status_code=401, detail="access token required for MCP discovery")

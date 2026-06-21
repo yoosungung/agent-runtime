@@ -18,12 +18,14 @@ from agent_base.http_client import close_mcp_http_client
 from agent_base.runner import run, run_stream
 from agent_base.settings import Settings
 from runtime_common.deploy_client import DeployApiClient
+from runtime_common.factory import merge_configs
 from runtime_common.instance_builder import build_secrets_resolver, get_or_build_cached_instance
 from runtime_common.instance_cache import InstanceCache
 from runtime_common.loader import BundleFetchError, BundleImportError, BundleLoader
 from runtime_common.logging import configure_logging
 from runtime_common.opik_tracing import configure_opik, opik_trace_context
 from runtime_common.pool_resolve import ResolveHeaderMismatchError, resolve_for_invoke
+from runtime_common.providers.pg_infra import close_checkpointer, init_checkpointer
 from runtime_common.registry import ActiveCounter, RegistryPublisher
 from runtime_common.schemas import Principal
 from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
@@ -86,6 +88,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         dsn = settings.vfs_dsn.replace("postgresql+asyncpg://", "postgresql://")
         vfs_pool = await create_asyncpg_pool(dsn, pgbouncer=settings.vfs_pgbouncer)
 
+    checkpointer_dsn = settings.checkpointer_dsn or settings.vfs_dsn
+    if checkpointer_dsn:
+        await init_checkpointer(checkpointer_dsn, pgbouncer=settings.vfs_pgbouncer)
+
+    adk_session_services: dict = {}
+
     # Expose active_requests as an OTEL gauge so Prometheus/KEDA can scale on it.
     meter = get_meter("agent_base")
     meter.create_observable_gauge(
@@ -114,6 +122,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.deploy = deploy_client
     app.state.publisher = publisher
     app.state.vfs_pool = vfs_pool
+    app.state.adk_session_services = adk_session_services
 
     await publisher.start()
 
@@ -130,6 +139,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await publisher.stop()
+        await close_checkpointer()
         await instance_cache.clear()
         await deploy_client.aclose()
         await close_mcp_http_client()
@@ -206,6 +216,8 @@ async def invoke(
 
         user = resolved.user
         secrets = build_secrets_resolver(user)
+        cfg = merge_configs(source.config, user.config if user else None)
+        adk_session_cache: dict = app.state.adk_session_services
 
         deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
         if deploy_mode == "general":
@@ -267,6 +279,10 @@ async def invoke(
                                 req.input,
                                 req.session_id,
                                 agent_name=req.agent,
+                                cfg=cfg,
+                                secrets=secrets,
+                                principal_user_id=principal.user_id,
+                                adk_session_cache=adk_session_cache,
                             ):
                                 yield chunk
                     finally:
@@ -294,6 +310,10 @@ async def invoke(
                             req.input,
                             req.session_id,
                             agent_name=req.agent,
+                            cfg=cfg,
+                            secrets=secrets,
+                            principal_user_id=principal.user_id,
+                            adk_session_cache=adk_session_cache,
                         ),
                         timeout=settings.invoke_timeout_sec,
                     )

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
-import { useCreateGeneralAgent, useSourceMetaList } from "../hooks/useSourceMeta";
+import { useCreateGeneralAgent } from "../hooks/useSourceMeta";
+import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { JsonEditor } from "../components/JsonEditor";
 import {
   FormActions,
@@ -29,12 +30,7 @@ export function GeneralAgentNewPage() {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  const { data: mcpList } = useSourceMetaList({
-    kind: "mcp",
-    retired: false,
-    limit: 200,
-    offset: 0,
-  });
+  const { data: mcpAccess, isLoading: mcpLoading } = useMyAccessResources("mcp");
   const createMut = useCreateGeneralAgent();
 
   const {
@@ -49,7 +45,7 @@ export function GeneralAgentNewPage() {
     },
   });
 
-  const availableMcp = mcpList?.items ?? [];
+  const availableMcp = mcpAccess?.items ?? [];
 
   function toggleMcp(name: string) {
     setMcpServers((prev) =>
@@ -146,17 +142,20 @@ export function GeneralAgentNewPage() {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             MCP servers
           </label>
-          {availableMcp.length === 0 ? (
+          {mcpLoading ? (
+            <p className="text-sm text-gray-500">Loading MCP servers…</p>
+          ) : availableMcp.length === 0 ? (
             <p className="text-sm text-gray-500">
-              등록된 MCP 서버가 없습니다.{" "}
-              <Link to="/bundle/mcp/new" className="text-blue-600 underline">
-                MCP 서버 등록
+              사용 가능한 MCP 서버가 없습니다. 관리자에게 access를 요청하거나{" "}
+              <Link to="/me" className="text-blue-600 underline">
+                My Profile
               </Link>
+              에서 integrations를 확인하세요.
             </p>
           ) : (
             <div className="space-y-2 border border-gray-200 rounded p-3">
               {availableMcp.map((mcp) => (
-                <label key={mcp.id} className="flex items-center gap-2 text-sm">
+                <label key={mcp.source_meta_id} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={mcpServers.includes(mcp.name)}

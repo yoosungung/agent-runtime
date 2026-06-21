@@ -21,10 +21,11 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **런타임 메타 조회는 deploy-api `/v1/resolve` 단일 경로**. gateway·agent-base·mcp-base 누구도 Postgres에 직접 붙지 않는다. **deploy-api는 read-only** — `source_meta`/`user_meta` **쓰기는 admin backend만**. `source_meta`(코드 정의)는 immutable·versioned, `user_meta`(사용자별 config·secrets_ref)는 mutable.
 - **사용자/권한 테이블도 동일 규칙**. auth는 `/login`·`/verify`를 위해 `users`·`user_resource_access` **read-only**. 쓰기는 **admin backend만**. `refresh_tokens`는 예외로 auth가 소유. admin이 비밀번호 변경·계정 비활성 시 auth의 `POST /admin/revoke-tokens`를 호출.
 - **pool `/invoke` payload는 식별자만**: agent는 `{agent, version, input, session_id, principal}`, mcp는 `{server, version, tool, arguments, principal}`. meta는 pool이 deploy-api에 **재조회**한다 — 단, Envoy 경유(bundle/image pool) 요청은 ext-authz가 **`x-resolve`** 헤더(base64 `ResolveResponse`)로 resolve 스냅샷을 전달하고 pool은 **헤더가 있으면 deploy-api 호출을 생략**한다. 직접 pool 호출·헤더 불일치·식별자 mismatch 시에는 deploy-api 재조회로 폴백.
+- **pool `/invoke`의 `session_id`는 대화 연속성 키**. agent pool은 동일 `session_id`로 LangGraph checkpoint(`thread_id`)·ADK session을 **runtime Postgres**에 persist한다 (기본). UI localStorage는 표시용 임시 구현.
 - **`access`는 `/verify` 응답에 번들**. ext-authz가 별도 authorize 호출을 하지 않도록 한 번에 내려온다.
 - **config는 source + user 두 층**. deploy-api는 병합하지 않고 그대로 내려보낸다 — cache 경계와 감사 지점 분리.
 - **`infra_meta`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리.
-- **LangGraph 체크포인터는 Redis**. 대화 상태가 pod-local이 아니므로 session affinity 불필요.
+- **LangGraph 체크포인터 기본은 Postgres** (`CHECKPOINTER_DSN`, VFS와 동일 DB). 대화 상태가 pod-local이 아니므로 session affinity 불필요. `checkpointer: none`/`redis` 등은 명시 override.
 - **데이터플레인은 Envoy(C++)**. ext-authz는 스케줄링·인가 결정만. 바디 릴레이·SSE 패스스루는 Envoy.
 - **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `/invoke-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
 - **scope 경계**: LLM/RAG는 scope 밖. **번들 object store 기본값은 in-cluster Garage(S3 호환)** — 배포 시 env/secret으로 외부 S3(NCP·AWS 등)로 대체 가능. 관리 콘솔 `frontend/`·`backend/`는 예외.

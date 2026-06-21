@@ -45,15 +45,16 @@
     - **`infra_env.py`** — flat `infra_meta.env` validation (`[A-Z][A-Z0-9_]*`, reserved keys). PUT merges patches; empty string removes a key. Legacy snake_case keys normalized on read. K8s ConfigMap receives env as-is.
     - **`InfraConfig`** (`config_schema.py`) — curated **UI** field catalog only (maps to `OPIK_URL`, …); API does not validate through this model.
   - **`providers/`** — config + secrets → 프레임워크-네이티브 인프라 객체 빌더. 번들 factory 가 이 헬퍼들을 호출해 매번 wiring 코드를 반복하지 않도록 한다. **모든 framework 의존(`langgraph`, `google.adk`, `fastmcp`, `mcp`)은 함수 본문 내 lazy import** — mcp-base 이미지에 langgraph 가 없어도 mcp_sdk 번들이 정상 동작.
+    - **`providers/pg_infra.py`** — agent-base pod lifespan용 shared Postgres: `init_checkpointer` / `get_shared_checkpointer`, `get_adk_session_service` cache.
     - **`providers/langgraph.py`** (LangGraph / DeepAgents 공용)
       - `get_recursion_limit(cfg)` / `get_model_spec(cfg)` — cfg 에서 단순 값 추출.
-      - `build_checkpointer(cfg, secrets)` — `cfg.langgraph.checkpointer ∈ {none, memory, sqlite, postgres, mongo, redis}` → `MemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` / `AsyncMongoDBSaver` / `RedisSaver`. DSN 은 `secrets["CHECKPOINTER_DSN"]`.
+      - `build_checkpointer(cfg, secrets)` — `cfg.langgraph.checkpointer` 기본 **`postgres`**. `postgres` 는 agent-base lifespan의 shared `AsyncPostgresSaver` (`pg_infra`). `{none, memory, sqlite, redis, mongo}` 는 per-factory. DSN 은 `secrets["CHECKPOINTER_DSN"]` (redis/sqlite/mongo 등).
       - `build_store(cfg, secrets)` — `cfg.langgraph.store.{backend, index}` → `InMemoryStore` / `AsyncPostgresStore` / `AsyncRedisStore`. `index.embed`/`dims` 가 있으면 semantic search 활성. DSN 은 `secrets["STORE_DSN"]`.
       - `build_cache(cfg, secrets)` — `cfg.langgraph.cache ∈ {none, memory, sqlite, redis}` → `InMemoryCache` / `SqliteCache` / `RedisCache`. DSN 은 `secrets["CACHE_DSN"]`.
     - **`providers/adk.py`** (Google ADK)
       - `get_model(cfg)` / `get_max_llm_calls(cfg)` — 단순 값 추출.
       - `build_generate_content_config(cfg)` — `cfg.adk.{temperature, max_output_tokens, top_p, top_k}` → `genai_types.GenerateContentConfig`.
-      - `build_session_service(cfg, secrets)` — `cfg.adk.session_service ∈ {memory, database, vertexai}` → 해당 service. database 는 `secrets["SESSION_DB_DSN"]`.
+      - `build_session_service(cfg, secrets)` — `cfg.adk.session_service` 기본 **`database`**. `{memory, database, vertexai}`. database 는 `secrets["SESSION_DB_DSN"]`. agent-base가 pod-level cache (`pg_infra.get_adk_session_service`).
       - `build_memory_service(cfg, secrets)` — `cfg.adk.memory_service ∈ {memory, vertexai}`.
       - `build_artifact_service(cfg, secrets)` — `cfg.adk.artifact_service ∈ {memory, gcs, database}`. gcs 는 `secrets["GCS_BUCKET"]`.
     - **`providers/fastmcp.py`** (FastMCP)

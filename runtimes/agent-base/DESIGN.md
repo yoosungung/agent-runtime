@@ -23,10 +23,10 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
      - `cfg` = `runtime_common.factory.merge_configs(source.config, user.config if user else None)` — **shallow merge, user가 같은 키면 덮어씀**. source-only / user-only 키는 그대로 유지. 자세한 합의는 [ARCHITECTURE.md](../../ARCHITECTURE.md) §5 "source_meta / user_meta config 병합".
      - `secrets` = `SecretResolver` 인스턴스 (실제 비밀값은 `user.secrets_ref`에서 lazy resolve)
      - 하위호환: zero-arg factory / `(cfg,)` 1-arg factory도 인트로스펙션으로 허용 — `runtime_common.factory.call_factory`가 시그니처 자동 분기.
-  5. `runner.run(kind, instance, input, session_id)` — kind별 어댑터가 프레임워크-네이티브 호출.
-     - `compiled_graph` → LangGraph `CompiledGraph.ainvoke(input, config={"configurable": {"thread_id": session_id}})`. **체크포인터는 Redis** — 번들 내 factory가 `runtime_common.providers.langgraph.build_checkpointer(cfg, secrets)` 로 구성해서 `CompiledGraph`에 붙인다. 대화 상태가 pod-local이 아니므로 다음 턴이 다른 pod로 가도 정상 동작 → **pod affinity 불필요, graceful drain·scale-down이 단순**. DeepAgents (`create_deep_agent`) 도 동일 풀에서 동작 — 반환 타입이 `CompiledStateGraph` 라 어댑터 분기 불필요.
-     - `adk` → ADK `LlmAgent` 를 `Runner(agent=..., session_service=InMemorySessionService())` 로 감싸 `runner.run_async(...)`. 번들은 agent 만 반환하면 된다 (Runner 는 agent-base 가 만든다).
-     - `custom` → `.ainvoke(input)` 또는 callable
+  5. `runner.run(kind, instance, input, session_id, cfg=…, secrets=…)` — kind별 어댑터가 프레임워크-네이티브 호출.
+     - `compiled_graph` → LangGraph `CompiledGraph.ainvoke(input, config={"configurable": {"thread_id": session_id}})`. **체크포인터 기본 Postgres** — pod lifespan에서 shared `AsyncPostgresSaver` 초기화, 번들 factory는 `runtime_common.providers.langgraph.build_checkpointer(cfg, secrets)` 로 attach. `checkpointer: none` 등 명시 opt-out 가능. DeepAgents (`create_deep_agent`) 도 동일 풀.
+     - `adk` → `build_session_service(cfg, secrets)` (기본 `database` / `SESSION_DB_DSN`) 로 shared session service를 붙인 `Runner` + `runner.run_async(...)`. 번들은 agent 만 반환.
+     - `custom` → `ainvoke`/`astream`/`callable` 에 `session_id`·`config.configurable.thread_id` kwargs 전달 (수신 시그니처에 있을 때만)
 
 - **이미지에 사전설치되는 framework / provider deps**:
   - `langgraph>=1.0`, `deepagents>=0.5`, `google-adk>=0.1.0`
@@ -35,7 +35,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
 - **캐시**:
   - 번들: pod당 `BUNDLE_CACHE_MAX`(기본 16)개 버전을 디스크 + 인-프로세스 import 캐시로 유지. 키는 `source.checksum`.
   - **user_meta는 매 invoke마다 fresh 조회** (짧은 TTL 로컬 캐시는 옵션). 번들과 수명이 다르기 때문.
-- **Postgres에 붙지 않는다**. `DEPLOY_API_URL`만 알면 됨.
+- **Postgres (VFS + session persistence)**: `VFS_DSN`, `CHECKPOINTER_DSN`, `SESSION_DB_DSN` env — deploy-api resolve는 여전히 HTTP only. checkpoint 테이블은 pod startup `AsyncPostgresSaver.setup()` 으로 auto-migrate.
 - **cold-start**: 첫 호출 시 번들 fetch + import 비용 발생. warm이면 resolve RTT + 해시 lookup만.
 
 ### JWT forwarding (MCP 호출 시)

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from runtime_common.config_schema import (
+    AdkSourceConfig,
     EmailSourceConfig,
     EmailUserConfig,
     FetchSourceConfig,
@@ -22,6 +23,18 @@ from runtime_common.config_schema import (
     is_user_meta_required,
     validate_template_required_fields,
 )
+
+
+def test_langgraph_source_config_defaults_postgres_checkpointer():
+    from runtime_common.config_schema import LangGraphSourceConfig
+
+    cfg = LangGraphSourceConfig()
+    assert cfg.checkpointer == "postgres"
+
+
+def test_adk_source_config_defaults_database_session():
+    cfg = AdkSourceConfig()
+    assert cfg.session_service == "database"
 
 
 def test_general_agent_source_config_minimal():

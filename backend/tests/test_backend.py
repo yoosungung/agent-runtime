@@ -1689,7 +1689,9 @@ async def test_dashboard_summary_resource_counts(client: AsyncClient):
 @pytest.mark.asyncio
 @respx.mock
 async def test_create_general_agent_201(client: AsyncClient):
+    from backend.app import app
     from backend.deps import get_settings
+    from runtime_common.schemas import Principal
 
     settings = get_settings()
 
@@ -1705,17 +1707,25 @@ async def test_create_general_agent_201(client: AsyncClient):
         )
     )
 
-    resp = await client.post(
-        "/api/source-meta/general",
-        headers=_csrf_headers(),
-        json={
-            "name": "research-bot",
-            "version": "v1",
-            "system_prompt": "You are a researcher.",
-            "mcp_servers": ["search-server"],
-            "config": {"langgraph": {"model": "anthropic:claude-sonnet-4-6"}},
-        },
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = Principal.model_validate(
+        {**_ADMIN_PRINCIPAL, "access": [{"kind": "mcp", "name": "search-server"}]}
     )
+    try:
+        resp = await client.post(
+            "/api/source-meta/general",
+            headers=_csrf_headers(),
+            json={
+                "name": "research-bot",
+                "version": "v1",
+                "system_prompt": "You are a researcher.",
+                "mcp_servers": ["search-server"],
+                "config": {"langgraph": {"model": "anthropic:claude-sonnet-4-6"}},
+            },
+        )
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
     assert resp.status_code == 201, resp.text
     data = resp.json()
     assert data["deploy_mode"] == "general"
@@ -1729,7 +1739,9 @@ async def test_create_general_agent_201(client: AsyncClient):
 @pytest.mark.asyncio
 @respx.mock
 async def test_create_general_agent_duplicate_409(client: AsyncClient):
+    from backend.app import app
     from backend.deps import get_settings
+    from runtime_common.schemas import Principal
 
     settings = get_settings()
 
@@ -1742,7 +1754,29 @@ async def test_create_general_agent_duplicate_409(client: AsyncClient):
         "system_prompt": "Hi",
         "mcp_servers": ["s"],
     }
-    r1 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
-    assert r1.status_code == 201
-    r2 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
-    assert r2.status_code == 409
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = Principal.model_validate(
+        {**_ADMIN_PRINCIPAL, "access": [{"kind": "mcp", "name": "s"}]}
+    )
+    try:
+        r1 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
+        assert r1.status_code == 201
+        r2 = await client.post("/api/source-meta/general", headers=_csrf_headers(), json=payload)
+        assert r2.status_code == 409
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+@pytest.mark.asyncio
+async def test_create_general_agent_no_mcp_access_403(client: AsyncClient):
+    resp = await client.post(
+        "/api/source-meta/general",
+        headers=_csrf_headers(),
+        json={
+            "name": "research-bot",
+            "version": "v1",
+            "system_prompt": "You are a researcher.",
+            "mcp_servers": ["search-server"],
+        },
+    )
+    assert resp.status_code == 403

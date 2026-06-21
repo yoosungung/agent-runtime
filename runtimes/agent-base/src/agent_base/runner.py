@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import inspect
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from runtime_common.opik_tracing import is_opik_enabled
+from runtime_common.providers.pg_infra import get_adk_session_service
 from runtime_common.schemas import AgentRuntimeKind
+from runtime_common.secrets import SecretResolver
 
 
 def _json_default(obj: Any) -> Any:
@@ -51,6 +54,87 @@ def _make_langgraph_config(session_id: str | None, agent_name: str | None) -> di
     return config or None
 
 
+def _adk_user_session_ids(
+    session_id: str | None,
+    principal_user_id: int | str | None,
+) -> tuple[str, str]:
+    uid = str(principal_user_id or session_id or "anon")
+    sid = str(session_id or "default")
+    return uid, sid
+
+
+async def _call_with_session(
+    method: Callable[..., Any],
+    input: dict,  # noqa: A002
+    session_id: str | None,
+) -> Any:
+    """Invoke a custom agent method, passing session_id/config when supported."""
+    config = _make_langgraph_config(session_id, None)
+    kwargs: dict[str, Any] = {}
+    if session_id is not None:
+        kwargs["session_id"] = session_id
+    if config is not None:
+        kwargs["config"] = config
+
+    if kwargs:
+        try:
+            result = method(input, **kwargs)
+        except TypeError:
+            result = method(input)
+    else:
+        result = method(input)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+async def _run_custom(
+    instance: Any,
+    input: dict,  # noqa: A002
+    session_id: str | None,
+) -> dict:
+    if hasattr(instance, "ainvoke"):
+        result = await _call_with_session(instance.ainvoke, input, session_id)
+    else:
+        result = await _call_with_session(instance, input, session_id)
+    return {"output": result}
+
+
+async def _stream_custom(
+    instance: Any,
+    input: dict,
+    session_id: str | None,
+) -> AsyncIterator[str]:
+    if hasattr(instance, "astream_events"):
+        config = _make_langgraph_config(session_id, None)
+        kwargs: dict[str, Any] = {}
+        try:
+            sig = inspect.signature(instance.astream_events)
+            if session_id is not None and "session_id" in sig.parameters:
+                kwargs["session_id"] = session_id
+            if config is not None and "config" in sig.parameters:
+                kwargs["config"] = config
+        except (ValueError, TypeError):
+            pass
+
+        if kwargs:
+            events = instance.astream_events(input, **kwargs)
+        else:
+            events = instance.astream_events(input)
+        async for event in events:
+            yield f"data: {json.dumps(event, default=_json_default)}\n\n"
+    elif hasattr(instance, "astream"):
+        stream = instance.astream(input)
+        async for chunk in stream:
+            yield f"data: {json.dumps({'chunk': chunk}, default=_json_default)}\n\n"
+    elif hasattr(instance, "ainvoke"):
+        result = await _call_with_session(instance.ainvoke, input, session_id)
+        yield f"data: {json.dumps({'output': result}, default=_json_default)}\n\n"
+    else:
+        result = await _call_with_session(instance, input, session_id)
+        yield f"data: {json.dumps({'output': result}, default=_json_default)}\n\n"
+
+
 def _wrap_adk_with_opik(instance: Any, agent_name: str | None) -> Any:
     """Attach ADK-native OpikTracer to the agent (and sub-agents recursively).
 
@@ -75,6 +159,11 @@ async def run(  # noqa: A002
     input: dict,
     session_id: str | None,
     agent_name: str | None = None,
+    *,
+    cfg: dict | None = None,
+    secrets: SecretResolver | None = None,
+    principal_user_id: int | str | None = None,
+    adk_session_cache: dict[str, Any] | None = None,
 ) -> dict:
     match kind:
         case AgentRuntimeKind.COMPILED_GRAPH:
@@ -83,14 +172,19 @@ async def run(  # noqa: A002
             return {"output": result}
 
         case AgentRuntimeKind.ADK:
-            return await _run_adk(instance, input, session_id, agent_name)
+            return await _run_adk(
+                instance,
+                input,
+                session_id,
+                agent_name,
+                cfg=cfg or {},
+                secrets=secrets,
+                principal_user_id=principal_user_id,
+                adk_session_cache=adk_session_cache,
+            )
 
         case AgentRuntimeKind.CUSTOM:
-            if hasattr(instance, "ainvoke"):
-                result = await instance.ainvoke(input)
-            else:
-                result = await instance(input)
-            return {"output": result}
+            return await _run_custom(instance, input, session_id)
 
         case _:
             raise ValueError(f"unsupported agent runtime kind: {kind!r}")
@@ -102,6 +196,11 @@ async def run_stream(  # noqa: A002
     input: dict,
     session_id: str | None,  # noqa: A002
     agent_name: str | None = None,
+    *,
+    cfg: dict | None = None,
+    secrets: SecretResolver | None = None,
+    principal_user_id: int | str | None = None,
+    adk_session_cache: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE-formatted strings for streaming agent responses."""
     try:
@@ -122,22 +221,21 @@ async def run_stream(  # noqa: A002
                     yield f"data: {json.dumps({'output': final_output}, default=_json_default)}\n\n"
 
             case AgentRuntimeKind.ADK:
-                async for line in _stream_adk(instance, input, session_id, agent_name):
+                async for line in _stream_adk(
+                    instance,
+                    input,
+                    session_id,
+                    agent_name,
+                    cfg=cfg or {},
+                    secrets=secrets,
+                    principal_user_id=principal_user_id,
+                    adk_session_cache=adk_session_cache,
+                ):
                     yield line
 
             case AgentRuntimeKind.CUSTOM:
-                if hasattr(instance, "astream_events"):
-                    async for event in instance.astream_events(input):
-                        yield f"data: {json.dumps(event, default=_json_default)}\n\n"
-                elif hasattr(instance, "astream"):
-                    async for chunk in instance.astream(input):
-                        yield f"data: {json.dumps({'chunk': chunk}, default=_json_default)}\n\n"
-                elif hasattr(instance, "ainvoke"):
-                    result = await instance.ainvoke(input)
-                    yield f"data: {json.dumps({'output': result}, default=_json_default)}\n\n"
-                else:
-                    result = await instance(input)
-                    yield f"data: {json.dumps({'output': result}, default=_json_default)}\n\n"
+                async for line in _stream_custom(instance, input, session_id):
+                    yield line
 
             case _:
                 yield f"data: {json.dumps({'error': f'unsupported agent runtime kind: {kind!r}'})}\n\n"  # noqa: E501
@@ -163,12 +261,11 @@ def _adk_content(input: dict) -> object:  # noqa: A002
     return genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=text)])
 
 
-def _adk_runner(instance: Any) -> Any:
-    """Wrap an ADK BaseAgent instance in a Runner with InMemorySessionService."""
+def _adk_runner(instance: Any, session_service: Any) -> Any:
+    """Wrap an ADK BaseAgent instance in a Runner with the given session service."""
     from google.adk.runners import Runner
-    from google.adk.sessions import InMemorySessionService
 
-    return Runner(agent=instance, app_name="agent-base", session_service=InMemorySessionService())
+    return Runner(agent=instance, app_name="agent-base", session_service=session_service)
 
 
 async def _ensure_adk_session(runner: Any, uid: str, sid: str) -> None:
@@ -190,18 +287,36 @@ async def _ensure_adk_session(runner: Any, uid: str, sid: str) -> None:
         pass
 
 
+def _resolve_adk_session_service(
+    cfg: dict,
+    secrets: SecretResolver | None,
+    adk_session_cache: dict[str, Any] | None,
+) -> Any:
+    if secrets is None:
+        from google.adk.sessions import InMemorySessionService
+
+        return InMemorySessionService()
+    cache = adk_session_cache if adk_session_cache is not None else {}
+    return get_adk_session_service(cfg, secrets, cache)
+
+
 async def _run_adk(
     instance: Any,
     input: dict,  # noqa: A002
     session_id: str | None,
     agent_name: str | None = None,
+    *,
+    cfg: dict,
+    secrets: SecretResolver | None = None,
+    principal_user_id: int | str | None = None,
+    adk_session_cache: dict[str, Any] | None = None,
 ) -> dict:
     """Run an ADK agent and return the final response text."""
     instance = _wrap_adk_with_opik(instance, agent_name)
-    runner = _adk_runner(instance)
+    session_service = _resolve_adk_session_service(cfg, secrets, adk_session_cache)
+    runner = _adk_runner(instance, session_service)
     content = _adk_content(input)
-    uid = str(session_id or "anon")
-    sid = str(session_id or "default")
+    uid, sid = _adk_user_session_ids(session_id, principal_user_id)
     await _ensure_adk_session(runner, uid, sid)
 
     final_text = ""
@@ -219,13 +334,18 @@ async def _stream_adk(
     input: dict,
     session_id: str | None,  # noqa: A002
     agent_name: str | None = None,
+    *,
+    cfg: dict,
+    secrets: SecretResolver | None = None,
+    principal_user_id: int | str | None = None,
+    adk_session_cache: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE lines for each ADK event."""
     instance = _wrap_adk_with_opik(instance, agent_name)
-    runner = _adk_runner(instance)
+    session_service = _resolve_adk_session_service(cfg, secrets, adk_session_cache)
+    runner = _adk_runner(instance, session_service)
     content = _adk_content(input)
-    uid = str(session_id or "anon")
-    sid = str(session_id or "default")
+    uid, sid = _adk_user_session_ids(session_id, principal_user_id)
     await _ensure_adk_session(runner, uid, sid)
 
     async for event in runner.run_async(user_id=uid, session_id=sid, new_message=content):

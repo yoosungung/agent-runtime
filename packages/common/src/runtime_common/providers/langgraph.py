@@ -34,8 +34,11 @@ def build_checkpointer(cfg: dict, secrets: SecretResolver) -> Any | None:
 
     Returns ``None`` when ``checkpointer == "none"``. DSN is resolved from
     ``secrets["CHECKPOINTER_DSN"]`` for backends that need one.
+
+    ``postgres`` uses the pod-level shared saver from ``pg_infra`` (initialized at
+    agent-base lifespan). Other DSN backends are built per factory call.
     """
-    backend = _section(cfg).get("checkpointer", "none")
+    backend = _section(cfg).get("checkpointer", "postgres")
     if backend == "none":
         return None
     if backend == "memory":
@@ -48,9 +51,9 @@ def build_checkpointer(cfg: dict, secrets: SecretResolver) -> Any | None:
 
         return make_redis_saver(secrets.resolve("CHECKPOINTER_DSN"))
     if backend == "postgres":
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from runtime_common.providers.pg_infra import get_shared_checkpointer
 
-        return AsyncPostgresSaver.from_conn_string(secrets.resolve("CHECKPOINTER_DSN"))
+        return get_shared_checkpointer()
     if backend == "sqlite":
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 

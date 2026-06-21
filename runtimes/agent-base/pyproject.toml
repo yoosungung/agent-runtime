@@ -10,6 +10,9 @@ dependencies = [
     # Frameworks the base image is expected to host. Pin minimum versions here;
     # individual deployed bundles may still vendor their own pins via the bundle loader.
     "langgraph>=1.0",
+    "langgraph-checkpoint-postgres>=2.0",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
     "deepagents>=0.5",
     # init_chat_model auto-dispatches by model spec prefix; provider deps must
     # be installed for whichever the bundle picks. Add new langchain-* here as

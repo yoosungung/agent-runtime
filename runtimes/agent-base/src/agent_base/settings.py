@@ -24,6 +24,14 @@ class Settings(BaseRuntimeSettings):
         default=False,
         description="PgBouncer-compatible asyncpg settings for VFS (statement_cache_size=0).",
     )
+    checkpointer_dsn: str = Field(
+        default="",
+        description="Postgres DSN for LangGraph checkpoints. Falls back to VFS_DSN when empty.",
+    )
+    session_db_dsn: str = Field(
+        default="",
+        description="Postgres DSN for ADK DatabaseSessionService. Falls back to VFS_DSN when empty.",
+    )
     warmup_agents: list[str] = Field(
         default_factory=list,
         description="Agent names to preload at startup (comma-separated via WARMUP_AGENTS env).",

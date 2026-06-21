@@ -39,7 +39,6 @@
 {
   "langgraph": {
     "model": "openai:gpt-4o-mini",
-    "checkpointer": "redis",
     "store": {"backend": "memory"}
   },
   "mcp_server": "search-server",
@@ -47,10 +46,17 @@
 }
 ```
 
+`checkpointer` 생략 시 기본 **`postgres`** (pod env `CHECKPOINTER_DSN`). Redis 등 다른 backend는 명시:
+
+```json
+{"langgraph": {"checkpointer": "redis", "model": "..."}}
+```
+
 **user_meta.secrets_ref 키** (UPPERCASE — env var 컨벤션, 인프라 DSN 만)
 
 ```
-CHECKPOINTER_DSN  : redis://redis:6379/0
+CHECKPOINTER_DSN  : postgresql://runtime:runtime@pgbouncer-rw:5432/runtime  (기본, VFS_DSN과 동일 DB)
+SESSION_DB_DSN    : (ADK agent, 동일 DSN)
 STORE_DSN         : (사용 시)
 ```
 
@@ -67,7 +73,7 @@ INSERT INTO source_meta (kind, name, version, runtime_pool, entrypoint, bundle_u
 VALUES (
   'agent', 'research-orchestrator', 'v1', 'agent:compiled_graph',
   'app:build_agent', 's3://bundles/research-orchestrator-v1.zip', 'sha256:<…>',
-  '{"langgraph":{"model":"anthropic:claude-sonnet-4-6","checkpointer":"redis"},"mcp_server":"search-server","anthropic_api_key":"sk-ant-..."}'::jsonb
+  '{"langgraph":{"model":"anthropic:claude-sonnet-4-6"},"mcp_server":"search-server","anthropic_api_key":"sk-ant-..."}'::jsonb
 );
 ```
 
@@ -83,7 +89,7 @@ VALUES (
 | `naver_search` | MCP 라우팅 | 한국어 웹 검색 |
 | `fetch_url` | MCP 라우팅 | URL 본문 가져오기 |
 
-`agent-base` 가 `Runner` (with InMemorySessionService) 를 만들어 감싸므로 번들은 `Agent` 만 반환.
+`agent-base` 가 `build_session_service` (기본 Postgres) 로 `Runner` 를 만들어 감싸므로 번들은 `Agent` 만 반환.
 
 **번들 deps**: 베이스 이미지의 `google-adk` + `httpx` 사용 — 추가 deps 없음.
 

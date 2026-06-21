@@ -121,6 +121,7 @@ Image 모드 pool — admin이 빌드한 OCI 이미지를 등록하면 backend�
 - **`x-principal` 헤더**: ext-authz가 invoke 요청에 base64(JSON) 형태로 주입. image는 신뢰.
 - **`x-runtime-cfg` 헤더**: ext-authz가 `{**source.config, **user.config}` shallow merge를 base64(JSON)으로 첨부. deploy-api 직접 호출 불필요.
 - **`x-runtime-secrets-ref` 헤더**: `user_meta.secrets_ref` opaque 패스스루 (`vault://...` 등). 실제 비밀값 resolution은 image author 책임.
+- **`session_id` (body)**: 동일 값으로 턴 간 대화 연속성 키. LangGraph/ADK pool과 동일 의미 — custom image는 PG/Redis 등 자체 storage에 persist하거나 stateless로 둘 수 있음. 예제: [`deploy/examples/custom-image/python-agent/`](../../deploy/examples/custom-image/python-agent/).
 
 #### State-machine 배포 (`POST /api/admin/custom-images`)
 

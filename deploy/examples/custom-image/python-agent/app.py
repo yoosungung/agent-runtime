@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from collections import defaultdict
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -23,6 +24,9 @@ from pydantic import BaseModel
 app = FastAPI()
 
 RUNTIME_POOL = os.environ.get("RUNTIME_POOL", "agent:custom:unknown")
+
+# Demo-only in-process session store. Production custom images should use PG/Redis/etc.
+_SESSION_HISTORY: dict[str, list[dict[str, str]]] = defaultdict(list)
 
 
 class InvokeRequest(BaseModel):
@@ -66,10 +70,23 @@ async def invoke(
         except Exception:
             raise HTTPException(status_code=400, detail="invalid x-runtime-cfg header")
 
+    sid = body.session_id or "default"
+    message = body.input.get("message") or json.dumps(body.input)
+    history = _SESSION_HISTORY[sid]
+    history.append({"role": "user", "content": message})
+
     # ── Your agent logic here ──────────────────────────────────────────────
+    reply = (
+        f"Hello from {RUNTIME_POOL}! You said: {message}. "
+        f"(turn {len(history)} in session {sid})"
+    )
+    history.append({"role": "assistant", "content": reply})
+
     result = {
-        "output": f"Hello from {RUNTIME_POOL}!",
+        "output": reply,
         "input_received": body.input,
+        "session_id": sid,
+        "turn_count": len(history),
         "principal": principal.get("sub"),
         "cfg_keys": list(cfg.keys()),
     }

@@ -27,7 +27,7 @@ Source config (``source_meta.config``):
       "langgraph": {
         "model": "anthropic:claude-sonnet-4-6",
         "recursion_limit": 50,
-        "checkpointer": "redis"
+        "checkpointer": "postgres"
       },
       "mcp_server": "search-server",
       "anthropic_api_key": "sk-ant-..."

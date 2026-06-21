@@ -17,6 +17,20 @@ import pytest
 os.environ.setdefault("MCP_GATEWAY_URL", "http://mcp-gateway.test")
 
 
+@pytest.fixture(autouse=True)
+def _shared_postgres_checkpointer():
+    """Bundle tests use default postgres checkpointer without a real DSN."""
+    pytest.importorskip("langgraph")
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from runtime_common.providers import pg_infra
+
+    pg_infra.reset_registry()
+    pg_infra.set_shared_checkpointer(MemorySaver())
+    yield
+    pg_infra.reset_registry()
+
+
 @pytest.fixture
 def secrets():
     from runtime_common.secrets import EnvSecretResolver
@@ -188,11 +202,12 @@ class TestAdkBundle:
             calc("__import__('os')")
 
     async def test_naver_search_tool_calls_mcp_with_jwt(self, load_bundle, secrets, fake_httpx):
+        from agent_base.context import reset_current_token, set_current_token
+
         mod = load_bundle("agent-base/adk_bundle", "adk_bundle")
         client = fake_httpx(mod)
 
-        token_var = mod.get_current_token.__globals__["_current_token"]
-        tok = token_var.set("user.jwt.token")
+        tok = set_current_token("user.jwt.token")
         try:
             agent = mod.build_agent(
                 {"mcp_server": "search-server", "google_api_key": "AIza-test"},
@@ -201,7 +216,7 @@ class TestAdkBundle:
             search = next(t for t in agent.tools if getattr(t, "__name__", "") == "naver_search")
             result = await search("서울 날씨", 3)
         finally:
-            token_var.reset(tok)
+            reset_current_token(tok)
 
         assert client.last_call["url"] == "http://mcp-gateway.test/v1/mcp/invoke-internal"
         assert client.last_call["json"] == {

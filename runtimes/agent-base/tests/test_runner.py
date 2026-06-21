@@ -1,6 +1,7 @@
 """Unit tests for agent-base runner adapters."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,6 +35,16 @@ class TestRun:
         result = await run(AgentRuntimeKind.CUSTOM, instance, {}, None)
         assert result == {"output": "hello"}
 
+    async def test_custom_ainvoke_passes_session_id(self):
+        instance = AsyncMock()
+        instance.ainvoke.return_value = "hello"
+
+        await run(AgentRuntimeKind.CUSTOM, instance, {"message": "hi"}, "sess-9")
+
+        call_kwargs = instance.ainvoke.call_args.kwargs
+        assert call_kwargs["session_id"] == "sess-9"
+        assert call_kwargs["config"] == {"configurable": {"thread_id": "sess-9"}}
+
     async def test_custom_callable(self):
         async def my_fn(inp):
             return "result"
@@ -50,6 +61,50 @@ class TestRun:
 
         await run(AgentRuntimeKind.CUSTOM, capture_fn, {"key": "val"}, None)
         assert received == {"key": "val"}
+
+    async def test_adk_uses_shared_session_service(self, monkeypatch):
+        session_service = MagicMock()
+        captured_runners: list[Any] = []
+
+        class FakeRunner:
+            def __init__(self, agent, app_name, session_service):  # noqa: ANN001
+                self.agent = agent
+                self.app_name = app_name
+                self.session_service = session_service
+                captured_runners.append(self)
+
+            async def run_async(self, user_id, session_id, new_message):  # noqa: ANN001
+                yield MagicMock(
+                    is_final_response=lambda: True,
+                    content=MagicMock(parts=[MagicMock(text="ok")]),
+                )
+
+        monkeypatch.setattr("agent_base.runner._adk_runner", lambda inst, svc: FakeRunner(inst, "agent-base", svc))
+        monkeypatch.setattr(
+            "agent_base.runner._resolve_adk_session_service",
+            lambda cfg, secrets, cache: session_service,
+        )
+        monkeypatch.setattr("agent_base.runner._wrap_adk_with_opik", lambda inst, name: inst)
+        monkeypatch.setattr(
+            "agent_base.runner._ensure_adk_session",
+            AsyncMock(),
+        )
+
+        instance = MagicMock()
+        cfg = {"adk": {"session_service": "database"}}
+        await run(
+            AgentRuntimeKind.ADK,
+            instance,
+            {"message": "hi"},
+            "sess-adk",
+            cfg=cfg,
+            secrets=MagicMock(),
+            principal_user_id=42,
+            adk_session_cache={},
+        )
+
+        assert captured_runners
+        assert captured_runners[0].session_service is session_service
 
     async def test_unknown_kind_raises(self):
         with pytest.raises(ValueError, match="unsupported"):
@@ -72,13 +127,13 @@ class TestRunStream:
 
         assert chunks[-1] == "data: [DONE]\n\n"
         event_chunks = chunks[:-1]
-        assert len(event_chunks) == 2
-        # Verify SSE format
+        assert len(event_chunks) == 3
+        # Verify SSE format (last chunk may be synthetic {"output": ...})
         for chunk in event_chunks:
             assert chunk.startswith("data: ")
             assert chunk.endswith("\n\n")
             parsed = json.loads(chunk[len("data: ") :].strip())
-            assert "event" in parsed
+            assert "event" in parsed or "output" in parsed
 
     async def test_compiled_graph_streams_done(self):
         instance = MagicMock()
