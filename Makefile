@@ -1,18 +1,11 @@
 REGISTRY  ?= ghcr.io/yoosungung/agent-runtime
 GHCR_USER ?= $(shell echo $(REGISTRY) | cut -d/ -f2)
-TAG       ?= latest
 NAMESPACE ?= runtime
-GIT_REPO  ?= https://github.com/yoosungung/agent-studio.git
-GIT_REF   ?= main
 S3_BUCKET ?= agent-bundles
 
-KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts/kaniko-build.sh
-
 .PHONY: help sync lint typecheck test fmt \
-        images registry-secret ensure-registry-secret _bootstrap-registry-secret \
-        ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
-        ext-authz-image auth-image deploy-api-image \
-        agent-base-image mcp-base-image backend-image \
+        registry-secret ensure-registry-secret _bootstrap-registry-secret \
+        ncr-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         k8s-apply-garage k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
         k8s-rollout-restart k8s-redeploy-dev \
         db-migrate db-migrate-all \
@@ -35,36 +28,6 @@ typecheck: ## mypy
 
 test: ## pytest
 	uv run pytest
-
-# --- images (deprecated: use GitHub Release → .github/workflows/build-images.yml) ---
-
-IMG_EXT_AUTHZ     := $(REGISTRY)/ext-authz:$(TAG)
-IMG_AUTH          := $(REGISTRY)/auth:$(TAG)
-IMG_DEPLOY_API    := $(REGISTRY)/deploy-api:$(TAG)
-IMG_AGENT_BASE    := $(REGISTRY)/agent-base:$(TAG)
-IMG_MCP_BASE      := $(REGISTRY)/mcp-base:$(TAG)
-
-ext-authz-image: ## [deprecated] build ext-authz via Kaniko — use GHA release workflow
-	$(KANIKO) services/ext-authz/Dockerfile $(IMG_EXT_AUTHZ)
-
-auth-image: ## [deprecated] build auth via Kaniko
-	$(KANIKO) services/auth/Dockerfile $(IMG_AUTH)
-
-deploy-api-image: ## [deprecated] build deploy-api via Kaniko
-	$(KANIKO) services/deploy-api/Dockerfile $(IMG_DEPLOY_API)
-
-agent-base-image: ## [deprecated] build agent-base via Kaniko
-	$(KANIKO) runtimes/agent-base/Dockerfile $(IMG_AGENT_BASE)
-
-mcp-base-image: ## [deprecated] build mcp-base via Kaniko
-	$(KANIKO) runtimes/mcp-base/Dockerfile $(IMG_MCP_BASE)
-
-IMG_BACKEND       := $(REGISTRY)/backend:$(TAG)
-
-backend-image: ## [deprecated] build backend via Kaniko
-	$(KANIKO) backend/Dockerfile $(IMG_BACKEND)
-
-images: ext-authz-image auth-image deploy-api-image agent-base-image mcp-base-image backend-image ## [deprecated] Kaniko — use GHA release workflow
 
 registry-secret: ensure-namespace ## create/update GHCR pull secret (GITHUB_USER= GITHUB_PAT=)
 	@test -n "$(GITHUB_USER)" -a -n "$(GITHUB_PAT)" \
@@ -115,12 +78,6 @@ ensure-jwt-secret: ensure-namespace ## create jwt-keys secret only if it does no
 	@kubectl -n $(NAMESPACE) get secret jwt-keys >/dev/null 2>&1 \
 		&& echo "jwt-keys already exists, skipping key generation" \
 		|| $(MAKE) jwt-secret
-
-git-secret: ## create/update GitHub token secret for Kaniko  (GIT_TOKEN=<token> make git-secret)
-	kubectl create secret generic git-creds \
-		--namespace $(NAMESPACE) \
-		--from-literal=token=$(GIT_TOKEN) \
-		--dry-run=client -o yaml | kubectl apply -f -
 
 ncr-secret: registry-secret ## deprecated alias — use registry-secret (GHCR)
 

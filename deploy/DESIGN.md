@@ -36,7 +36,15 @@ deploy/k8s/
 
 ```bash
 make k8s-apply-dev
-make k8s-rollout-restart   # Release 후 :latest pull
+make k8s-rollout-restart   # GHA 빌드 후 :latest pull
+```
+
+이미지 빌드 (GHCR push):
+
+```bash
+gh workflow run "Build and push images" --ref main
+# backend만 반영 시
+kubectl -n runtime rollout restart deployment/backend
 ```
 
 `k8s-apply-*`는 overlay 한 번으로 **Garage + runtime 스택**을 함께 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
@@ -105,9 +113,8 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 ## 컨테이너 이미지 (GHCR)
 
 - **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:latest` (+ commit SHA tag)
-- **빌드**: GitHub Actions on Release publish (`.github/workflows/build-images.yml`) — push마다 빌드하지 않음
+- **빌드**: GitHub Actions (`.github/workflows/build-images.yml`) — Release publish 또는 `workflow_dispatch`
 - **dev overlay**: base `agents-runtime/*` → GHCR remap, `imagePullSecrets: registry-creds` (private GHCR 시)
-- **Kaniko / NCR**: deprecated — Makefile `make images`는 legacy
 
 ## Ingress 호스트
 
