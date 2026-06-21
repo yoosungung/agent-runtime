@@ -1010,16 +1010,15 @@ async def delete_source_meta(
     settings: Settings = Depends(get_settings),
     principal: Principal = Depends(get_principal),
 ) -> None:
-    result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
-    row = result.scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="source_meta not found")
-
-    if not settings.ALLOW_HARD_DELETE and row.deploy_mode != "general":
+    if not settings.ALLOW_HARD_DELETE:
         raise HTTPException(
             status_code=403, detail="Hard delete not allowed (ALLOW_HARD_DELETE=false)"
         )
 
+    result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="source_meta not found")
     _ensure_can_write_source_meta(row, principal)
 
     checksum = row.checksum
