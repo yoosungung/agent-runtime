@@ -13,6 +13,8 @@ from fastapi.responses import StreamingResponse
 from opentelemetry.metrics import Observation
 from pydantic import BaseModel
 
+from mcp_base.runner import list_prompts as runner_list_prompts
+from mcp_base.runner import list_resources as runner_list_resources
 from mcp_base.runner import list_tools as runner_list_tools
 from mcp_base.runner import run
 from mcp_base.settings import Settings
@@ -121,18 +123,23 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok", "kind": app.state.settings.runtime_kind}
 
 
-@app.get("/tools")
-async def list_tools(server: str, version: str | None = None) -> dict:
-    """List tools exposed by a loaded MCP server bundle.
-
-    Loads the bundle for the given server (using the same BundleLoader cache),
-    instantiates the server with no user config, and queries its tool schema.
-    Returns {"tools": [...]} where each item has at least "name".
-    """
+@app.get("/catalog")
+async def list_catalog(
+    request: Request,
+    server: str | None = None,
+    version: str | None = None,
+) -> dict:
+    """List tools, resources, and prompts for an MCP server bundle."""
     settings: Settings = app.state.settings
     deploy: DeployApiClient = app.state.deploy
     loader: BundleLoader = app.state.loader
     cache: InstanceCache = app.state.instance_cache
+
+    server = (server or request.headers.get("X-Mcp-Server") or "").strip()
+    if not server:
+        raise HTTPException(status_code=400, detail="server query param or X-Mcp-Server header required")
+    if version is None:
+        version = request.headers.get("X-Mcp-Version") or None
 
     try:
         resolved = await deploy.resolve(kind="mcp", name=server, version=version)
@@ -158,13 +165,28 @@ async def list_tools(server: str, version: str | None = None) -> dict:
         logger.error("bundle_import_failed", extra={"server": server, "error": str(exc)})
         raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
 
-    try:
-        tools = await runner_list_tools(settings.runtime_kind, instance)
-    except Exception as exc:
-        logger.warning("tools_list_failed", extra={"server": server, "error": str(exc)})
-        tools = []
+    kind = settings.runtime_kind
+    tools = await _safe_list(runner_list_tools, kind, instance, server, "tools")
+    resources = await _safe_list(runner_list_resources, kind, instance, server, "resources")
+    prompts = await _safe_list(runner_list_prompts, kind, instance, server, "prompts")
+    return {"tools": tools, "resources": resources, "prompts": prompts}
 
-    return {"tools": tools}
+
+async def _safe_list(
+    fn: Any,
+    kind: str,
+    instance: Any,
+    server: str,
+    surface: str,
+) -> list[dict]:
+    try:
+        return await fn(kind, instance)
+    except Exception as exc:
+        logger.warning(
+            "catalog_list_failed",
+            extra={"server": server, "surface": surface, "error": str(exc)},
+        )
+        return []
 
 
 @app.get("/readyz")

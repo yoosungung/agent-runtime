@@ -1751,7 +1751,7 @@ async def test_create_general_agent_201(client: AsyncClient):
 
     settings = get_settings()
 
-    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/search-server/tools").mock(
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/search-server/catalog").mock(
         return_value=Response(
             200,
             json={
@@ -1801,7 +1801,7 @@ async def test_create_general_agent_duplicate_409(client: AsyncClient):
 
     settings = get_settings()
 
-    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/tools").mock(
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/catalog").mock(
         return_value=Response(200, json={"tools": [{"name": "t", "description": ""}]})
     )
     payload = {
@@ -1867,7 +1867,7 @@ async def test_create_general_agent_sets_visibility_and_owner(client: AsyncClien
     from backend.deps import get_settings
 
     settings = get_settings()
-    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/tools").mock(
+    respx.get(f"{settings.ENVOY_URL}/v1/mcp/servers/s/catalog").mock(
         return_value=Response(200, json={"tools": [{"name": "t", "description": ""}]})
     )
 

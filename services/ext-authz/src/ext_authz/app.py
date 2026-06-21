@@ -62,7 +62,20 @@ _ROUTE_TABLE: list[tuple[str, str, str, str]] = [
 ]
 
 
+def _parse_mcp_catalog_path(path: str) -> str | None:
+    """Return server name from ``/v1/mcp/servers/{name}/catalog``."""
+    base = path.split("?", 1)[0]
+    prefix = "/v1/mcp/servers/"
+    suffix = "/catalog"
+    if not base.startswith(prefix) or not base.endswith(suffix):
+        return None
+    name = base[len(prefix) : -len(suffix)]
+    return name if name and "/" not in name else None
+
+
 def _match_route(path: str, settings: Settings) -> _RouteMatch | None:
+    if _parse_mcp_catalog_path(path) is not None:
+        return _RouteMatch(kind="mcp", grace_sec=0, mode="catalog")
     for prefix, kind, grace_mode, mode in _ROUTE_TABLE:
         if path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?"):
             grace = settings.mcp_internal_grace_sec if grace_mode == "internal" else 0
@@ -70,18 +83,24 @@ def _match_route(path: str, settings: Settings) -> _RouteMatch | None:
     return None
 
 
-def _stream_ok_headers(
+def _mcp_relay_headers(
     addr: str,
     fallback: str,
     principal: Principal,
     *,
     grace_sec: int,
+    server: str | None = None,
+    version: str | None = None,
 ) -> dict[str, str]:
     headers = {
         "x-pod-addr": addr,
         "x-pod-fallback-addr": fallback,
         "x-mcp-principal": principal.sub,
     }
+    if server:
+        headers["x-mcp-server"] = server
+    if version:
+        headers["x-mcp-version"] = version
     if grace_sec > 0 and principal.grace_applied:
         headers["x-grace-applied"] = "1"
     return headers
@@ -204,32 +223,8 @@ async def readyz() -> Response:
 
 
 @app.get("/v1/mcp/servers")
-async def list_servers(kind: str | None = None) -> dict:
-    """Proxy to deploy-api /v1/source-meta."""
-    settings: Settings = app.state.settings
-    try:
-        resp = await app.state.http.get(
-            f"{settings.deploy_api_url}/v1/source-meta",
-            params={"kind": kind or "mcp"},
-        )
-        resp.raise_for_status()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"deploy-api error: {exc}") from exc
-
-    servers = [
-        {
-            "name": s.get("name"),
-            "version": s.get("version"),
-            "runtime_pool": s.get("runtime_pool"),
-        }
-        for s in resp.json()
-    ]
-    return {"servers": servers}
-
-
-@app.get("/v1/mcp/servers/{name}/tools")
-async def list_server_tools(name: str, request: Request, version: str | None = None) -> dict:
-    """Auth required. Resolve → warm pod pick → GET {pod}/tools."""
+async def list_servers(request: Request, kind: str | None = None) -> dict:
+    """Bearer required. List MCP servers the principal may access (name/version only)."""
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
@@ -242,42 +237,144 @@ async def list_server_tools(name: str, request: Request, version: str | None = N
     except Exception as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
 
-    if not principal.can_access("mcp", name):
-        raise HTTPException(status_code=403, detail=f"access denied to mcp server {name!r}")
-
-    try:
-        resolved = await app.state.deploy.resolve(kind="mcp", name=name, version=version)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"mcp server not found: {name}") from exc
-        raise HTTPException(status_code=502, detail="deploy-api error") from exc
-
-    source = resolved.source
-    _, _, runtime_kind = source.runtime_pool.partition(":")
+    allowed = {r.name for r in principal.access if r.kind == "mcp"}
+    if not allowed:
+        return {"servers": []}
 
     settings: Settings = app.state.settings
-    pool_url = settings.mcp_pool_url(runtime_kind)
-    if not pool_url:
-        raise HTTPException(status_code=502, detail=f"no pool for runtime_kind: {runtime_kind}")
-    warm_url = await app.state.mcp_scheduler.pick(
-        runtime_kind=runtime_kind,
-        checksum=source.checksum,
-        ring_key=f"{name}:{version or ''}:{source.checksum or ''}",
-        pool_fallback_url=pool_url,
-    )
-    target = warm_url or pool_url
-
-    params: dict = {"server": name}
-    if version:
-        params["version"] = version
-
     try:
-        resp = await app.state.http.get(f"{target}/tools", params=params)
+        resp = await app.state.http.get(
+            f"{settings.deploy_api_url}/v1/source-meta",
+            params={"kind": kind or "mcp"},
+        )
         resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"pool tools error: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"deploy-api error: {exc}") from exc
 
-    return resp.json()
+    servers = [
+        {"name": s.get("name"), "version": s.get("version")}
+        for s in resp.json()
+        if s.get("name") in allowed
+    ]
+    return {"servers": servers}
+
+
+async def _check_mcp_named_server(
+    *,
+    name: str,
+    version: str | None,
+    token: str,
+    grace_sec: int,
+    settings: Settings,
+) -> Response:
+    with tracer.start_as_current_span("auth.verify") as span:
+        span.set_attribute("kind", "mcp")
+        span.set_attribute("grace_sec", grace_sec)
+        try:
+            principal = await app.state.auth.verify(token, grace_sec=grace_sec)
+        except Exception as exc:
+            span.set_attribute("error", str(exc))
+            logger.info("auth_verify_failed", extra={"kind": "mcp", "name": name, "error": str(exc)})
+            return _deny(401, "invalid token")
+
+    with tracer.start_as_current_span("access.check") as span:
+        span.set_attribute("kind", "mcp")
+        span.set_attribute("name", name)
+        span.set_attribute("principal", principal.sub)
+        if not principal.can_access("mcp", name):
+            span.set_attribute("denied", True)
+            return _deny(403, f"access denied to mcp {name!r}")
+
+    if not app.state.principal_limiter.allow(principal.sub):
+        return _deny(429, "rate limit exceeded for principal")
+    if not app.state.resource_limiter.allow(f"mcp:{name}"):
+        return _deny(429, "rate limit exceeded for mcp")
+
+    with tracer.start_as_current_span("deploy.resolve") as span:
+        span.set_attribute("kind", "mcp")
+        span.set_attribute("name", name)
+        try:
+            resolved = await app.state.deploy.resolve(
+                kind="mcp", name=name, version=version, principal=principal.sub
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return _deny(404, f"mcp not found: {name}")
+            logger.warning("deploy_resolve_error", extra={"error": str(exc)})
+            return _deny(502, "deploy-api error")
+        except Exception as exc:
+            logger.warning("deploy_resolve_error", extra={"error": str(exc)})
+            return _deny(502, "deploy-api error")
+
+    source = resolved.source
+    try:
+        pool_id = parse_runtime_pool(source.runtime_pool)
+    except ValueError:
+        return _deny(502, f"invalid runtime_pool: {source.runtime_pool}")
+
+    if pool_id.is_image_mode:
+        pool_url = settings.image_mode_pool_url(pool_id.kind, pool_id.slug)
+        addr = _strip_scheme(pool_url)
+        return Response(
+            status_code=200,
+            headers=_mcp_relay_headers(
+                addr,
+                addr,
+                principal,
+                grace_sec=grace_sec,
+                server=name,
+                version=version,
+            ),
+        )
+
+    pool_url = _pool_url("mcp", pool_id.runtime_kind, settings)
+    if not pool_url:
+        return _deny(502, f"no pool for runtime_kind: {pool_id.runtime_kind}")
+
+    ring_key = f"mcp:{name}:{version or ''}:{source.checksum or ''}"
+    with tracer.start_as_current_span("scheduler.pick") as span:
+        span.set_attribute("kind", "mcp")
+        span.set_attribute("runtime.pool", source.runtime_pool)
+        addr, fallback = await _pick_pool_addr(
+            app.state.mcp_scheduler,
+            runtime_kind=pool_id.runtime_kind,
+            checksum=source.checksum,
+            ring_key=ring_key,
+            pool_url=pool_url,
+        )
+
+    return Response(
+        status_code=200,
+        headers=_mcp_relay_headers(
+            addr,
+            fallback,
+            principal,
+            grace_sec=grace_sec,
+            server=name,
+            version=version,
+        ),
+    )
+
+
+async def _check_mcp_catalog(
+    request: Request,
+    *,
+    full_path: str,
+    token: str,
+    grace_sec: int,
+    settings: Settings,
+) -> Response:
+    name = _parse_mcp_catalog_path(full_path)
+    if name is None:
+        return _deny(400, "invalid catalog path")
+    version = request.query_params.get("version")
+    return await _check_mcp_named_server(
+        name=name,
+        version=version,
+        token=token,
+        grace_sec=grace_sec,
+        settings=settings,
+    )
 
 
 async def _check_mcp_stream(
@@ -325,72 +422,15 @@ async def _check_mcp_stream(
         )
         return Response(
             status_code=200,
-            headers=_stream_ok_headers(addr, fallback, principal, grace_sec=grace_sec),
+            headers=_mcp_relay_headers(addr, fallback, principal, grace_sec=grace_sec),
         )
 
-    assert name is not None
-    with tracer.start_as_current_span("access.check") as span:
-        span.set_attribute("kind", "mcp")
-        span.set_attribute("name", name)
-        span.set_attribute("principal", principal.sub)
-        if not principal.can_access("mcp", name):
-            span.set_attribute("denied", True)
-            return _deny(403, f"access denied to mcp {name!r}")
-
-    if not app.state.principal_limiter.allow(principal.sub):
-        return _deny(429, "rate limit exceeded for principal")
-    if not app.state.resource_limiter.allow(f"mcp:{name}"):
-        return _deny(429, "rate limit exceeded for mcp")
-
-    with tracer.start_as_current_span("deploy.resolve") as span:
-        span.set_attribute("kind", "mcp")
-        span.set_attribute("name", name)
-        try:
-            resolved = await app.state.deploy.resolve(
-                kind="mcp", name=name, version=version, principal=principal.sub
-            )
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                return _deny(404, f"mcp not found: {name}")
-            logger.warning("deploy_resolve_error", extra={"error": str(exc)})
-            return _deny(502, "deploy-api error")
-        except Exception as exc:
-            logger.warning("deploy_resolve_error", extra={"error": str(exc)})
-            return _deny(502, "deploy-api error")
-
-    source = resolved.source
-    try:
-        pool_id = parse_runtime_pool(source.runtime_pool)
-    except ValueError:
-        return _deny(502, f"invalid runtime_pool: {source.runtime_pool}")
-
-    if pool_id.is_image_mode:
-        pool_url = settings.image_mode_pool_url(pool_id.kind, pool_id.slug)
-        addr = _strip_scheme(pool_url)
-        return Response(
-            status_code=200,
-            headers=_stream_ok_headers(addr, addr, principal, grace_sec=grace_sec),
-        )
-
-    pool_url = _pool_url("mcp", pool_id.runtime_kind, settings)
-    if not pool_url:
-        return _deny(502, f"no pool for runtime_kind: {pool_id.runtime_kind}")
-
-    ring_key = f"mcp:{name}:{version or ''}:{source.checksum or ''}"
-    with tracer.start_as_current_span("scheduler.pick") as span:
-        span.set_attribute("kind", "mcp")
-        span.set_attribute("runtime.pool", source.runtime_pool)
-        addr, fallback = await _pick_pool_addr(
-            app.state.mcp_scheduler,
-            runtime_kind=pool_id.runtime_kind,
-            checksum=source.checksum,
-            ring_key=ring_key,
-            pool_url=pool_url,
-        )
-
-    return Response(
-        status_code=200,
-        headers=_stream_ok_headers(addr, fallback, principal, grace_sec=grace_sec),
+    return await _check_mcp_named_server(
+        name=name,
+        version=version,
+        token=token,
+        grace_sec=grace_sec,
+        settings=settings,
     )
 
 
@@ -435,6 +475,15 @@ async def check(path: str, request: Request) -> Response:
     if route.mode == "stream":
         return await _check_mcp_stream(
             request, grace_sec=route.grace_sec, token=token, settings=settings
+        )
+
+    if route.mode == "catalog":
+        return await _check_mcp_catalog(
+            request,
+            full_path=full_path,
+            token=token,
+            grace_sec=route.grace_sec,
+            settings=settings,
         )
 
     kind, grace_sec = route.kind, route.grace_sec

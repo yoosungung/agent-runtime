@@ -102,7 +102,7 @@
 
 세 체계는 `source_meta` 테이블에 공존 — `deploy_mode ∈ {bundle, general, image}`.
 
-**General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/tools`로 tool manifest를 조회해 `config.general.mcp_tools`에 캐시. 런타임은 agent-base 내장 factory + VFS(`vfs_agent_files`, `vfs_user_files`).
+**General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/catalog`로 tool manifest(`tools` 키)를 조회해 `config.general.mcp_tools`에 캐시. 응답에는 `resources`/`prompts`도 포함.
 
 **불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config`/`user_meta_template` 오기재 수정만 허용(감사 로그에 before/after 기록).
 

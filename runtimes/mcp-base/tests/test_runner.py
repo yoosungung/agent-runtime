@@ -178,6 +178,34 @@ class TestListTools:
         result = await list_tools(McpRuntimeKind.CUSTOM, instance)
         assert result == []
 
+    async def test_list_resources_returns_empty_when_unsupported(self):
+        from mcp_base.runner import list_resources
+
+        instance = MagicMock(spec=[])
+        assert await list_resources(McpRuntimeKind.FASTMCP, instance) == []
+
+    async def test_list_resources_from_method(self):
+        from types import SimpleNamespace
+
+        from mcp_base.runner import list_resources
+
+        item = SimpleNamespace(name="doc://readme", description="Readme")
+        instance = AsyncMock()
+        instance.list_resources.return_value = [item]
+        result = await list_resources(McpRuntimeKind.MCP_SDK, instance)
+        assert result == [{"name": "doc://readme", "description": "Readme"}]
+
+    async def test_list_prompts_from_method(self):
+        from types import SimpleNamespace
+
+        from mcp_base.runner import list_prompts
+
+        item = SimpleNamespace(name="summarize", description="Summarize text")
+        instance = AsyncMock()
+        instance.list_prompts.return_value = [item]
+        result = await list_prompts(McpRuntimeKind.CUSTOM, instance)
+        assert result == [{"name": "summarize", "description": "Summarize text"}]
+
     async def test_unknown_kind_raises(self):
         instance = MagicMock()
         with pytest.raises(ValueError, match="unsupported"):

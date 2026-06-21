@@ -323,68 +323,65 @@ def _auth_headers(token: str = "good") -> dict[str, str]:
 
 class TestMcpServers:
     @respx.mock
-    def test_proxies_to_deploy_api(self, client: TestClient) -> None:
+    def test_lists_accessible_servers_name_version_only(self, client: TestClient) -> None:
         respx.get(f"{DEPLOY_API_BASE}/v1/source-meta").mock(
             return_value=httpx.Response(
                 200,
-                json=[{"name": "rag", "version": "v1", "runtime_pool": "mcp:fastmcp"}],
+                json=[
+                    {"name": "rag", "version": "v1", "runtime_pool": "mcp:fastmcp"},
+                    {"name": "other", "version": "v1", "runtime_pool": "mcp:fastmcp"},
+                ],
             )
         )
-        r = client.get("/v1/mcp/servers")
+        r = client.get("/v1/mcp/servers", headers=_auth_headers())
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["servers"][0]["name"] == "rag"
+        assert data["servers"] == [{"name": "rag", "version": "v1"}]
 
     @respx.mock
     def test_502_on_deploy_api_error(self, client: TestClient) -> None:
         respx.get(f"{DEPLOY_API_BASE}/v1/source-meta").mock(
             return_value=httpx.Response(500, text="oops")
         )
-        r = client.get("/v1/mcp/servers")
+        r = client.get("/v1/mcp/servers", headers=_auth_headers())
         assert r.status_code == 502
 
-    @respx.mock
-    def test_no_auth_required(self, client: TestClient) -> None:
-        respx.get(f"{DEPLOY_API_BASE}/v1/source-meta").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        r = client.get("/v1/mcp/servers")
-        assert r.status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# TestMcpServerTools
-# ---------------------------------------------------------------------------
-
-
-class TestMcpServerTools:
-    @respx.mock
-    def test_returns_tools_for_authorised_principal(self, client: TestClient) -> None:
-        respx.get(f"{POOL_WARM_BASE}/tools").mock(
-            return_value=httpx.Response(200, json={"tools": [{"name": "search"}]})
-        )
-        r = client.get("/v1/mcp/servers/rag/tools", headers=_auth_headers())
-        assert r.status_code == 200, r.text
-        assert r.json()["tools"][0]["name"] == "search"
-
     def test_401_missing_token(self, client: TestClient) -> None:
-        r = client.get("/v1/mcp/servers/rag/tools")
+        r = client.get("/v1/mcp/servers")
         assert r.status_code == 401
 
     def test_401_bad_token(self, client: TestClient) -> None:
-        r = client.get("/v1/mcp/servers/rag/tools", headers=_auth_headers("bad"))
+        r = client.get("/v1/mcp/servers", headers=_auth_headers("bad"))
+        assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# TestMcpCatalog
+# ---------------------------------------------------------------------------
+
+
+class TestMcpCatalog:
+    def test_check_returns_catalog_relay_headers(self, client: TestClient) -> None:
+        r = client.get("/v1/mcp/servers/rag/catalog", headers=_auth_headers())
+        assert r.status_code == 200, r.text
+        assert r.headers["x-pod-addr"] == "10.1.2.3:8080"
+        assert r.headers["x-mcp-server"] == "rag"
+        assert r.headers["x-mcp-principal"] == "u_42"
+        assert "x-principal" not in r.headers
+
+    def test_401_missing_token(self, client: TestClient) -> None:
+        r = client.get("/v1/mcp/servers/rag/catalog")
+        assert r.status_code == 401
+
+    def test_401_bad_token(self, client: TestClient) -> None:
+        r = client.get("/v1/mcp/servers/rag/catalog", headers=_auth_headers("bad"))
         assert r.status_code == 401
 
     def test_403_no_access(self, client: TestClient) -> None:
-        # "other" is not in the principal's access list
-        r = client.get("/v1/mcp/servers/other/tools", headers=_auth_headers())
+        r = client.get("/v1/mcp/servers/other/catalog", headers=_auth_headers())
         assert r.status_code == 403
 
-    @respx.mock
     def test_404_server_not_found(self, client: TestClient) -> None:
-        # _FakeDeploy raises 404 when name=="missing", but "missing" is not
-        # in the principal's access list so we'd get 403 first.  Override access
-        # by using a name that IS in access but patch deploy to return 404.
         fake_deploy: _FakeDeploy = app_module.app.state.deploy
 
         async def _resolve_404(
@@ -399,7 +396,7 @@ class TestMcpServerTools:
         original = fake_deploy.resolve
         fake_deploy.resolve = _resolve_404  # type: ignore[method-assign]
         try:
-            r = client.get("/v1/mcp/servers/rag/tools", headers=_auth_headers())
+            r = client.get("/v1/mcp/servers/rag/catalog", headers=_auth_headers())
             assert r.status_code == 404
         finally:
             fake_deploy.resolve = original  # type: ignore[method-assign]

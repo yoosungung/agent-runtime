@@ -108,3 +108,57 @@ async def list_tools(kind: str, instance: Any) -> list[dict]:
 
         case _:
             raise ValueError(f"unsupported mcp runtime kind: {kind!r}")
+
+
+def _serialize_mcp_items(raw: Any, *, items_attr: str = "tools") -> list[dict]:
+    if isinstance(raw, list):
+        items = raw
+    elif hasattr(raw, items_attr):
+        items = getattr(raw, items_attr)
+    else:
+        return []
+
+    result: list[dict] = []
+    for item in items:
+        if isinstance(item, dict):
+            result.append(item)
+            continue
+        if not hasattr(item, "name"):
+            continue
+        entry: dict[str, Any] = {
+            "name": item.name,
+            "description": getattr(item, "description", "") or "",
+        }
+        for schema_key in ("inputSchema", "uriTemplate", "mimeType"):
+            if hasattr(item, schema_key):
+                value = getattr(item, schema_key)
+                if hasattr(value, "model_dump"):
+                    value = value.model_dump()
+                entry[schema_key] = value
+        result.append(entry)
+    return result
+
+
+async def _list_via_method(kind: str, instance: Any, method: str, *, items_attr: str) -> list[dict]:
+    if not hasattr(instance, method):
+        return []
+    raw = await getattr(instance, method)()
+    return _serialize_mcp_items(raw, items_attr=items_attr)
+
+
+async def list_resources(kind: str, instance: Any) -> list[dict]:
+    """Return resource descriptors for the given MCP server instance."""
+    match kind:
+        case McpRuntimeKind.FASTMCP | McpRuntimeKind.MCP_SDK | McpRuntimeKind.CUSTOM:
+            return await _list_via_method(kind, instance, "list_resources", items_attr="resources")
+        case _:
+            raise ValueError(f"unsupported mcp runtime kind: {kind!r}")
+
+
+async def list_prompts(kind: str, instance: Any) -> list[dict]:
+    """Return prompt descriptors for the given MCP server instance."""
+    match kind:
+        case McpRuntimeKind.FASTMCP | McpRuntimeKind.MCP_SDK | McpRuntimeKind.CUSTOM:
+            return await _list_via_method(kind, instance, "list_prompts", items_attr="prompts")
+        case _:
+            raise ValueError(f"unsupported mcp runtime kind: {kind!r}")

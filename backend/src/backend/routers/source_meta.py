@@ -125,7 +125,7 @@ async def _discover_mcp_tools(
         for server in mcp_servers:
             try:
                 resp = await client.get(
-                    f"{base}/v1/mcp/servers/{server}/tools",
+                    f"{base}/v1/mcp/servers/{server}/catalog",
                     headers=headers,
                 )
                 resp.raise_for_status()
