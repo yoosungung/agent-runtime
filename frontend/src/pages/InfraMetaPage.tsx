@@ -88,7 +88,7 @@ export function InfraMetaPage() {
 
   return (
     <FormPageLayout
-      title="Platform Infra"
+      title="Platform"
       description="Common pool pod settings (Opik, LLM defaults, observability). Additional env vars can be set via PUT /api/infra-meta."
     >
       <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">

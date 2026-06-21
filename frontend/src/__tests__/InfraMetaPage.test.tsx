@@ -46,7 +46,7 @@ describe("InfraMetaPage", () => {
         <InfraMetaPage />
       </QueryClientProvider>,
     );
-    expect(screen.getByText("Platform Infra")).toBeInTheDocument();
+    expect(screen.getByText("Platform")).toBeInTheDocument();
     expect(screen.getByText("Opik URL")).toBeInTheDocument();
     expect(screen.getByText("(configured)")).toBeInTheDocument();
     expect(screen.getByText("Frontier (cloud API)")).toBeInTheDocument();

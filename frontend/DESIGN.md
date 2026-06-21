@@ -76,7 +76,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /me/user-meta/:kind/:name              본인 user_meta 편집 (template 기반 폼)
 /chat                                  agent 선택 → 대화 (SSE 스트리밍)
 /bundle/bucket                          admin: bundle object store 브라우저 (S3 또는 local); `/bucket` → redirect
-/settings/infra                        admin: Platform Infra env
+/settings/infra                        admin: Platform env (LLM·Opik·OTLP)
 /users                                 admin: 사용자 관리
 /audit                                 admin: 감사 로그
 ```
@@ -176,7 +176,8 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - invoke 흐름: `GET /api/auth/access-token` → `POST ${VITE_AGENTS_INVOKE_URL}`(기본 `/v1/agents/invoke`) body `{agent, input: {message}, session_id, stream: true}` + Bearer/`x-runtime-name`/`x-runtime-session-id` 헤더. Ingress → Envoy → ext-authz → pool.
 - 응답은 `text/event-stream`. agent-base emit 포맷(runtime_kind별 LangGraph/ADK/CUSTOM)을 `lib/chatStream.ts`의 `extractTextFromAgentEvent()`로 UI용 텍스트 델타로 정규화(BFF `/api/chat/invoke`에 있던 규칙과 동일). `[DONE]`·`{"error":…}`·BFF 레거시 `{"text":…}` 모두 처리.
 - 파싱은 fetch + `ReadableStream`(`lib/agentsInvoke.ts`). `\n\n` 단위 버퍼링.
-- `session_id`는 페이지 진입 시 `crypto.randomUUID()`로 발급해 동일 대화 동안 재사용. "New Chat" 버튼이 abort + 새 UUID + messages 초기화. 새로고침에 유지할 필요 있으면 localStorage(JWT와 달리 민감정보 아님).
+- `session_id`는 페이지 진입 시 `crypto.randomUUID()`로 발급해 동일 대화 동안 재사용. "New Chat" 버튼이 abort + 새 UUID + messages 초기화.
+- **Recent Chats / `agents_chat_sessions` localStorage는 임시 UI** — 향후 삭제 예정. agent 대화 연속성의 정본은 pool `session_id` → Postgres checkpoint/ADK session (BFF 세션 API는 후속).
 
 **Frontend env**
 
