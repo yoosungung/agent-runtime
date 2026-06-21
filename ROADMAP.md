@@ -13,6 +13,8 @@
 
 ### 설계 결정 필요
 
+- [ ] **BundleLoader scoped namespace import** — performance report §6.2. `importlib` 전역 `sys.path`/`sys.modules` 대신 checksum 격리 loader(예: `importlib.machinery.ModuleSpec` + 전용 namespace) 도입 검토. **현재 보류**: reload 제거·LRU evict 시 `sys.modules`/disk 정리·checksum-scoped entry module name으로 단기 완화만 적용.
+
 - [ ] **api_keys 활성화** — `_verify_api_key`가 `access=[]` 반환해 모든 invoke 403. ACL 방식 셋 중 하나 결정 후 구현:
   - `api_key_resource_access(api_key_id, kind, name)` 테이블 신설 (가장 대칭적)
   - `tenant` 기반 ACL (단순, 세밀도 낮음)

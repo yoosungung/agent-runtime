@@ -154,8 +154,8 @@ router            →  pool_dfp cluster
 
 | 경로 | ext_authz | 목적지 | 비고 |
 |---|---|---|---|
+| `POST /v1/mcp/stream` | 활성 | `pool_dfp` + `/mcp` rewrite | MCP JSON-RPC/SSE — ext-authz check() 후 Envoy relay |
 | `GET /v1/mcp/servers*` | 비활성(per-route) | `ext_authz_direct` | MCP 서버 목록/도구 조회 |
-| `POST /v1/mcp/stream` | 비활성(per-route) | `ext_authz_direct` | MCP JSON-RPC 스트리밍 |
 | `/v1/agents/*` | 활성 | `pool_dfp` + retry | agent invoke. `:path` → `/invoke` rewrite |
 | `/v1/mcp/*` | 활성 | `pool_dfp` | mcp invoke. `:path` → `/invoke` rewrite |
 | `/healthz` | — | direct 200 | |

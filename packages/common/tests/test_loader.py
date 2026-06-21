@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import zipfile
+from pathlib import Path
 
 import pytest
 import respx
@@ -203,6 +204,61 @@ def test_entrypoint_missing_colon_raises(tmp_path):
     bad_meta = _meta(bundle_uri=f"file://{zip_path}", entrypoint="no_colon_here", name="nocolon")
     with pytest.raises(BundleFetchError, match="entrypoint must be"):
         loader.load(bad_meta)
+
+
+def test_evict_cleans_sys_modules_and_disk(tmp_path):
+    import sys
+
+    cache_dir = str(tmp_path / "cache")
+    loader = BundleLoader(cache_dir=cache_dir, max_entries=1)
+
+    bytes_a = _make_zip({"mod_a.py": "MARKER = 'a'\ndef factory(): return MARKER\n"})
+    path_a = tmp_path / "bundle_a.zip"
+    path_a.write_bytes(bytes_a)
+    cs_a = "sha256:" + hashlib.sha256(bytes_a).hexdigest()
+    meta_a = SourceMeta(
+        kind="agent",
+        name="agent-a",
+        version="v1",
+        runtime_pool="agent:custom",
+        entrypoint="mod_a:factory",
+        bundle_uri=f"file://{path_a}",
+        checksum=cs_a,
+    )
+
+    bytes_b = _make_zip({"mod_b.py": "def factory(): return 'B'\n"})
+    path_b = tmp_path / "bundle_b.zip"
+    path_b.write_bytes(bytes_b)
+    cs_b = "sha256:" + hashlib.sha256(bytes_b).hexdigest()
+    meta_b = SourceMeta(
+        kind="agent",
+        name="agent-b",
+        version="v1",
+        runtime_pool="agent:custom",
+        entrypoint="mod_b:factory",
+        bundle_uri=f"file://{path_b}",
+        checksum=cs_b,
+    )
+
+    loader.load(meta_a)
+    bundle_dir_a = loader._bundle_dirs[cs_a]
+    assert bundle_dir_a.exists()
+    assert any(
+        getattr(mod, "__file__", None)
+        and str(Path(mod.__file__).resolve()).startswith(str(bundle_dir_a.resolve()))
+        for mod in sys.modules.values()
+        if mod is not None
+    )
+
+    loader.load(meta_b)
+    assert cs_a not in loader.warm_checksums()
+    assert not bundle_dir_a.exists()
+    assert not any(
+        getattr(mod, "__file__", None)
+        and str(Path(mod.__file__).resolve()).startswith(str(bundle_dir_a.resolve()))
+        for mod in sys.modules.values()
+        if mod is not None
+    )
 
 
 def test_cache_eviction_max_entries_one(tmp_path):
@@ -449,7 +505,12 @@ def test_signature_skipped_when_disabled(tmp_path):
     zip_path.write_bytes(bundle_bytes)
     checksum = "sha256:" + hashlib.sha256(bundle_bytes).hexdigest()
 
-    meta = _meta(bundle_uri=f"file://{zip_path}", checksum=checksum, name="skip-sig")
+    meta = _meta(
+        bundle_uri=f"file://{zip_path}",
+        checksum=checksum,
+        name="skip-sig",
+        entrypoint="sk_mod:factory",
+    )
     loader = BundleLoader(cache_dir=str(tmp_path / "cache"), max_entries=8)
     assert loader.load(meta)() is not None
 

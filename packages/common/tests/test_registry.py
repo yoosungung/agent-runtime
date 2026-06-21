@@ -31,11 +31,9 @@ async def test_active_counter_acquire_release():
     assert counter.active == 2
 
     counter.release()
-    await asyncio.sleep(0)  # let _dec task run
     assert counter.active == 1
 
     counter.release()
-    await asyncio.sleep(0)
     assert counter.active == 0
 
 
@@ -44,7 +42,6 @@ async def test_active_counter_context_manager():
     counter = ActiveCounter(max_concurrent=3)
     async with counter:
         assert counter.active == 1
-    await asyncio.sleep(0)
     assert counter.active == 0
 
 
@@ -59,10 +56,8 @@ async def test_active_counter_blocks_at_max():
     assert not task.done()
 
     counter.release()
-    await asyncio.sleep(0)
-    await task  # now it should complete
+    await task
     counter.release()
-    await asyncio.sleep(0)
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +285,20 @@ async def test_subscriber_ttl_reaper():
 async def test_subscriber_healthy_false_initially():
     subscriber = RegistrySubscriber(redis_url="redis://localhost", kind="agent")
     assert not subscriber.healthy()
+
+
+@pytest.mark.asyncio
+async def test_subscriber_reconcile_skips_bootstrap_when_healthy(monkeypatch):
+    subscriber = RegistrySubscriber(redis_url="redis://localhost", kind="agent")
+    subscriber._healthy = True
+    bootstrap = AsyncMock()
+    monkeypatch.setattr(subscriber, "_bootstrap", bootstrap)
+
+    subscriber._reconcile_interval = 0.01
+    task = asyncio.create_task(subscriber._reconcile_loop())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    bootstrap.assert_not_called()

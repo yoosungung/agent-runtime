@@ -3,7 +3,8 @@
 Envoy **HTTP ext_authz** 서비스. agent/mcp 통합 단일 서비스. 역할은 두 가지:
 
 1. **스케줄러** (`/{path:path}` catch-all) — auth + access + resolve + pod pick. 바디 릴레이는 Envoy(C++)가 담당.
-2. **MCP 발견·스트림 프록시** (`GET /v1/mcp/servers*`, `POST /v1/mcp/stream`) — Envoy의 ext_authz 필터를 우회해 ext-authz가 직접 처리.
+2. **MCP 발견 프록시** (`GET /v1/mcp/servers*`) — Envoy ext_authz 필터 우회, ext-authz가 직접 처리.
+3. **MCP stream auth** (`POST /v1/mcp/stream`) — Envoy ext_authz `check()`로 auth·pick 후 **Envoy가 pool `/mcp`로 relay** (ext-authz는 데이터 plane 프록시 안 함).
 
 `kind` (agent | mcp)과 grace_sec (edge 0 / internal `MCP_INTERNAL_GRACE_SEC`)은 요청 경로(`:path`)로 판정한다.
 
@@ -38,20 +39,27 @@ Envoy **HTTP ext_authz** 서비스. agent/mcp 통합 단일 서비스. 역할은
 
 **Image 모드 라우팅 특성**: K8s Service DNS(`{kind}-pool-custom-{slug}.runtime.svc.cluster.local:8080`)로 직접 라우팅. warm-registry 미참여(모든 pod 동일 이미지 → 단순 LB). `minReplicas=1` 보장으로 endpoint가 항상 존재한다는 가정 유지.
 
-### MCP 발견 + 스트림 (`GET /v1/mcp/servers`, `GET /v1/mcp/servers/{name}/tools`, `POST /v1/mcp/stream`)
+### MCP 발견 (`GET /v1/mcp/servers`, `GET /v1/mcp/servers/{name}/tools`)
 
-Envoy가 이 경로를 `ext_authz_direct` 클러스터로 직접 라우팅한다(ext_authz 필터 비활성화 per-route).
+Envoy가 discovery 경로를 `ext_authz_direct` 클러스터로 직접 라우팅한다(ext_authz 필터 비활성화 per-route).
 
 - **`GET /v1/mcp/servers`**: deploy-api `/v1/source-meta?kind=mcp` 프록시. 인증 불필요.
 - **`GET /v1/mcp/servers/{name}/tools`**: Bearer 토큰 검증 → access 검사 → resolve → warm pod pick → pool `/tools` 프록시.
-- **`POST /v1/mcp/stream`**: Bearer 검증 → `X-Mcp-Server` 헤더로 서버 식별 → resolve → warm pod pick → pool `/mcp` 프록시(SSE 스트리밍 포함). 서버 헤더 없으면 JSON-RPC 2.0 `initialize` 응답 반환(MCP 프로토콜 핸드셰이크 지원).
+
+### MCP stream (`POST /v1/mcp/stream`)
+
+Envoy ext_authz 필터 **활성** — invoke와 동일하게 `check()`만 호출하고 **응답 body/SSE는 Envoy → pool passthrough**.
+
+- **`X-Mcp-Server` / `X-Mcp-Version`** 헤더로 서버 식별 (JSON-RPC body의 `server` 필드 사용 안 함).
+- 성공 시 `x-pod-addr`, `x-pod-fallback-addr`, **`x-mcp-principal`** 반환 → Envoy route가 path를 **`/mcp`** 로 rewrite 후 pool relay.
+- `initialize`만 있고 `X-Mcp-Server` 없으면 JWT 검증 후 **기본 mcp pool**(fastmcp Service)로 relay — handshake JSON은 pool `/mcp`가 응답.
 
 ### Envoy와의 계약
 
 - **ext_authz HTTP** 모드. `authorization_request.allowed_headers`: `authorization`, `content-type`, `x-*` 접두사.
 - `with_request_body.max_request_bytes: 65536`, `allow_partial_message: true` — 대용량 agent payload에서 413 방지.
-- `authorization_response.allowed_upstream_headers`: `x-pod-addr`, `x-pod-fallback-addr`, `x-principal`, `x-runtime-cfg`, `x-runtime-secrets-ref`, `x-source-checksum`, `x-source-version`, `x-grace-applied`.
-- MCP discovery/stream 라우트는 `typed_per_filter_config`로 ext_authz 필터 비활성화 + `ext_authz_direct` 클러스터로 직접 라우팅.
+- `authorization_response.allowed_upstream_headers`: invoke용 `x-pod-addr`, `x-principal`, … + stream용 **`x-mcp-principal`**.
+- MCP **discovery** (`/v1/mcp/servers*`)만 `ext_authz_direct` + 필터 비활성화. **`/v1/mcp/stream`은 ext_authz + `pool_dfp`(`/mcp` rewrite)**.
 
 ### Envoy 필터 체인 (invoke 경로)
 

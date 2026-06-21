@@ -70,11 +70,7 @@ class ActiveCounter:
 
     def release(self) -> None:
         self._sem.release()
-        asyncio.get_event_loop().create_task(self._dec())
-
-    async def _dec(self) -> None:
-        async with self._lock:
-            self._active -= 1
+        self._active = max(0, self._active - 1)
 
     async def __aenter__(self) -> ActiveCounter:
         await self.acquire()
@@ -402,7 +398,7 @@ class RegistrySubscriber:
     async def _reconcile_loop(self) -> None:
         while True:
             await asyncio.sleep(self._reconcile_interval)
-            if self._healthy:
+            if not self._healthy:
                 await self._bootstrap()
 
     async def _reaper_loop(self) -> None:

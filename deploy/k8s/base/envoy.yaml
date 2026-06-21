@@ -72,6 +72,7 @@ data:
                                   - exact: x-runtime-secrets-ref
                                   - exact: x-resolve
                                   - exact: x-grace-applied
+                                  - exact: x-mcp-principal
                               allowed_client_headers:
                                 patterns:
                                   - exact: content-type
@@ -136,8 +137,8 @@ data:
                                 retry_policy:
                                   retry_on: connect-failure,refused-stream
                                   num_retries: 1
-                            # Discovery + stream routes go directly to ext-authz (no ext_authz filter).
-                            # Must be declared before the /v1/mcp/ prefix catch-all below.
+                            # Discovery routes go directly to ext-authz (no ext_authz filter).
+                            # MCP stream uses ext_authz + pool_dfp (/mcp rewrite) like invoke.
                             - match: { prefix: "/v1/mcp/servers" }
                               route:
                                 cluster: ext_authz_direct
@@ -148,12 +149,14 @@ data:
                                   disabled: true
                             - match: { path: "/v1/mcp/stream" }
                               route:
-                                cluster: ext_authz_direct
+                                cluster: pool_dfp
                                 timeout: 0s
-                              typed_per_filter_config:
-                                envoy.filters.http.ext_authz:
-                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
-                                  disabled: true
+                                regex_rewrite:
+                                  pattern: { google_re2: {}, regex: ".*" }
+                                  substitution: "/mcp"
+                                retry_policy:
+                                  retry_on: connect-failure,refused-stream
+                                  num_retries: 1
                             - match: { prefix: "/v1/mcp/" }
                               route:
                                 cluster: pool_dfp

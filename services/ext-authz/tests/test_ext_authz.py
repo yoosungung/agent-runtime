@@ -411,6 +411,8 @@ class TestMcpServerTools:
 
 
 class TestMcpStream:
+    """POST /v1/mcp/stream — Envoy ext_authz check() only (pool relay via Envoy)."""
+
     def _stream_headers(self, server: str = "rag", token: str = "good") -> dict[str, str]:
         return {
             "Authorization": f"Bearer {token}",
@@ -442,23 +444,22 @@ class TestMcpStream:
         )
         assert r.status_code == 403
 
-    @respx.mock
-    def test_proxies_json_response(self, client: TestClient) -> None:
-        respx.post(f"{POOL_WARM_BASE}/mcp").mock(
-            return_value=httpx.Response(
-                200,
-                json={"jsonrpc": "2.0", "id": 1, "result": {"content": []}},
-            )
-        )
+    def test_check_returns_pod_headers_for_stream(self, client: TestClient) -> None:
         r = client.post(
             "/v1/mcp/stream",
             content=json.dumps({"jsonrpc": "2.0", "method": "tools/call", "id": 1}),
             headers=self._stream_headers(),
         )
         assert r.status_code == 200, r.text
-        assert r.json()["result"] == {"content": []}
+        assert r.headers["x-pod-addr"] == "10.1.2.3:8080"
+        assert (
+            r.headers["x-pod-fallback-addr"]
+            == "mcp-pool-fastmcp.runtime.svc.cluster.local:8080"
+        )
+        assert r.headers["x-mcp-principal"] == "u_42"
+        assert "x-principal" not in r.headers
 
-    def test_initialize_without_server_header(self, client: TestClient) -> None:
+    def test_initialize_handshake_routes_default_pool(self, client: TestClient) -> None:
         body = {"jsonrpc": "2.0", "method": "initialize", "id": 99}
         r = client.post(
             "/v1/mcp/stream",
@@ -469,24 +470,25 @@ class TestMcpStream:
             },
         )
         assert r.status_code == 200, r.text
-        data = r.json()
-        assert data["id"] == 99
-        assert "protocolVersion" in data["result"]
+        assert r.headers["x-pod-addr"] == "10.1.2.3:8080"
+        assert r.headers["x-mcp-principal"] == "u_42"
 
-    @respx.mock
-    def test_sse_streaming(self, client: TestClient) -> None:
-        sse_body = b"data: {}\n\n"
-        respx.post(f"{POOL_WARM_BASE}/mcp").mock(
-            return_value=httpx.Response(
-                200, content=sse_body, headers={"content-type": "text/event-stream"}
-            )
+    def test_missing_server_on_non_initialize_returns_400(self, client: TestClient) -> None:
+        r = client.post(
+            "/v1/mcp/stream",
+            content=json.dumps({"jsonrpc": "2.0", "method": "tools/call", "id": 1}),
+            headers={"Authorization": "Bearer good", "Content-Type": "application/json"},
         )
+        assert r.status_code == 400
+
+    def test_sse_accept_header_allowed(self, client: TestClient) -> None:
         r = client.post(
             "/v1/mcp/stream",
             content=json.dumps({"jsonrpc": "2.0", "method": "tools/call", "id": 2}),
             headers={**self._stream_headers(), "Accept": "text/event-stream"},
         )
         assert r.status_code == 200
+        assert "x-pod-addr" in r.headers
 
 
 class TestAgentInvoke:

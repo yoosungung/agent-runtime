@@ -257,3 +257,14 @@ class TestInvalidate:
 def test_max_entries_must_be_positive():
     with pytest.raises(ValueError, match="max_entries"):
         InstanceCache(max_entries=0)
+
+
+class TestBuildLocks:
+    async def test_build_locks_do_not_accumulate_after_build(self):
+        cache = InstanceCache(max_entries=4)
+        keys = [make_instance_key(f"ck:{i}", None, None) for i in range(20)]
+
+        for key in keys:
+            await cache.get_or_build(key, lambda k=key: _FakeInstance(str(k)))
+
+        assert len(cache._build_locks) == 0

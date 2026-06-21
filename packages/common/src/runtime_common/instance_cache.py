@@ -87,23 +87,27 @@ class InstanceCache:
                 return self._entries[key]
 
         build_lock = await self._get_build_lock(key)
-        async with build_lock:
-            async with self._meta_lock:
-                if key in self._entries:
+        try:
+            async with build_lock:
+                async with self._meta_lock:
+                    if key in self._entries:
+                        self._entries.move_to_end(key)
+                        return self._entries[key]
+
+                instance = builder()
+                if inspect.isawaitable(instance):
+                    instance = await instance
+
+                evicted: list[Any] = []
+                async with self._meta_lock:
+                    self._entries[key] = instance
                     self._entries.move_to_end(key)
-                    return self._entries[key]
-
-            instance = builder()
-            if inspect.isawaitable(instance):
-                instance = await instance
-
-            evicted: list[Any] = []
+                    while len(self._entries) > self._max_entries:
+                        _, victim = self._entries.popitem(last=False)
+                        evicted.append(victim)
+        finally:
             async with self._meta_lock:
-                self._entries[key] = instance
-                self._entries.move_to_end(key)
-                while len(self._entries) > self._max_entries:
-                    _, victim = self._entries.popitem(last=False)
-                    evicted.append(victim)
+                self._build_locks.pop(key, None)
 
         for victim in evicted:
             await _close_instance(victim)
