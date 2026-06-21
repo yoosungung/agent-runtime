@@ -14,15 +14,15 @@ jobs:
       - name: Keep only latest version per agent-runtime package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          owner="${{ github.repository_owner }}"
           mapfile -t packages < <(
-            gh api "/users/${owner}/packages?package_type=container" --paginate \
-              --jq '.[].name' | grep '^agent-runtime/' || true
+            gh api "/repos/${REPO}/packages?package_type=container" --paginate \
+              --jq '.[].name' || true
           )
           if [ "${#packages[@]}" -eq 0 ]; then
-            echo "No agent-runtime/* packages found"
+            echo "No container packages linked to ${REPO}"
             exit 0
           fi
           echo "Found ${#packages[@]} package(s): ${packages[*]}"
@@ -30,7 +30,7 @@ jobs:
             encoded="${pkg//\//%2F}"
             echo "=== ${pkg} ==="
             mapfile -t ids < <(
-              gh api "/users/${owner}/packages/container/${encoded}/versions" --paginate \
+              gh api "/repos/${REPO}/packages/container/${encoded}/versions" --paginate \
                 --jq 'sort_by(.updated_at) | reverse | .[].id'
             )
             if [ "${#ids[@]}" -le 1 ]; then
@@ -41,6 +41,6 @@ jobs:
             for id in "${ids[@]:1}"; do
               echo "Deleting version ${id}"
               gh api --method DELETE --input /dev/null \
-                "/users/${owner}/packages/container/${encoded}/versions/${id}"
+                "/repos/${REPO}/packages/container/${encoded}/versions/${id}"
             done
           done
