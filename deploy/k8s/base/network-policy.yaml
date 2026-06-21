@@ -303,6 +303,12 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              app: postgres
+      ports:
+        - port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
               app: envoy
       ports:
         - port: 8080
