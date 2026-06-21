@@ -41,6 +41,21 @@ describe("ChatPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps message list scrollable between fixed header and composer", () => {
+    mockUseMyAccessResources.mockReturnValue({
+      isLoading: false,
+      data: { items: [], total: 0 },
+    });
+
+    renderChatPage();
+
+    const messages = screen.getByTestId("chat-messages");
+    expect(messages).toHaveClass("overflow-y-auto");
+    expect(messages).toHaveClass("flex-1");
+    expect(screen.getByTestId("chat-header")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer")).toBeInTheDocument();
+  });
+
   it("shows agents from access-resources, not all source-meta", async () => {
     mockUseMyAccessResources.mockReturnValue({
       isLoading: false,

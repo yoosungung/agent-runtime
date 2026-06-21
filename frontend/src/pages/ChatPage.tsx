@@ -17,12 +17,15 @@ export function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const { data: agentList, isLoading: agentsLoading } = useMyAccessResources("agent");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   }, [messages]);
 
   function handleNewChat() {
@@ -125,8 +128,11 @@ export function ChatPage() {
   const agents = agentList?.items ?? [];
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+    <div className="flex h-full min-h-0 flex-col">
+      <header
+        data-testid="chat-header"
+        className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4"
+      >
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Chat</h1>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center w-full sm:w-auto">
           <select
@@ -151,9 +157,13 @@ export function ChatPage() {
             New Chat
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto bg-white shadow rounded-lg p-4 space-y-4 mb-4">
+      <div
+        ref={messagesContainerRef}
+        data-testid="chat-messages"
+        className="flex-1 min-h-0 overflow-y-auto bg-white shadow rounded-lg p-4 space-y-4"
+      >
         {messages.length === 0 && (
           <p className="text-sm text-gray-400 text-center mt-8">
             {selectedAgent
@@ -188,7 +198,11 @@ export function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row gap-3 sm:items-end shrink-0">
+      <footer
+        data-testid="chat-composer"
+        className="shrink-0 pt-4 bg-gray-50"
+      >
+        <div className="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row gap-3 sm:items-end">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -205,7 +219,8 @@ export function ChatPage() {
         >
           {isStreaming ? "..." : "Send"}
         </button>
-      </div>
+        </div>
+      </footer>
     </div>
   );
 }

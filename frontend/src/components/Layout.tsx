@@ -25,6 +25,7 @@ export function Layout() {
   const role = session?.role ?? "user";
   const showDeveloper = isDeveloperRole(role);
   const showAdmin = isAdminRole(role);
+  const isChatRoute = pathname === "/chat";
 
   useEffect(() => {
     setMobileOpen(false);
@@ -101,7 +102,13 @@ export function Layout() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div
+      className={
+        isChatRoute
+          ? "h-screen bg-gray-50 flex flex-col overflow-hidden"
+          : "min-h-screen bg-gray-50 flex flex-col"
+      }
+    >
       <nav className="bg-gray-900 text-white shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between min-h-14 py-2 gap-3">
@@ -201,7 +208,13 @@ export function Layout() {
           )}
         </div>
       </nav>
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 min-h-0">
+      <main
+        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-0 ${
+          isChatRoute
+            ? "flex flex-col overflow-hidden py-4 sm:py-6"
+            : "py-4 sm:py-6"
+        }`}
+      >
         <Outlet />
       </main>
     </div>

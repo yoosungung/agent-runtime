@@ -50,4 +50,12 @@ describe("Layout navigation", () => {
     expect(screen.getByRole("link", { name: "User" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Audit" })).toBeInTheDocument();
   });
+
+  it("locks viewport height on chat route for inner scroll panes", () => {
+    renderLayout("user", "/chat");
+    const shell = screen.getByRole("main").parentElement;
+    expect(shell).toHaveClass("h-screen");
+    expect(shell).toHaveClass("overflow-hidden");
+    expect(screen.getByRole("main")).toHaveClass("overflow-hidden");
+  });
 });
