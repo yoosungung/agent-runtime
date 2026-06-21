@@ -1072,7 +1072,7 @@ async def test_s3_ensure_ready_retries_until_bucket_available(monkeypatch):
     storage = S3BundleStorage(
         bucket="runtime-bundles",
         prefix="bundles/",
-        endpoint_url="http://garage-s3.garage.svc.cluster.local:3900",
+        endpoint_url="http://garage-s3.runtime.svc.cluster.local:3900",
         region="garage",
         access_key="GKdev",
         secret_key="secret",

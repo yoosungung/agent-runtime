@@ -15,29 +15,36 @@ def _kustomize_build(path: Path) -> str:
     )
 
 
-def test_garage_kustomize_builds() -> None:
+def test_garage_kustomize_builds_in_runtime_namespace() -> None:
     manifest = _kustomize_build(REPO_ROOT / "deploy/k8s/garage")
-    assert "namespace: garage" in manifest
+    assert "namespace: runtime" in manifest
+    assert "namespace: garage" not in manifest
     assert "name: garage-s3" in manifest
     assert "dxflrs/garage:v2.3.0" in manifest
+    assert "kind: Namespace" not in manifest
 
 
-def test_dev_overlay_kustomize_builds() -> None:
+def test_dev_overlay_includes_garage() -> None:
     manifest = _kustomize_build(REPO_ROOT / "deploy/k8s/overlays/dev")
     assert "namespace: runtime" in manifest
     assert "name: s3-creds" in manifest
+    assert "name: garage-s3" in manifest
+    assert "garage-headless.runtime.svc.cluster.local" in manifest
+    assert "kind: StatefulSet" in manifest
+    assert "name: garage" in manifest
 
 
-def test_makefile_applies_garage_before_overlays() -> None:
+def test_makefile_applies_garage_via_overlay() -> None:
     makefile = (REPO_ROOT / "Makefile").read_text()
     assert "k8s-apply-garage" in makefile
-    assert "k8s-apply-dev: ensure-jwt-secret ensure-registry-secret k8s-apply-garage" in makefile
+    assert "k8s-apply-dev: ensure-jwt-secret ensure-registry-secret k8s-apply-garage" not in makefile
 
 
 def test_base_kustomization_has_s3_secret() -> None:
     kustomization = (REPO_ROOT / "deploy/k8s/base/kustomization.yaml").read_text()
     assert "s3-creds" in kustomization
     assert "s3-creds.env" in kustomization
+    assert "../garage" in kustomization
 
 
 def test_migration_job_includes_vfs_sql() -> None:

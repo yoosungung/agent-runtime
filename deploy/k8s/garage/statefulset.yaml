@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: garage
-  namespace: garage
 spec:
   serviceName: garage-headless
   replicas: 1

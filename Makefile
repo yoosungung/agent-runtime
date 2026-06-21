@@ -138,16 +138,16 @@ s3-secret: ## override embedded Garage with external S3 (.s3-config.json + S3_BU
 
 # --- k8s ------------------------------------------------------------------
 
-k8s-apply-garage: ## apply embedded Garage object store (namespace: garage)
+k8s-apply-garage: ## apply embedded Garage object store only (namespace: runtime; also in base overlay)
 	kubectl apply -k deploy/k8s/garage
 
-k8s-apply-dev: ensure-jwt-secret ensure-registry-secret k8s-apply-garage ## apply dev overlay (+ garage)
+k8s-apply-dev: ensure-jwt-secret ensure-registry-secret ## apply dev overlay (includes Garage in runtime)
 	kubectl apply -k deploy/k8s/overlays/dev
 
-k8s-apply-stage: ensure-jwt-secret ensure-registry-secret k8s-apply-garage
+k8s-apply-stage: ensure-jwt-secret ensure-registry-secret
 	kubectl apply -k deploy/k8s/overlays/stage
 
-k8s-apply-prod: ensure-jwt-secret ensure-registry-secret k8s-apply-garage
+k8s-apply-prod: ensure-jwt-secret ensure-registry-secret
 	kubectl apply -k deploy/k8s/overlays/prod
 
 k8s-delete-dev:

@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: runtime
 resources:
   - namespace.yaml
+  - ../garage
   - _shared.yaml
   - secrets.yaml
   - serviceaccounts.yaml

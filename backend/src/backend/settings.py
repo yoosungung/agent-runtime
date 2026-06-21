@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # S3-compatible bundle storage (BUNDLE_STORAGE_BACKEND="s3")
     # k8s default: in-cluster Garage — see deploy/k8s/garage/
     S3_BUCKET: str = ""
-    S3_ENDPOINT_URL: str = ""  # empty = AWS; k8s Garage: http://garage-s3.garage.svc.cluster.local:3900
+    S3_ENDPOINT_URL: str = ""  # empty = AWS; k8s Garage: http://garage-s3.runtime.svc.cluster.local:3900
     S3_REGION: str = "us-east-1"
     S3_PREFIX: str = "bundles/"  # key prefix in bucket
     S3_ACCESS_KEY_ID: str = ""  # empty = use IAM/env credentials

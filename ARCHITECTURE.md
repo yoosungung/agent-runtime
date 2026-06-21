@@ -63,7 +63,7 @@ Image 모드(`custom`) pool은 admin이 빌드한 OCI 이미지가 직접 운영
 
 ### deploy/
 
-Kustomize base + overlays. 네임스페이스 `runtime` + **내장 Garage** (`garage`). Postgres는 auth·deploy-api만 접근. [상세](deploy/DESIGN.md).
+Kustomize base + overlays. 네임스페이스 `runtime`(Garage 포함). Postgres는 auth·deploy-api만 접근. [상세](deploy/DESIGN.md).
 
 ### 외부 의존 (scope 밖)
 

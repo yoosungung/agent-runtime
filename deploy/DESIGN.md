@@ -1,13 +1,12 @@
 # deploy
 
-런타임의 Kubernetes 배포 매니페스트(`k8s/`) + 배포 가능한 사용자 번들 샘플(`examples/`). Kustomize 기반. 네임스페이스 `runtime` + **Garage object store** (`garage`).
+런타임의 Kubernetes 배포 매니페스트(`k8s/`) + 배포 가능한 사용자 번들 샘플(`examples/`). Kustomize 기반. 네임스페이스 `runtime`(Garage object store 포함).
 
 ## K8s 디렉터리 (`k8s/`)
 
 ```
 deploy/k8s/
-  garage/               # 내장 S3 호환 번들 저장소 (기본)
-    namespace.yaml
+  garage/               # 내장 S3 호환 번들 저장소 (base에서 runtime NS로 포함)
     statefulset.yaml    # Garage v2.3 --single-node --default-bucket
     service.yaml        # garage-s3 :3900
     garage-secrets.env  # dev 기본 access key / bucket (prod overlay에서 교체)
@@ -40,14 +39,14 @@ make k8s-apply-dev
 make k8s-rollout-restart   # Release 후 :latest pull
 ```
 
-`k8s-apply-*`는 **`k8s-apply-garage`(내장 Garage) → overlay** 순으로 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
+`k8s-apply-*`는 overlay 한 번으로 **Garage + runtime 스택**을 함께 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 
 ### Garage (기본 번들 object store)
 
 | 항목 | 값 |
 |------|-----|
-| NS | `garage` |
-| S3 API | `http://garage-s3.garage.svc.cluster.local:3900` |
+| NS | `runtime` |
+| S3 API | `http://garage-s3.runtime.svc.cluster.local:3900` |
 | Bucket | `runtime-bundles` |
 | Bootstrap | Garage v2.3 `--single-node --default-bucket` (layout/ bucket/key 자동) |
 | backend secret | `runtime/s3-creds` (`BUNDLE_STORAGE_BACKEND=s3` + endpoint + key) |
@@ -61,7 +60,7 @@ S3_BUCKET=my-bucket make s3-secret
 kubectl -n runtime rollout restart deployment/backend
 ```
 
-Garage StatefulSet은 그대로 두거나 `kubectl -n garage scale sts/garage --replicas=0`으로 중지.
+Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage --replicas=0`으로 중지. 예전 `garage` NS에 남은 리소스는 `kubectl delete namespace garage`로 정리.
 
 **prod HA (RF=3)**: overlay에서 `garage` StatefulSet `replicas`·`replication_factor`·zone layout을 수동/Job으로 확장 — base는 dev 단일 노드(RF=1).
 
