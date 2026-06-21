@@ -184,11 +184,14 @@ async def invoke(
     if principal is None:
         raise HTTPException(status_code=401, detail="missing principal")
 
-    # Store JWT for MCP forwarding within this request scope
+    # Store JWT for MCP forwarding within this request scope.
+    # Streaming sets the token inside the generator (same asyncio context as run_stream).
     token = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
-    tok_token = set_current_token(token)
+    tok_token = None
+    if not req.stream:
+        tok_token = set_current_token(token)
 
     try:
         # Re-resolve: pool fetches meta itself (trust boundary at deploy-api)
@@ -261,9 +264,8 @@ async def invoke(
         opik_meta = {"version": req.version or "latest", "runtime_kind": settings.runtime_kind}
 
         if req.stream:
-            _saved_tok = tok_token  # capture for generator's finally
-
             async def _stream_with_counter():
+                set_current_token(token)
                 with opik_trace_context(
                     name=f"agent:{req.agent}",
                     project_name=req.agent,
@@ -271,24 +273,20 @@ async def invoke(
                     user_id=user_id,
                     metadata=opik_meta,
                 ):
-                    try:
-                        async with counter:
-                            async for chunk in run_stream(
-                                settings.runtime_kind,
-                                instance,
-                                req.input,
-                                req.session_id,
-                                agent_name=req.agent,
-                                cfg=cfg,
-                                secrets=secrets,
-                                principal_user_id=principal.user_id,
-                                adk_session_cache=adk_session_cache,
-                            ):
-                                yield chunk
-                    finally:
-                        reset_current_token(_saved_tok)
+                    async with counter:
+                        async for chunk in run_stream(
+                            settings.runtime_kind,
+                            instance,
+                            req.input,
+                            req.session_id,
+                            agent_name=req.agent,
+                            cfg=cfg,
+                            secrets=secrets,
+                            principal_user_id=principal.user_id,
+                            adk_session_cache=adk_session_cache,
+                        ):
+                            yield chunk
 
-            tok_token = None  # type: ignore[assignment]  # generator owns reset; skip outer finally
             return StreamingResponse(
                 _stream_with_counter(),
                 media_type="text/event-stream",

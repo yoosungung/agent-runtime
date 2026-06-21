@@ -58,6 +58,26 @@ def test_get_adk_session_service_caches_by_backend_and_dsn(monkeypatch):
     assert created == ["postgresql://u:p@localhost/db"]
 
 
+def test_get_adk_session_service_defaults_to_database_dsn(monkeypatch):
+    created: list[str] = []
+
+    class FakeDatabaseSessionService:
+        def __init__(self, db_url: str) -> None:
+            created.append(db_url)
+
+    monkeypatch.setattr(
+        "runtime_common.providers.pg_infra.build_session_service",
+        lambda cfg, secrets: FakeDatabaseSessionService(secrets.resolve("SESSION_DB_DSN")),
+    )
+
+    secrets = _MapSecretResolver({"SESSION_DB_DSN": "postgresql://u:p@localhost/db"})
+    cache: dict = {}
+
+    pg_infra.get_adk_session_service({}, secrets, cache)
+
+    assert created == ["postgresql://u:p@localhost/db"]
+
+
 @pytest.mark.asyncio
 async def test_init_checkpointer_sets_registry():
     mock_saver = MagicMock()

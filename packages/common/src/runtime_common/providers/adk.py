@@ -59,7 +59,7 @@ def build_generate_content_config(cfg: dict) -> Any:
 
 def build_session_service(cfg: dict, secrets: SecretResolver) -> Any:
     """Build ADK session service from ``cfg.adk.session_service``."""
-    backend = _section(cfg).get("session_service", "memory")
+    backend = _section(cfg).get("session_service", "database")
     if backend == "memory":
         from google.adk.sessions import InMemorySessionService
 
