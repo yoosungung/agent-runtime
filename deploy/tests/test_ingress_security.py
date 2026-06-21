@@ -42,8 +42,7 @@ def test_base_ingress_blocks_public_bundles_and_debug_paths() -> None:
         assert forbidden not in manifest, forbidden
     for required in REQUIRED_INGRESS_PATHS:
         assert required in manifest, required
-    assert "location ~ ^/bundles/" in manifest
-    assert "return 403" in manifest
+    assert "server-snippet" not in manifest
 
 
 def test_dev_overlay_inherits_hardened_ingress() -> None:

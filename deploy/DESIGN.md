@@ -131,7 +131,7 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 | `/v1/agents/*` | envoy | ext_authz — agent invoke |
 | `/v1/mcp/invoke` | envoy | ext_authz — MCP invoke |
 | `/` | backend | SPA + `/api/*` (BFF, 세션·CSRF) |
-| `/bundles/*` | — | **403** (`server-snippet`) — pool은 in-cluster `backend:8000` |
+| `/bundles/*` | backend (catch-all) | **403** — `BlockPublicBundleMiddleware` (proxy headers) |
 | `/v1/source-meta`, `/v1/user-meta` | — | **미노출** — admin은 `/api/*` BFF |
 | `/v1/mcp/servers`, `/v1/mcp/stream` | — | **미노출** — backend·pool은 in-cluster envoy |
 

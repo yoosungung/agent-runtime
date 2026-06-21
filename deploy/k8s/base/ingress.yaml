@@ -9,11 +9,8 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    # /bundles/* is cluster-internal only (pool → backend Service). Block on public Ingress.
-    nginx.ingress.kubernetes.io/server-snippet: |
-      location ~ ^/bundles/ {
-        return 403;
-      }
+    # /bundles/* reaches backend via catch-all `/`; BlockPublicBundleMiddleware rejects
+    # proxy headers (X-Forwarded-*). server-snippet is disabled on this cluster.
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
