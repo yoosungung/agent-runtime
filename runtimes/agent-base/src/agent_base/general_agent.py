@@ -23,6 +23,10 @@ _DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 _DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
 
+def _resolve_model_spec(cfg: dict) -> str:
+    return get_model_spec(cfg) or os.environ.get("DEFAULT_LLM_MODEL") or _DEFAULT_MODEL
+
+
 def _export_llm_keys(cfg: dict) -> None:
     for cfg_key, env_key in (
         ("anthropic_api_key", "ANTHROPIC_API_KEY"),
@@ -81,7 +85,7 @@ def build_general_agent(
     checkpointer = build_checkpointer(cfg, secrets)
 
     return create_deep_agent(
-        model=get_model_spec(cfg) or _DEFAULT_MODEL,
+        model=_resolve_model_spec(cfg),
         tools=tools,
         system_prompt=general.system_prompt or _DEFAULT_SYSTEM_PROMPT,
         backend=backend,
