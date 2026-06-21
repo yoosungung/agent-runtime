@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { invokeAgentStream } from "../lib/agentsInvoke";
+import { generateSessionId } from "../lib/sessionId";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
-}
-
-function generateSessionId(): string {
-  return crypto.randomUUID();
 }
 
 export function ChatPage() {

@@ -27,6 +27,20 @@ function renderChatPage() {
 }
 
 describe("ChatPage", () => {
+  it("renders on insecure HTTP context without crypto.randomUUID", () => {
+    vi.stubGlobal("crypto", {});
+
+    mockUseMyAccessResources.mockReturnValue({
+      isLoading: false,
+      data: { items: [], total: 0 },
+    });
+
+    renderChatPage();
+    expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it("shows agents from access-resources, not all source-meta", async () => {
     mockUseMyAccessResources.mockReturnValue({
       isLoading: false,
