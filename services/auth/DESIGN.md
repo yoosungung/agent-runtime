@@ -33,6 +33,15 @@ Postgres는 아키텍처 상 **auth / deploy-api에만 연결**된다. 따라서
 - `grace_sec`이 0 초과인 호출을 **허용할지**는 auth가 판정하지 않는다 — caller(gateway)가 내부 경로 식별 후에만 0 초과 값을 보내야 한다. auth는 어차피 `GRACE_MAX_SEC`로 clamp하므로 악의적 caller의 최대 악영향은 상한까지.
 - 엣지 gateway는 `grace_sec` 생략(=0). 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period" 참조.
 
+### 캐시 (env)
+
+| 변수 | 기본값 | 용도 |
+|---|---|---|
+| `ACCESS_CACHE_TTL_SEC` | `5` | `user_id → access[]` in-memory TTL |
+| `ACCESS_CACHE_MAX_SIZE` | `1024` | access 캐시 LRU 최대 엔트리 |
+
+admin grant/revoke 후 즉시 반영이 필요하면 `POST /v1/admin/invalidate-access` (backend가 호출).
+
 ### 테이블 (신규)
 마이그레이션은 [`backend/migrations/0001_init.sql`](../../backend/migrations/0001_init.sql)에 통합(모든 테이블 단일 파일).
 

@@ -28,6 +28,12 @@ class Settings(BaseRuntimeSettings):
     rate_limit_per_principal: int = Field(default=60)
     rate_limit_per_resource: int = Field(default=120)
 
+    # AuthClient / DeployApiClient in-process caches (ext-authz hot path).
+    auth_cache_ttl_sec: float = Field(default=5.0)
+    auth_cache_max: int = Field(default=1024)
+    deploy_cache_ttl_sec: float = Field(default=60.0)
+    deploy_cache_max: int = Field(default=256)
+
     def agent_pool_url(self, runtime_kind: str) -> str | None:
         """Return bundle-mode pool Service URL, or None for image mode."""
         return {

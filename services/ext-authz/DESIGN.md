@@ -84,5 +84,9 @@ Lua 필터: `x-envoy-attempt-count > 1`이면 `:authority`를 `x-pod-fallback-ad
 | `mcp_internal_grace_sec` | `300` | `/v1/mcp/invoke-internal` grace 기간 |
 | `rate_limit_per_principal` | `60` | /min |
 | `rate_limit_per_resource` | `120` | /min |
+| `auth_cache_ttl_sec` | `5` | AuthClient in-process verify 캐시 TTL |
+| `auth_cache_max` | `1024` | AuthClient LRU 최대 엔트리 |
+| `deploy_cache_ttl_sec` | `60` | DeployApiClient resolve 캐시 TTL |
+| `deploy_cache_max` | `256` | DeployApiClient LRU 최대 엔트리 |
 
 **Image 모드 URL 도출 규칙**: `pool_custom_url` / `pool_mcp_custom_url` 환경 변수는 제거됐다. Image 모드 pool Service URL은 slug에서 런타임에 derive — `http://{kind}-pool-custom-{slug}.{runtime_namespace}.svc.{cluster_domain}:8080`. 새 이미지가 등록될 때마다 ext-authz를 재시작할 필요 없음.

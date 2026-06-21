@@ -31,6 +31,7 @@ for col in _models.SourceMetaRow.__table__.columns:
         col.type = JSON()
 
 from deploy_api.app import _ResolveCache, app  # noqa: E402 — must import after patching
+from deploy_api.settings import Settings  # noqa: E402
 from runtime_common.db.models import Base, SourceMetaRow, UserMetaRow  # noqa: E402
 
 TEST_DSN = "sqlite+aiosqlite:///:memory:"
@@ -47,6 +48,7 @@ async def client():
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.read_session_factory = session_factory  # same DB in tests
+    app.state.settings = Settings()
     app.state.resolve_cache = _ResolveCache()
 
     transport = ASGITransport(app=app)

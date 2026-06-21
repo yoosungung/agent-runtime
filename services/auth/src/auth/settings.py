@@ -13,4 +13,7 @@ class Settings(DbRuntimeSettings):
     access_cache_ttl_sec: float = Field(
         default=5.0, description="TTL for user→access in-memory cache"
     )
+    access_cache_max_size: int = Field(
+        default=1024, description="Max entries for user→access in-memory cache"
+    )
     refresh_token_ttl_days: int = Field(default=30, description="Refresh token lifetime in days")

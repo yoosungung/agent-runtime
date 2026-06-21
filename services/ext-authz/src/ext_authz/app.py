@@ -108,8 +108,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     app.state.settings = settings
-    app.state.auth = AuthClient(settings.auth_service_url)
-    app.state.deploy = DeployApiClient(settings.deploy_api_url)
+    app.state.auth = AuthClient(
+        settings.auth_service_url,
+        cache_ttl_sec=settings.auth_cache_ttl_sec,
+        cache_max=settings.auth_cache_max,
+    )
+    app.state.deploy = DeployApiClient(
+        settings.deploy_api_url,
+        cache_ttl_sec=settings.deploy_cache_ttl_sec,
+        cache_max=settings.deploy_cache_max,
+    )
     app.state.agent_subscriber = agent_subscriber
     app.state.mcp_subscriber = mcp_subscriber
     app.state.query = query

@@ -78,4 +78,6 @@ deploy-api (read)   →  pgbouncer-ro  →  read replica (dev: primary와 동일
 | `POSTGRES_PGBOUNCER` | `true` 설정 시 pgbouncer 호환 엔진 옵션 활성화 |
 | `POSTGRES_PASSWORD` | pgbouncer가 postgres 인증에 사용 |
 | `POSTGRES_DIRECT_DSN` | 마이그레이션 Job 전용 (libpq URL, postgres 직접 연결) |
+| `RESOLVE_CACHE_TTL_SEC` | `/v1/resolve` in-memory 캐시 TTL (기본 `5`) |
+| `RESOLVE_CACHE_MAX` | resolve 캐시 LRU 최대 엔트리 (기본 `2048`) |
 

@@ -150,7 +150,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
-    app.state.access_cache = _AccessCache(ttl_sec=settings.access_cache_ttl_sec)
+    app.state.access_cache = _AccessCache(
+        ttl_sec=settings.access_cache_ttl_sec,
+        max_size=settings.access_cache_max_size,
+    )
     app.state.username_limiter = _RateLimiter(max_attempts=5, window_sec=300.0)
     app.state.ip_limiter = _RateLimiter(max_attempts=20, window_sec=300.0)
     try:

@@ -16,14 +16,11 @@ from runtime_common.db.models import Kind, SourceMetaRow, UserMetaRow
 from runtime_common.logging import configure_logging
 from runtime_common.schemas import ResolveResponse, SourceMeta, UserMeta
 
-_RESOLVE_CACHE_TTL = 5.0
-_RESOLVE_CACHE_MAX = 2048
-
 
 class _ResolveCache:
     """LRU+TTL in-memory cache for /v1/resolve responses."""
 
-    def __init__(self, ttl: float = _RESOLVE_CACHE_TTL, max_size: int = _RESOLVE_CACHE_MAX) -> None:
+    def __init__(self, ttl: float = 5.0, max_size: int = 2048) -> None:
         self._ttl = ttl
         self._max = max_size
         self._data: OrderedDict[tuple, tuple[str, str, float]] = OrderedDict()
@@ -65,7 +62,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
     app.state.read_session_factory = make_session_factory(read_engine)
-    app.state.resolve_cache = _ResolveCache()
+    app.state.resolve_cache = _ResolveCache(
+        ttl=settings.resolve_cache_ttl_sec,
+        max_size=settings.resolve_cache_max,
+    )
     try:
         yield
     finally:
@@ -169,6 +169,11 @@ async def get_user_meta(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_cache_control(request: Request) -> str:
+    settings: Settings = request.app.state.settings
+    return f"max-age={int(settings.resolve_cache_ttl_sec)}"
+
+
 @app.get("/v1/resolve")
 async def resolve(
     request: Request,
@@ -179,6 +184,7 @@ async def resolve(
 ) -> Response:
     cache_key = (kind.value, name, version, principal)
     cache: _ResolveCache = app.state.resolve_cache
+    cache_control = _resolve_cache_control(request)
 
     cached = cache.get(cache_key)
     if cached is not None:
@@ -189,7 +195,7 @@ async def resolve(
         return Response(
             content=payload_json,
             media_type="application/json",
-            headers={"ETag": etag_value, "Cache-Control": "max-age=5"},
+            headers={"ETag": etag_value, "Cache-Control": cache_control},
         )
 
     async with session_scope(app.state.read_session_factory) as session:
@@ -251,6 +257,6 @@ async def resolve(
             media_type="application/json",
             headers={
                 "ETag": etag_value,
-                "Cache-Control": "max-age=5",
+                "Cache-Control": cache_control,
             },
         )
