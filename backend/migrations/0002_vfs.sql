@@ -1,6 +1,6 @@
 -- agents-runtime — VFS tables (general agent tier)
 -- Requires: users (0001_init.sql)
--- path-graph-vfs vfs_triggers.sql applies after this on the same DSN (VFS_DSN).
+-- path-graph vfs_triggers.sql applies after this on the same DSN (VFS_DSN).
 
 CREATE TABLE IF NOT EXISTS vfs_agent_files (
     kind        VARCHAR(16)  NOT NULL DEFAULT 'agent',

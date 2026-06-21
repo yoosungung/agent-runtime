@@ -1,4 +1,5 @@
 REGISTRY  ?= ghcr.io/yoosungung/agent-runtime
+GHCR_USER ?= $(shell echo $(REGISTRY) | cut -d/ -f2)
 TAG       ?= latest
 NAMESPACE ?= runtime
 GIT_REPO  ?= https://github.com/yoosungung/agent-studio.git
@@ -8,7 +9,8 @@ S3_BUCKET ?= agent-bundles
 KANIKO := GIT_REPO=$(GIT_REPO) GIT_REF=$(GIT_REF) NAMESPACE=$(NAMESPACE) scripts/kaniko-build.sh
 
 .PHONY: help sync lint typecheck test fmt \
-        images registry-secret ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
+        images registry-secret ensure-registry-secret _bootstrap-registry-secret \
+        ncr-secret git-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         ext-authz-image auth-image deploy-api-image \
         agent-base-image mcp-base-image backend-image \
         k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
@@ -64,13 +66,36 @@ backend-image: ## [deprecated] build backend via Kaniko
 
 images: ext-authz-image auth-image deploy-api-image agent-base-image mcp-base-image backend-image ## [deprecated] Kaniko — use GHA release workflow
 
-registry-secret: ## create/update GHCR pull secret (GITHUB_USER= GITHUB_PAT=)
-	kubectl create secret docker-registry registry-creds \
+registry-secret: ensure-namespace ## create/update GHCR pull secret (GITHUB_USER= GITHUB_PAT=)
+	@test -n "$(GITHUB_USER)" -a -n "$(GITHUB_PAT)" \
+		|| { echo "error: GITHUB_USER and GITHUB_PAT required" >&2; exit 1; }
+	@kubectl create secret docker-registry registry-creds \
 		--namespace $(NAMESPACE) \
 		--docker-server=ghcr.io \
 		--docker-username=$(GITHUB_USER) \
 		--docker-password=$(GITHUB_PAT) \
 		--dry-run=client -o yaml | kubectl apply -f -
+
+ensure-registry-secret: ensure-namespace ## create registry-creds if absent (GITHUB_USER/PAT or gh auth for GHCR_USER)
+	@kubectl -n $(NAMESPACE) get secret registry-creds >/dev/null 2>&1 \
+		&& echo "registry-creds already exists, skipping" \
+		|| $(MAKE) _bootstrap-registry-secret
+
+_bootstrap-registry-secret:
+	@set -e; \
+	if [ -n "$(GITHUB_USER)" ] && [ -n "$(GITHUB_PAT)" ]; then \
+		$(MAKE) registry-secret GITHUB_USER="$(GITHUB_USER)" GITHUB_PAT="$(GITHUB_PAT)"; \
+	elif command -v gh >/dev/null 2>&1; then \
+		token=$$(gh auth token --user $(GHCR_USER) 2>/dev/null || gh auth token 2>/dev/null || true); \
+		if [ -n "$$token" ]; then \
+			echo "registry-creds missing — creating from gh auth (user=$(GHCR_USER))"; \
+			$(MAKE) registry-secret GITHUB_USER="$(GHCR_USER)" GITHUB_PAT="$$token"; \
+		else \
+			echo "WARNING: registry-creds missing and gh auth unavailable. Run: GITHUB_USER=... GITHUB_PAT=... make registry-secret" >&2; \
+		fi; \
+	else \
+		echo "WARNING: registry-creds missing. Run: GITHUB_USER=... GITHUB_PAT=... make registry-secret" >&2; \
+	fi
 
 jwt-secret: ## generate RS4096 keypair and create/update jwt-keys secret (overwrites existing)
 	openssl genrsa -out /tmp/jwt.key 4096 2>/dev/null
@@ -113,13 +138,13 @@ s3-secret: ## create/update S3 credentials secret from .s3-config.json  (S3_BUCK
 
 # --- k8s ------------------------------------------------------------------
 
-k8s-apply-dev: ensure-jwt-secret ## apply dev overlay (auto-generates jwt-keys if absent)
+k8s-apply-dev: ensure-jwt-secret ensure-registry-secret ## apply dev overlay (bootstrap jwt-keys + registry-creds if absent)
 	kubectl apply -k deploy/k8s/overlays/dev
 
-k8s-apply-stage: ensure-jwt-secret
+k8s-apply-stage: ensure-jwt-secret ensure-registry-secret
 	kubectl apply -k deploy/k8s/overlays/stage
 
-k8s-apply-prod: ensure-jwt-secret
+k8s-apply-prod: ensure-jwt-secret ensure-registry-secret
 	kubectl apply -k deploy/k8s/overlays/prod
 
 k8s-delete-dev:

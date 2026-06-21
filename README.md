@@ -61,7 +61,7 @@ make db-migrate-all
 make k8s-rollout-restart
 ```
 
-Private GHCR: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
+Private GHCR: `make k8s-apply-dev`가 `registry-creds`를 자동 생성(gh 로그인 또는 `GITHUB_USER`/`GITHUB_PAT`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 
 K8s 배포·Ingress·bootstrap 상세는 [deploy/DESIGN.md](deploy/DESIGN.md) 참조.
 

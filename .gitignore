@@ -40,6 +40,10 @@ logs/
 # Local dev symlinks
 backend/dist
 
+# Local k8s wire / debug
+.wire-dev/
+.env.dev.local
+
 # Local k8s
 kubeconfig
 *.kubeconfig

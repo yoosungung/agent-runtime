@@ -1,31 +1,12 @@
 #!/usr/bin/env bash
+# Legacy dev wire — prefer scripts/wire-dev.sh
+#
+#   ./scripts/wire-dev.sh up --profile core   # postgres, redis, auth:8081, deploy-api, envoy
+#   ./scripts/wire-dev.sh up --profile opik   # Opik observability
+#   ./scripts/wire-dev.sh env                 # .env.dev.local for launch.json
 
-# 이미 포트 포워딩이 실행 중인지 확인 후, 없으면 실행
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if ! lsof -i :5432 -sTCP:LISTEN &>/dev/null; then
-  echo "Starting port-forward for PostgreSQL (5432)..."
-  kubectl port-forward services/postgres 5432:5432 -n runtime &
-else
-  echo "Port 5432 already in use, skipping PostgreSQL port-forward."
-fi
-
-if ! lsof -i :8080 -sTCP:LISTEN &>/dev/null; then
-  echo "Starting port-forward for auth service (8080)..."
-  kubectl port-forward services/auth 8080:8080 -n runtime &
-else
-  echo "Port 8080 already in use, skipping auth service port-forward."
-fi
-
-if ! lsof -i :8090 -sTCP:LISTEN &>/dev/null; then
-  echo "Starting port-forward for Opik backend (8090->8080, 3003)..."
-  kubectl port-forward services/opik-backend 8090:8080 3003:3003 -n opik &
-else
-  echo "Port 8090 already in use, skipping Opik backend port-forward."
-fi
-
-if ! lsof -i :6379 -sTCP:LISTEN &>/dev/null; then
-  echo "Starting port-forward for Redis (6379)..."
-  kubectl port-forward services/redis 6379:6379 -n runtime &
-else
-  echo "Port 6379 already in use, skipping Redis port-forward."
-fi
+echo "ready.sh: use scripts/wire-dev.sh (see .vscode/launch.json)" >&2
+exec "$ROOT/scripts/wire-dev.sh" up --profile legacy

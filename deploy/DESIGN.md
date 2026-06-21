@@ -34,6 +34,8 @@ make k8s-apply-dev
 make k8s-rollout-restart   # Release 후 :latest pull
 ```
 
+`k8s-apply-*`는 `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
+
 ### dev overlay 차이
 
 | 설정 | dev | stage/prod (base) |
