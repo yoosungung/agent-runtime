@@ -1,5 +1,21 @@
+# Dependencies / build
 node_modules/
 dist/
 dist-ssr/
-*.local
 .vite/
+
+# TypeScript incremental build cache (tsc -b)
+*.tsbuildinfo
+
+# Env (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+*.local
+
+# Test outputs
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
