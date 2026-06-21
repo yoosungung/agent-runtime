@@ -17,6 +17,43 @@ async def browser(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_s3_list_objects_omits_continuation_token_when_cursor_none():
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from backend.bundle_storage import S3BundleStorage
+    from backend.object_store_browser import S3ObjectStoreBrowser
+
+    storage = S3BundleStorage(
+        bucket="runtime-bundles",
+        prefix="bundles/",
+        endpoint_url="http://garage-s3.runtime.svc.cluster.local:3900",
+        region="garage",
+        access_key="key",
+        secret_key="secret",
+        presign_expiry=3600,
+    )
+    browser = S3ObjectStoreBrowser(storage)
+
+    mock_s3 = AsyncMock()
+    mock_s3.list_objects_v2 = AsyncMock(
+        return_value={"CommonPrefixes": [], "Contents": [], "IsTruncated": False}
+    )
+
+    class _Ctx:
+        async def __aenter__(self):
+            return mock_s3
+
+        async def __aexit__(self, *args):
+            return None
+
+    with patch.object(browser, "_client", return_value=_Ctx()):
+        await browser.list_objects("", cursor=None)
+
+    kwargs = mock_s3.list_objects_v2.await_args.kwargs
+    assert "ContinuationToken" not in kwargs
+
+
+@pytest.mark.asyncio
 async def test_local_list_hides_tmp(browser):
     b, root = browser
     (root / "hello.txt").write_text("hi")

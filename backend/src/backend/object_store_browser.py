@@ -322,14 +322,16 @@ class S3ObjectStoreBrowser:
     ) -> BucketListResult:
         dir_prefix = normalize_prefix(prefix)
         full_prefix = f"{self._storage._prefix}{dir_prefix}"
+        list_kwargs: dict = {
+            "Bucket": self._storage._bucket,
+            "Prefix": full_prefix,
+            "Delimiter": "/",
+            "MaxKeys": limit,
+        }
+        if cursor:
+            list_kwargs["ContinuationToken"] = cursor
         async with await self._client() as s3:
-            resp = await s3.list_objects_v2(
-                Bucket=self._storage._bucket,
-                Prefix=full_prefix,
-                Delimiter="/",
-                MaxKeys=limit,
-                ContinuationToken=cursor,
-            )
+            resp = await s3.list_objects_v2(**list_kwargs)
 
         items: list[BucketObjectItem] = []
         for cp in resp.get("CommonPrefixes") or []:
