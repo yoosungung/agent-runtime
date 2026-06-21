@@ -146,6 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 
     engine = make_engine(settings.POSTGRES_DSN, pgbouncer=settings.POSTGRES_PGBOUNCER)
+    app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
     app.state.auth_client = AuthClient(base_url=settings.AUTH_URL)

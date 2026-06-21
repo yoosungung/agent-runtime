@@ -131,4 +131,4 @@ async def run_reconciler(app) -> None:  # type: ignore[type-arg]
         try:
             await reconcile_once(app)
         except Exception as exc:
-            logger.error("reconciler.error", extra={"error": str(exc)})
+            logger.exception("reconciler.error")
