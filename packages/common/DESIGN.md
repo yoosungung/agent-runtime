@@ -54,7 +54,7 @@
     - **`providers/adk.py`** (Google ADK)
       - `get_model(cfg)` / `get_max_llm_calls(cfg)` — 단순 값 추출.
       - `build_generate_content_config(cfg)` — `cfg.adk.{temperature, max_output_tokens, top_p, top_k}` → `genai_types.GenerateContentConfig`.
-      - `build_session_service(cfg, secrets)` — `cfg.adk.session_service` 기본 **`database`**. `{memory, database, vertexai}`. database 는 `secrets["SESSION_DB_DSN"]`. agent-base가 pod-level cache (`pg_infra.get_adk_session_service`).
+      - `build_session_service(cfg, secrets)` — `cfg.adk.session_service` 기본 **`database`**. DSN `secrets["SESSION_DB_DSN"]` → `postgresql+asyncpg://` 로 정규화 후 ADK ``DatabaseSessionService`` 에 전달.
       - `build_memory_service(cfg, secrets)` — `cfg.adk.memory_service ∈ {memory, vertexai}`.
       - `build_artifact_service(cfg, secrets)` — `cfg.adk.artifact_service ∈ {memory, gcs, database}`. gcs 는 `secrets["GCS_BUCKET"]`.
     - **`providers/fastmcp.py`** (FastMCP)

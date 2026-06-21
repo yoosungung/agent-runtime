@@ -18,6 +18,21 @@ def _section(cfg: dict) -> dict:
     return cfg.get("adk") or {}
 
 
+def sqlalchemy_asyncpg_dsn(dsn: str) -> str:
+    """Normalize a Postgres DSN for SQLAlchemy's asyncpg driver.
+
+    ADK ``DatabaseSessionService`` uses ``create_async_engine``; without the
+    ``+asyncpg`` scheme SQLAlchemy defaults to psycopg2, which we do not ship.
+    """
+    if dsn.startswith("postgresql+asyncpg://"):
+        return dsn
+    if dsn.startswith("postgres://"):
+        return "postgresql+asyncpg://" + dsn[len("postgres://") :]
+    if dsn.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + dsn[len("postgresql://") :]
+    return dsn
+
+
 def get_model(cfg: dict) -> str:
     return _section(cfg).get("model", "google:gemini-2.0-flash")
 
@@ -52,7 +67,9 @@ def build_session_service(cfg: dict, secrets: SecretResolver) -> Any:
     if backend == "database":
         from google.adk.sessions import DatabaseSessionService
 
-        return DatabaseSessionService(db_url=secrets.resolve("SESSION_DB_DSN"))
+        return DatabaseSessionService(
+            db_url=sqlalchemy_asyncpg_dsn(secrets.resolve("SESSION_DB_DSN")),
+        )
     if backend == "vertexai":
         from google.adk.sessions import VertexAiSessionService
 
@@ -89,5 +106,7 @@ def build_artifact_service(cfg: dict, secrets: SecretResolver) -> Any:
         # ADK >=1.30 ships a database-backed artifact service.
         from google.adk.artifacts import DatabaseArtifactService  # type: ignore[attr-defined]
 
-        return DatabaseArtifactService(db_url=secrets.resolve("ARTIFACT_DB_DSN"))
+        return DatabaseArtifactService(
+            db_url=sqlalchemy_asyncpg_dsn(secrets.resolve("ARTIFACT_DB_DSN")),
+        )
     raise ValueError(f"unsupported artifact_service: {backend!r}")
