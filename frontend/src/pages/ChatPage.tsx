@@ -172,6 +172,7 @@ function MarkdownRenderer({ content }: { content: string }) {
 
 export function ChatPage() {
   const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [chatAgent, setChatAgent] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>(generateSessionId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState<string>("");
@@ -193,7 +194,7 @@ export function ChatPage() {
 
   // Sync messages to localStorage
   useEffect(() => {
-    if (messages.length === 0 || !selectedAgent) return;
+    if (messages.length === 0 || !chatAgent) return;
 
     const firstUserMsg = messages.find((m) => m.role === "user")?.content || "New Chat";
     const title = firstUserMsg.slice(0, 30) + (firstUserMsg.length > 30 ? "..." : "");
@@ -202,7 +203,7 @@ export function ChatPage() {
     const existingIdx = currentSessions.findIndex((s) => s.id === sessionId);
     const updatedSession: ChatSession = {
       id: sessionId,
-      agentName: selectedAgent,
+      agentName: chatAgent,
       title,
       timestamp: Date.now(),
       messages,
@@ -217,22 +218,23 @@ export function ChatPage() {
     currentSessions.sort((a, b) => b.timestamp - a.timestamp);
     saveSessions(currentSessions);
     setSessions(currentSessions);
-  }, [messages, selectedAgent, sessionId]);
+  }, [messages, chatAgent, sessionId]);
 
   function handleNewChat() {
+    if (!selectedAgent) return;
     if (abortRef.current) {
       abortRef.current.abort();
     }
+    setChatAgent(selectedAgent);
     setSessionId(generateSessionId());
     setMessages([]);
-    setSelectedAgent("");
     setError(null);
     setIsStreaming(false);
   }
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || !selectedAgent || isStreaming) return;
+    if (!text || !chatAgent || isStreaming) return;
 
     setInput("");
     setError(null);
@@ -267,7 +269,7 @@ export function ChatPage() {
     try {
       await invokeAgentStream(
         {
-          agent: selectedAgent,
+          agent: chatAgent,
           input: { message: text },
           sessionId,
           stream: true,
@@ -325,9 +327,10 @@ export function ChatPage() {
     setSessions(updated);
 
     if (sessionId === idToDelete) {
+      setChatAgent("");
+      setSessionId(generateSessionId());
       setMessages([]);
       setError(null);
-      setSelectedAgent("");
     }
   };
 
@@ -339,22 +342,7 @@ export function ChatPage() {
       <select
         value={selectedAgent}
         onChange={(e) => {
-          const val = e.target.value;
-          setSelectedAgent(val);
-          if (val) {
-            const sess = loadSessions();
-            const existing = sess.find((s) => s.agentName === val);
-            if (existing) {
-              setSessionId(existing.id);
-              setMessages(existing.messages);
-            } else {
-              setSessionId(generateSessionId());
-              setMessages([]);
-            }
-          } else {
-            setSelectedAgent("");
-            setMessages([]);
-          }
+          setSelectedAgent(e.target.value);
         }}
         className="sr-only"
         disabled={agentsLoading || isStreaming}
@@ -372,13 +360,14 @@ export function ChatPage() {
       {/* Left Sidebar (Sessions & Agents Selection list) */}
       <div
         className={`${
-          selectedAgent ? "hidden md:flex" : "flex"
+          chatAgent ? "hidden md:flex" : "flex"
         } w-full md:w-64 bg-white border border-gray-200 rounded-lg flex-col h-full min-h-0 shrink-0 shadow-sm`}
       >
         <div className="p-3 border-b border-gray-200 shrink-0">
           <button
             onClick={handleNewChat}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 bg-white transition-colors cursor-pointer"
+            disabled={!selectedAgent || isStreaming}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 bg-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -404,20 +393,7 @@ export function ChatPage() {
                   return (
                     <button
                       key={a.source_meta_id}
-                      onClick={() => {
-                        setSelectedAgent(a.name);
-                        const sess = loadSessions();
-                        const existing = sess.find((s) => s.agentName === a.name);
-                        if (existing) {
-                          setSessionId(existing.id);
-                          setMessages(existing.messages);
-                        } else {
-                          const newSessId = generateSessionId();
-                          setSessionId(newSessId);
-                          setMessages([]);
-                        }
-                        setError(null);
-                      }}
+                      onClick={() => setSelectedAgent(a.name)}
                       className={`w-full text-left px-2.5 py-1.5 rounded text-sm transition-colors flex items-center gap-2 cursor-pointer ${
                         isActive
                           ? "bg-blue-50 text-blue-700 font-medium"
@@ -463,6 +439,7 @@ export function ChatPage() {
                       key={s.id}
                       onClick={() => {
                         setSelectedAgent(s.agentName);
+                        setChatAgent(s.agentName);
                         setSessionId(s.id);
                         setMessages(s.messages);
                         setError(null);
@@ -516,7 +493,7 @@ export function ChatPage() {
       {/* Right Chat feed & composer */}
       <div
         className={`${
-          selectedAgent ? "flex" : "hidden md:flex"
+          chatAgent ? "flex" : "hidden md:flex"
         } flex-1 flex-col h-full min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden`}
       >
         <header
@@ -527,7 +504,7 @@ export function ChatPage() {
             {/* Back button on mobile */}
             <button
               onClick={() => {
-                setSelectedAgent("");
+                setChatAgent("");
                 setError(null);
               }}
               className="md:hidden p-1.5 rounded hover:bg-gray-100 text-gray-500 mr-1 shrink-0 cursor-pointer"
@@ -538,9 +515,9 @@ export function ChatPage() {
             </button>
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-gray-900 truncate">
-                {selectedAgent ? `Chat: ${selectedAgent}` : "Chat"}
+                {chatAgent ? `Chat: ${chatAgent}` : "Chat"}
               </h1>
-              {selectedAgent && (
+              {chatAgent && (
                 <p className="text-[10px] text-gray-500 font-mono truncate">
                   ID: {sessionId.slice(0, 8)}...
                 </p>
@@ -567,14 +544,18 @@ export function ChatPage() {
                 </svg>
               </div>
               <h3 className="text-sm font-medium text-gray-900">
-                {selectedAgent
-                  ? `Start your conversation with ${selectedAgent}`
-                  : "Select an agent to start chatting"}
+                {chatAgent
+                  ? `Start your conversation with ${chatAgent}`
+                  : selectedAgent
+                    ? `Ready to chat with ${selectedAgent}`
+                    : "Select an agent to start chatting"}
               </h3>
               <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
-                {selectedAgent
+                {chatAgent
                   ? "Type your message below. The chat history will be automatically stored locally."
-                  : "Choose an agent from the list on the left to initialize a session."}
+                  : selectedAgent
+                    ? "Click New Chat to start a conversation with the selected agent."
+                    : "Choose an agent from the list on the left, then click New Chat."}
               </p>
             </div>
           )}
@@ -624,21 +605,21 @@ export function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                selectedAgent
+                chatAgent
                   ? "Type a message... (Enter to send, Shift+Enter for newline)"
-                  : "Select an agent first"
+                  : "Start a new chat first"
               }
-              disabled={!selectedAgent || isStreaming}
+              disabled={!chatAgent || isStreaming}
               rows={3}
               className="w-full border-0 focus:ring-0 focus:outline-none resize-none p-3 text-sm text-gray-900 placeholder-gray-400 bg-transparent disabled:text-gray-400"
             />
             <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 bg-gray-50 rounded-b-lg">
               <span className="text-xs text-gray-500 truncate mr-2">
-                {selectedAgent ? `Talking to ${selectedAgent}` : "No agent selected"}
+                {chatAgent ? `Talking to ${chatAgent}` : "No active chat"}
               </span>
               <button
                 onClick={handleSend}
-                disabled={!selectedAgent || !input.trim() || isStreaming}
+                disabled={!chatAgent || !input.trim() || isStreaming}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1.5 text-sm font-medium flex items-center gap-1.5 disabled:opacity-40 disabled:hover:bg-blue-600 transition-colors cursor-pointer shrink-0"
               >
                 {isStreaming ? (
