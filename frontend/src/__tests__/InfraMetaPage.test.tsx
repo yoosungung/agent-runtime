@@ -98,4 +98,18 @@ describe("InfraMetaPage", () => {
     expect(screen.getByText("configured")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••••••••••••••• (unchanged)")).toBeInTheDocument();
   });
+
+  it("renders tab content at full width without max-width constraint", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <InfraMetaPage />
+      </QueryClientProvider>,
+    );
+
+    const tabPanel = container.querySelector("[data-testid='platform-tab-panel']");
+    expect(tabPanel).toBeInTheDocument();
+    expect(tabPanel).toHaveClass("w-full");
+    expect(tabPanel?.className).not.toMatch(/max-w-/);
+  });
 });

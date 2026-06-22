@@ -236,9 +236,9 @@ export function InfraMetaPage() {
       title="Platform Settings"
       description="Configure global platform options, observability tools, and manage LLM presets."
     >
-      <div className="space-y-6">
+      <div className="flex flex-col w-full min-h-0">
         {/* Navigation Tabs */}
-        <div className="border-b border-gray-200">
+        <div className="border-b border-gray-200 shrink-0">
           <nav className="-mb-px flex space-x-8" aria-label="Tabs">
             <button
               onClick={() => {
@@ -283,7 +283,7 @@ export function InfraMetaPage() {
         </div>
 
         {/* Tab Contents */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 max-w-4xl">
+        <div data-testid="platform-tab-panel" className="w-full flex-1 pt-6">
           {activeTab === "observability" && (
             <form onSubmit={handleObservabilitySubmit} className="space-y-6">
               <div className="space-y-4">
