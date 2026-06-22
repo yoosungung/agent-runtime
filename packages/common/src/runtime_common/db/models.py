@@ -23,6 +23,7 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     String,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -232,7 +233,7 @@ class ChatThreadRow(Base):
         UniqueConstraint("user_id", "provider_session_id", name="uq_chat_threads_user_provider_session"),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
