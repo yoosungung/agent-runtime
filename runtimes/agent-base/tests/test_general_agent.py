@@ -97,7 +97,7 @@ class TestBuildGeneralAgent:
 
         monkeypatch.setattr(mcp_mod, "build_mcp_tools", lambda *a, **k: [])
 
-        captured: dict[str, str] = {}
+        captured: dict[str, object] = {}
 
         def fake_create_deep_agent(*, model, **kwargs):
             captured["model"] = model
@@ -123,7 +123,9 @@ class TestBuildGeneralAgent:
             agent_store=agent_store,
             user_store=user_store,
         )
-        assert captured["model"] == "openai:gpt-5.4-nano"
+        model = captured["model"]
+        assert getattr(model, "model_name", None) == "gpt-5.4-nano"
+        assert getattr(model, "use_responses_api", None) is False
 
     def test_requires_general_section(self, secrets, vfs_stores):
         from agent_base.general_agent import build_general_agent

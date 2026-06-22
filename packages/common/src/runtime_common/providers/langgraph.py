@@ -87,10 +87,25 @@ def resolve_model_spec(cfg: dict) -> str:
     return DEFAULT_LLM_MODEL_SPEC
 
 
-def prepare_langgraph_llm(cfg: dict) -> str:
-    """Export cfg API keys and return the model spec for ``create_deep_agent``."""
+def init_chat_model(spec: str, **kwargs: Any) -> Any:
+    """Lazy wrapper so ``runtime-common`` tests can patch without langchain installed."""
+    from langchain.chat_models import init_chat_model as _init_chat_model
+
+    return _init_chat_model(spec, **kwargs)
+
+
+def prepare_langgraph_llm(cfg: dict) -> str | Any:
+    """Export cfg API keys and return the model for ``create_deep_agent``.
+
+    ``openai:...`` specs are materialised with ``use_responses_api=False`` so
+    OpenAI-compatible gateways that only implement Chat Completions work.
+    Other providers are returned as string specs for deepagents to resolve.
+    """
     export_llm_api_keys(cfg)
-    return resolve_model_spec(cfg)
+    spec = resolve_model_spec(cfg)
+    if spec.startswith("openai:"):
+        return init_chat_model(spec, use_responses_api=False)
+    return spec
 
 
 def build_checkpointer(cfg: dict, secrets: SecretResolver) -> Any | None:

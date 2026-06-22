@@ -76,10 +76,37 @@ def test_export_llm_api_keys_sets_env(monkeypatch):
 
 
 def test_prepare_langgraph_llm_combines_export_and_resolve(monkeypatch):
+    fake_model = object()
+    mock_init = MagicMock(return_value=fake_model)
+    monkeypatch.setattr(lg, "init_chat_model", mock_init)
     monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:gpt-5.4-nano")
+
     model = lg.prepare_langgraph_llm({"anthropic_api_key": "sk-ant"})
-    assert model == "openai:gpt-5.4-nano"
+
+    assert model is fake_model
+    mock_init.assert_called_once_with("openai:gpt-5.4-nano", use_responses_api=False)
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant"
+
+
+def test_prepare_langgraph_llm_openai_spec_disables_responses_api(monkeypatch):
+    fake_model = object()
+    mock_init = MagicMock(return_value=fake_model)
+    monkeypatch.setattr(lg, "init_chat_model", mock_init)
+
+    model = lg.prepare_langgraph_llm({"langgraph": {"model": "openai:gpt-4o-mini"}})
+
+    assert model is fake_model
+    mock_init.assert_called_once_with("openai:gpt-4o-mini", use_responses_api=False)
+
+
+def test_prepare_langgraph_llm_non_openai_returns_string_spec(monkeypatch):
+    monkeypatch.delenv("DEFAULT_LLM_MODEL", raising=False)
+
+    model = lg.prepare_langgraph_llm(
+        {"langgraph": {"model": "anthropic:claude-sonnet-4-6"}},
+    )
+
+    assert model == "anthropic:claude-sonnet-4-6"
 
 
 def test_resolve_model_spec_preset(monkeypatch):
