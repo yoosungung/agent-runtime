@@ -41,12 +41,12 @@ def _make_test_settings(**overrides):
     return _settings_mod.Settings(**{**defaults, **overrides})
 
 
-async def _seed_general_agent(session_factory) -> None:
+async def _seed_general_agent(session_factory, *, name: str = "docs-bot") -> None:
     async with session_factory() as session:
         session.add(
             SourceMetaRow(
                 kind="agent",
-                name="docs-bot",
+                name=name,
                 version="v1",
                 runtime_pool="agent:compiled_graph",
                 deploy_mode="general",
@@ -123,10 +123,33 @@ async def vfs_client(tmp_path, monkeypatch):
 async def test_list_vfs_agents(vfs_client: AsyncClient):
     resp = await vfs_client.get("/api/vfs/agents")
     assert resp.status_code == 200
-    items = resp.json()["items"]
+    data = resp.json()
+    items = data["items"]
     assert len(items) == 1
+    assert data["total"] == 1
     assert items[0]["name"] == "docs-bot"
     assert items[0]["vfs_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_vfs_agents_pagination(vfs_client: AsyncClient):
+    from backend.app import app
+
+    for i in range(4):
+        await _seed_general_agent(app.state.session_factory, name=f"pag-bot-{i}")
+
+    page1 = await vfs_client.get("/api/vfs/agents", params={"limit": 2, "offset": 0})
+    page2 = await vfs_client.get("/api/vfs/agents", params={"limit": 2, "offset": 2})
+    assert page1.status_code == 200
+    assert page2.status_code == 200
+    data1 = page1.json()
+    data2 = page2.json()
+    assert data1["total"] == 5
+    assert len(data1["items"]) == 2
+    assert len(data2["items"]) == 2
+    names1 = {item["name"] for item in data1["items"]}
+    names2 = {item["name"] for item in data2["items"]}
+    assert names1.isdisjoint(names2)
 
 
 @pytest.mark.asyncio

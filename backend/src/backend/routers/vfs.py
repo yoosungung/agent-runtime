@@ -41,6 +41,9 @@ class VfsAgentSummary(BaseModel):
 
 class VfsAgentsListResponse(BaseModel):
     items: list[VfsAgentSummary]
+    total: int
+    limit: int
+    offset: int
 
 
 class VfsEntryResponse(BaseModel):
@@ -216,12 +219,17 @@ async def list_vfs_agents(
     request: Request,
     name: str | None = Query(default=None, description="Name prefix filter"),
     include_retired: bool = Query(default=False),
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _principal: Principal = Depends(require_admin),  # noqa: B008
 ) -> VfsAgentsListResponse:
+    limit = min(limit, 100)
     store = _get_agent_store(request)
     rows = await _latest_general_agents(db, name_prefix=name or None, include_retired=include_retired)
     stats = await _fetch_vfs_stats(store)
+    total = len(rows)
+    page_rows = rows[offset : offset + limit]
     items = [
         VfsAgentSummary(
             kind=row.kind,
@@ -234,9 +242,9 @@ async def list_vfs_agents(
             total_bytes=stats.get((row.kind, row.name), {}).get("total_bytes", 0),
             last_modified=stats.get((row.kind, row.name), {}).get("last_modified"),
         )
-        for row in rows
+        for row in page_rows
     ]
-    return VfsAgentsListResponse(items=items)
+    return VfsAgentsListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/agents/{kind}/{name}/entries", response_model=VfsEntriesListResponse)

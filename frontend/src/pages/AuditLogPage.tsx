@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiJson, type PageResponse } from "../lib/api";
 import { Paginator } from "../components/Paginator";
-import { usePagination } from "../hooks/usePagination";
+import { useViewportPagination } from "../hooks/useViewportPagination";
 import { PageHeader } from "../components/PageHeader";
 
 interface AuditLogEntry {
@@ -43,7 +43,9 @@ function actionBadgeClass(action: string): string {
 }
 
 export function AuditLogPage() {
-  const { limit, offset, setOffset, reset } = usePagination(50);
+  const { anchorRef, limit, offset, setOffset, reset } = useViewportPagination({
+    min: 10,
+  });
   const [actorFilter, setActorFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
@@ -87,7 +89,7 @@ export function AuditLogPage() {
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
         {isLoading && <p className="p-4 text-sm text-gray-500">Loading...</p>}
         {isError && <p className="p-4 text-sm text-red-500">Failed to load audit log.</p>}
         {!isLoading && !isError && (

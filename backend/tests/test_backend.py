@@ -1628,6 +1628,36 @@ async def test_get_audit_log_filter_action(client: AsyncClient):
     assert all("source_meta" in item["action"] for item in items)
 
 
+async def test_get_audit_log_pagination(client: AsyncClient):
+    """GET /api/audit honors limit/offset and returns stable disjoint pages."""
+    for i in range(5):
+        await client.post(
+            "/api/source-meta",
+            json={**_VALID_SOURCE_BODY, "name": f"audit-pag-bot-{i}", "version": f"v{i}"},
+            headers=_csrf_headers(),
+        )
+    page1 = await client.get(
+        "/api/audit",
+        params={"limit": 2, "offset": 0},
+        headers=_csrf_headers(),
+    )
+    page2 = await client.get(
+        "/api/audit",
+        params={"limit": 2, "offset": 2},
+        headers=_csrf_headers(),
+    )
+    assert page1.status_code == 200
+    assert page2.status_code == 200
+    data1 = page1.json()
+    data2 = page2.json()
+    assert data1["total"] >= 5
+    assert len(data1["items"]) == 2
+    assert len(data2["items"]) == 2
+    ids1 = {item["id"] for item in data1["items"]}
+    ids2 = {item["id"] for item in data2["items"]}
+    assert ids1.isdisjoint(ids2)
+
+
 # ---------------------------------------------------------------------------
 # GET /api/me
 # ---------------------------------------------------------------------------

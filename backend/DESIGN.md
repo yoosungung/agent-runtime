@@ -238,7 +238,7 @@ general-tier agent의 Postgres VFS(`vfs_agent_files`)를 admin SPA에서 직접 
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/vfs/agents` | general agent 목록 + VFS 집계(`file_count`, `total_bytes`, `last_modified`) |
+| GET | `/api/vfs/agents` | general agent 목록 + VFS 집계. `?limit`/`?offset` 페이지네이션(기본 50, max 100) |
 | GET | `/api/vfs/agents/{kind}/{name}/entries` | `list_dir` (`path` query) |
 | GET | `/api/vfs/agents/{kind}/{name}/files` | 파일 읽기 (`path` query) |
 | PUT | `/api/vfs/agents/{kind}/{name}/files` | 신규 파일 생성 |

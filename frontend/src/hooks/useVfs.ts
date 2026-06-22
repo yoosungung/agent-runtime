@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, apiJson } from "../lib/api";
+import { apiFetch, apiJson, type PageResponse } from "../lib/api";
 
 export interface VfsAgentSummary {
   kind: string;
@@ -31,15 +31,26 @@ export interface VfsFile {
 export function useVfsAgents(filters?: {
   name?: string;
   include_retired?: boolean;
+  limit?: number;
+  offset?: number;
 }) {
   const params = new URLSearchParams();
   if (filters?.name) params.set("name", filters.name);
   if (filters?.include_retired) params.set("include_retired", "true");
+  if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
   const qs = params.toString();
   return useQuery({
-    queryKey: ["vfs", "agents", filters?.name ?? "", filters?.include_retired ?? false],
+    queryKey: [
+      "vfs",
+      "agents",
+      filters?.name ?? "",
+      filters?.include_retired ?? false,
+      filters?.limit ?? 50,
+      filters?.offset ?? 0,
+    ],
     queryFn: () =>
-      apiJson<{ items: VfsAgentSummary[] }>(`/api/vfs/agents${qs ? `?${qs}` : ""}`),
+      apiJson<PageResponse<VfsAgentSummary>>(`/api/vfs/agents${qs ? `?${qs}` : ""}`),
   });
 }
 
