@@ -10,6 +10,14 @@ export function sourceMetaListPath(item: Pick<SourceMeta, "kind" | "deploy_mode"
   return item.kind === "agent" ? "/container/agents" : "/container/mcp";
 }
 
-export function sourceMetaDetailPath(item: Pick<SourceMeta, "kind" | "id">): string {
-  return item.kind === "agent" ? `/agents/${item.id}` : `/mcp-servers/${item.id}`;
+export function sourceMetaDetailPath(
+  item: Pick<SourceMeta, "kind" | "id" | "deploy_mode">,
+): string {
+  if (item.kind === "mcp") {
+    return `/mcp-servers/${item.id}`;
+  }
+  if (item.deploy_mode === "general") {
+    return `/agents/${item.id}`;
+  }
+  return `/bundle/agents/${item.id}`;
 }

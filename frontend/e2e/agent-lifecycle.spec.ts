@@ -29,8 +29,8 @@ test.describe("Agent lifecycle — register → detail → retire", () => {
     // Submit
     await page.getByRole("button", { name: /create/i }).click();
 
-    // Should navigate to detail page
-    await page.waitForURL(/\/agents\/\d+/);
+    // Should navigate to bundle agent detail page
+    await page.waitForURL(/\/bundle\/agents\/\d+/);
     await expect(page.getByText(AGENT_NAME)).toBeVisible();
     await expect(page.getByText(AGENT_VERSION)).toBeVisible();
 

@@ -331,7 +331,14 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - port: 4317
-    # LLM APIs, presigned object-store URLs, Opik, etc.
+    # In-cluster LLM serving (sglang / vLLM OpenAI-compatible HTTP)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: llm-serving
+      ports:
+        - port: 30000
+    # External LLM APIs, presigned object-store URLs, etc.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

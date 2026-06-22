@@ -75,6 +75,12 @@ class AgentVfsStore(ABC):
     async def delete(self, kind: str, agent_name: str, path: str) -> None: ...
 
     @abstractmethod
+    async def mkdir(self, kind: str, agent_name: str, dir_path: str) -> None: ...
+
+    @abstractmethod
+    async def delete_tree(self, kind: str, agent_name: str, path: str) -> None: ...
+
+    @abstractmethod
     async def glob(
         self,
         kind: str,
@@ -263,6 +269,40 @@ class MemoryAgentVfsStore(AgentVfsStore, _MemoryStoreBase):
 
     async def delete(self, kind: str, agent_name: str, path: str) -> None:
         self._rows.pop((kind, agent_name, normalize_path(path)), None)
+
+    async def mkdir(self, kind: str, agent_name: str, dir_path: str) -> None:
+        norm = normalize_dir(dir_path)
+        if norm == "/":
+            return
+        path, parent_path, name, size = dir_row_fields(norm)
+        scope = (kind, agent_name)
+        self._ensure_dir_rows(self._rows, scope, ancestor_dir_paths(parent_path))
+        self._rows[(kind, agent_name, path)] = _MemoryRow(
+            path=path,
+            parent_path=parent_path,
+            name=name,
+            is_dir=True,
+            size=size,
+            content="",
+            modified_at=datetime.now(UTC),
+        )
+
+    async def delete_tree(self, kind: str, agent_name: str, path: str) -> None:
+        norm = normalize_path(path)
+        row = self._rows.get((kind, agent_name, norm))
+        if row is not None and not row.is_dir:
+            self._rows.pop((kind, agent_name, norm), None)
+            return
+        dir_path = normalize_dir(norm)
+        keys = [
+            key
+            for key in list(self._rows)
+            if key[0] == kind
+            and key[1] == agent_name
+            and (key[2] == norm or key[2] == dir_path or key[2].startswith(dir_path))
+        ]
+        for key in keys:
+            self._rows.pop(key, None)
 
     async def glob(
         self,
@@ -504,6 +544,72 @@ class AsyncpgAgentVfsStore(AgentVfsStore):
                 agent_name,
                 normalize_path(path),
             )
+
+    async def mkdir(self, kind: str, agent_name: str, dir_path: str) -> None:
+        norm = normalize_dir(dir_path)
+        if norm == "/":
+            return
+        path, parent_path, name, _ = dir_row_fields(norm)
+        async with self._pool.acquire() as conn:
+            await _ensure_agent_dirs(conn, kind, agent_name, parent_path)
+            await conn.execute(
+                _AGENT_ENSURE_DIRS_SQL,
+                kind,
+                agent_name,
+                path,
+                parent_path,
+                name,
+            )
+
+    async def delete_tree(self, kind: str, agent_name: str, path: str) -> None:
+        norm = normalize_path(path)
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT is_dir FROM vfs_agent_files
+                WHERE kind = $1 AND agent_name = $2 AND path = $3
+                """,
+                kind,
+                agent_name,
+                norm,
+            )
+            if row is None:
+                dir_path = normalize_dir(norm)
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_agent_files
+                    WHERE kind = $1 AND agent_name = $2
+                      AND (path = $3 OR path LIKE $4)
+                    """,
+                    kind,
+                    agent_name,
+                    norm,
+                    dir_path + "%",
+                )
+                return
+            if row["is_dir"]:
+                dir_path = normalize_dir(norm)
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_agent_files
+                    WHERE kind = $1 AND agent_name = $2
+                      AND (path = $3 OR path LIKE $4)
+                    """,
+                    kind,
+                    agent_name,
+                    dir_path,
+                    dir_path + "%",
+                )
+            else:
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_agent_files
+                    WHERE kind = $1 AND agent_name = $2 AND path = $3
+                    """,
+                    kind,
+                    agent_name,
+                    norm,
+                )
 
     async def glob(
         self,

@@ -38,6 +38,7 @@
 
 - [ ] **VFS grep 고급 검색** — BM25 / vector / graph 기반 grep 대체. 현재는 Postgres `LATERAL unnest` + literal `LIKE` (agent tool loop용 MVP).
 - [ ] **VFS glob 최적화** — `pg_trgm`·materialized path index 등. 현재는 scoped `path ~ regex` 전체 스캔.
+- [ ] **Admin VFS — `/user/` 개인 영역** — `vfs_user_files` 열람·관리 UI, 사용자 선택 + 감사 강화 ([frontend/DESIGN.md](frontend/DESIGN.md) `/vfs` 2단계).
 - [ ] **invoke SSE 슬림화** — agent-pool `astream_events` v2 full payload → BFF 필터 3-hop 제거. token delta만 emit하거나 Envoy SSE passthrough.
 
 - [ ] **frontend: shadcn/ui 초기화** — `components.json` + 최소 컴포넌트(Button, Input, Table, Dialog, Form, Toast, Select). 현재는 Tailwind 직접 사용 ([frontend/DESIGN.md](frontend/DESIGN.md))

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, Navigate } from "react-router-dom";
 import {
   useDeleteSourceMeta,
   usePatchGeneralAgent,
@@ -25,6 +25,9 @@ import {
   canManageGeneralAgent,
   readGeneralConfig,
 } from "../lib/generalAgent";
+import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
+import { isAdminRole } from "../lib/roles";
+import { vfsAgentBrowserPath } from "../lib/vfsPaths";
 
 export function GeneralAgentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +61,7 @@ export function GeneralAgentDetailPage() {
   }
 
   const canManage = item ? canManageGeneralAgent(item, session) : false;
+  const showVfsLink = isAdminRole(session?.role ?? "user");
   const availableMcp = mcpAccess?.items ?? [];
 
   function toggleMcp(name: string) {
@@ -117,14 +121,7 @@ export function GeneralAgentDetailPage() {
     return <p className="p-4 text-sm text-red-500">Agent를 불러오지 못했습니다.</p>;
   }
   if (item.deploy_mode !== "general") {
-    return (
-      <p className="p-4 text-sm text-red-500">
-        General agent가 아닙니다.{" "}
-        <Link to={`/bundle/agents`} className="text-blue-600 underline">
-          Bundle Agents
-        </Link>
-      </p>
-    );
+    return <Navigate to={sourceMetaDetailPath(item)} replace />;
   }
 
   return (
@@ -139,6 +136,14 @@ export function GeneralAgentDetailPage() {
         </button>
         <span className="text-gray-400">/</span>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{item.name}</h1>
+        {showVfsLink && (
+          <Link
+            to={vfsAgentBrowserPath(item.kind, item.name)}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            VFS 관리
+          </Link>
+        )}
         {item.retired && (
           <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-0.5 rounded">
             Retired

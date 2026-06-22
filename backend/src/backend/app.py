@@ -25,14 +25,16 @@ from backend.routers import auth as auth_router_module
 from backend.routers import bucket as bucket_router_module
 from backend.routers import bundles as bundles_router_module
 from backend.routers import chat as chat_router_module
+from backend.routers import chat_threads as chat_threads_router_module
 from backend.routers import custom_images as custom_images_router_module
 from backend.routers import dashboard as dashboard_router_module
 from backend.routers import infra_meta as infra_meta_router_module
+from backend.routers import llm_presets as llm_presets_router_module
 from backend.routers import me_user_meta as me_user_meta_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
-from backend.routers import llm_presets as llm_presets_router_module
+from backend.routers import vfs as vfs_router_module
 from backend.settings import get_settings
 from runtime_common.auth import AuthClient
 from runtime_common.db import make_engine, make_session_factory, session_scope
@@ -189,7 +191,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await pool_monitor.start()
     app.state.pool_monitor = pool_monitor
 
+    vfs_pool = None
+    vfs_agent_store = None
+    vfs_dsn = (settings.VFS_DSN or settings.POSTGRES_DSN).replace(
+        "postgresql+asyncpg://", "postgresql://"
+    )
+    if vfs_dsn:
+        from runtime_common.vfs.store import AsyncpgAgentVfsStore, create_asyncpg_pool
+
+        pgbouncer = settings.VFS_PGBOUNCER or settings.POSTGRES_PGBOUNCER
+        vfs_pool = await create_asyncpg_pool(vfs_dsn, pgbouncer=pgbouncer)
+        vfs_agent_store = AsyncpgAgentVfsStore(vfs_pool)
+    app.state.vfs_pool = vfs_pool
+    app.state.vfs_agent_store = vfs_agent_store
+
     yield
+
+    if vfs_pool is not None:
+        await vfs_pool.close()
 
     await pool_monitor.stop()
 
@@ -249,8 +268,10 @@ app.include_router(user_meta_router_module.router)  # /api/user-meta/*
 app.include_router(infra_meta_router_module.router)  # /api/infra-meta/*
 app.include_router(llm_presets_router_module.router)  # /api/llm-presets/*
 app.include_router(bucket_router_module.router)  # /api/bucket/*
+app.include_router(vfs_router_module.router)  # /api/vfs/*
 app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password
+app.include_router(chat_threads_router_module.router)  # /api/me/chat/threads
 app.include_router(chat_router_module.router)  # /api/chat/*
 app.include_router(audit_router_module.router)  # /api/audit
 app.include_router(custom_images_router_module.router)  # /api/admin/custom-images/*

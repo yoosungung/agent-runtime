@@ -38,3 +38,6 @@ def test_base_kustomize_includes_pool_network_policies() -> None:
     assert "app: deploy-api" in manifest.split("name: pool-egress")[1]
     assert "app: backend" in manifest.split("name: pool-egress")[1]
     assert "port: 443" in manifest.split("name: pool-egress")[1]
+    pool_egress = manifest.split("name: pool-egress")[1].split("---")[0]
+    assert "kubernetes.io/metadata.name: llm-serving" in pool_egress
+    assert "port: 30000" in pool_egress

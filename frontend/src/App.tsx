@@ -56,6 +56,16 @@ const InfraMetaPage = lazy(() =>
 const BucketPage = lazy(() =>
   import("./pages/BucketPage").then((m) => ({ default: m.BucketPage })),
 );
+const VfsAgentsListPage = lazy(() =>
+  import("./pages/VfsAgentsListPage").then((m) => ({
+    default: m.VfsAgentsListPage,
+  })),
+);
+const VfsBrowserPage = lazy(() =>
+  import("./pages/VfsBrowserPage").then((m) => ({
+    default: m.VfsBrowserPage,
+  })),
+);
 const GeneralAgentNewPage = lazy(() =>
   import("./pages/GeneralAgentNewPage").then((m) => ({
     default: m.GeneralAgentNewPage,
@@ -170,6 +180,10 @@ export function App() {
                       element={<SourceMetaNewPage kind="agent" />}
                     />
                     <Route
+                      path="/bundle/agents/:id"
+                      element={<SourceMetaDetailPage kind="agent" />}
+                    />
+                    <Route
                       path="/bundle/mcp/new"
                       element={<SourceMetaNewPage kind="mcp" />}
                     />
@@ -216,6 +230,11 @@ export function App() {
                   </Route>
 
                   <Route element={<RequireRole min="admin" />}>
+                    <Route path="/vfs" element={<VfsAgentsListPage />} />
+                    <Route
+                      path="/vfs/agents/:kind/:name"
+                      element={<VfsBrowserPage />}
+                    />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<UserNewPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />

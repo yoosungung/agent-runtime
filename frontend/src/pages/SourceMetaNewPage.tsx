@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type z } from "zod";
 import { sourceMetaCreateSchema } from "../lib/schemas";
 import { getRuntimeKinds } from "../lib/enums";
+import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { useCreateSourceMeta, useUploadBundle } from "../hooks/useSourceMeta";
 import { JsonEditor } from "../components/JsonEditor";
 import { FileDropZone } from "../components/FileDropZone";
@@ -115,7 +116,7 @@ export function SourceMetaNewPage({ kind }: Props) {
       const payload = { ...values, config };
       if (!requiresChecksum) delete payload.checksum;
       const result = await createMut.mutateAsync(payload);
-      navigate(kind === "agent" ? `/agents/${result.id}` : `/mcp-servers/${result.id}`);
+      navigate(sourceMetaDetailPath(result));
     } catch (e: unknown) {
       setGlobalError(e instanceof Error ? e.message : "Failed to create");
     }
@@ -147,7 +148,7 @@ export function SourceMetaNewPage({ kind }: Props) {
 
     try {
       const result = await uploadMut.mutateAsync(fd);
-      navigate(kind === "agent" ? `/agents/${result.id}` : `/mcp-servers/${result.id}`);
+      navigate(sourceMetaDetailPath(result));
     } catch (e: unknown) {
       const status = (e as { status?: number })?.status;
       if (status === 413) setGlobalError("File too large");

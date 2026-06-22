@@ -76,12 +76,16 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /me/user-meta/:kind/:name              본인 user_meta 편집 (template 기반 폼)
 /chat                                  agent 선택 → 대화 (SSE 스트리밍)
 /bundle/bucket                          admin: bundle object store 브라우저 (S3 또는 local); `/bucket` → redirect
+/vfs                                    admin: general agent VFS 목록 (`/agent/` 공유 영역)
+/vfs/agents/:kind/:name                 admin: VFS 파일 브라우저 + 텍스트 에디터
 /settings/infra                        admin: Platform env (LLM·Opik·OTLP)
 /users                                 admin: 사용자 관리
 /audit                                 admin: 감사 로그
 ```
 
 **Bucket (`/bundle/bucket`, admin)** — Bundle 섹션 탭(Agent/MCP 옆, admin만 표시). `GET /api/bucket/info` 배지(S3/local). breadcrumb + 1-depth listing. toolbar: New Folder · Upload · Move · Delete. `in_use` 행(checkbox disabled, "In use" badge) — `source_meta` 참조 중 번들. delete/move 409 → "Source Meta가 참조 중인 번들입니다…" toast.
+
+**VFS (`/vfs`, admin)** — 상단 nav: Platform → **VFS** → User → Audit. general agent 목록(`/vfs`) → 파일 브라우저(`/vfs/agents/:kind/:name`). Bucket UX와 유사(breadcrumb, New Folder/File, Upload, Delete, 텍스트 에디터). agent name 기준 공유·버전 무관 안내. General agent 상세에서 "VFS 관리" 링크(admin).
 
 **가드 매트릭스**:
 
@@ -176,8 +180,10 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - invoke 흐름: `GET /api/auth/access-token` → `POST ${VITE_AGENTS_INVOKE_URL}`(기본 `/v1/agents/invoke`) body `{agent, input: {message}, session_id, stream: true}` + Bearer/`x-runtime-name`/`x-runtime-session-id` 헤더. Ingress → Envoy → ext-authz → pool.
 - 응답은 `text/event-stream`. agent-base emit 포맷(runtime_kind별 LangGraph/ADK/CUSTOM)을 `lib/chatStream.ts`의 `extractTextFromAgentEvent()`로 UI용 텍스트 델타로 정규화(BFF `/api/chat/invoke`에 있던 규칙과 동일). `[DONE]`·`{"error":…}`·BFF 레거시 `{"text":…}` 모두 처리.
 - 파싱은 fetch + `ReadableStream`(`lib/agentsInvoke.ts`). `\n\n` 단위 버퍼링.
-- `session_id`는 페이지 진입 시 `crypto.randomUUID()`로 발급해 동일 대화 동안 재사용. "New Chat" 버튼이 abort + 새 UUID + messages 초기화.
-- **Recent Chats / `agents_chat_sessions` localStorage는 임시 UI** — 향후 삭제 예정. agent 대화 연속성의 정본은 pool `session_id` → Postgres checkpoint/ADK session (BFF 세션 API는 후속).
+- `session_id`는 페이지 진입 시 **New Chat** → `POST /api/me/chat/threads` 응답의 `session_id`(= DB `provider_session_id`)로 발급·재사용. 플랫폼 thread `id`와 분리.
+- **Recent Chats** — `GET /api/me/chat/threads` 목록. 선택 시 `GET .../threads/{id}` + `GET .../messages`로 hydrate 후 동일 `session_id`로 invoke 연속.
+- 메시지 전송 후 `POST .../threads/{id}/touch`로 `title`·`last_message_at` 갱신.
+- 삭제는 `DELETE .../threads/{id}`(소프트). provider 데이터 정리는 `scripts/purge_deleted_chat_threads.py` 배치.
 
 **Frontend env**
 

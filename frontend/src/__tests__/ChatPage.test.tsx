@@ -4,9 +4,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "../pages/ChatPage";
 
 const mockUseMyAccessResources = vi.fn();
+const mockUseChatThreads = vi.fn();
+const mockUseCreateChatThread = vi.fn();
+const mockUseDeleteChatThread = vi.fn();
+const mockUseTouchChatThread = vi.fn();
+const mockGetChatThread = vi.fn();
+const mockGetChatThreadMessages = vi.fn();
+const mockMigrateLegacyChatSessions = vi.fn();
 
 vi.mock("../hooks/useMyUserMeta", () => ({
   useMyAccessResources: (...args: unknown[]) => mockUseMyAccessResources(...args),
+}));
+
+vi.mock("../lib/chatThreads", () => ({
+  useChatThreads: () => mockUseChatThreads(),
+  useCreateChatThread: () => mockUseCreateChatThread(),
+  useDeleteChatThread: () => mockUseDeleteChatThread(),
+  useTouchChatThread: () => mockUseTouchChatThread(),
+  getChatThread: (...args: unknown[]) => mockGetChatThread(...args),
+  getChatThreadMessages: (...args: unknown[]) => mockGetChatThreadMessages(...args),
+  migrateLegacyChatSessions: (...args: unknown[]) => mockMigrateLegacyChatSessions(...args),
 }));
 
 vi.mock("../lib/agentsInvoke", () => ({
@@ -32,28 +49,45 @@ const mockAgentOther = {
   version: "v2",
 };
 
-function createLocalStorageMock() {
-  const store = new Map<string, string>();
-  return {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      store.set(key, value);
-    },
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    clear: () => {
-      store.clear();
-    },
-  };
-}
+const mockThread = {
+  id: "thread-abc",
+  agent_name: "research-orchestrator",
+  thread_type: "langgraph",
+  title: "Hello world",
+  last_message_at: "2026-01-01T00:00:00Z",
+  created_at: "2026-01-01T00:00:00Z",
+  session_id: "session-abc",
+};
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
-  vi.stubGlobal("localStorage", createLocalStorageMock());
+  mockMigrateLegacyChatSessions.mockResolvedValue(undefined);
   mockUseMyAccessResources.mockReturnValue({
     isLoading: false,
     data: { items: [mockAgent, mockAgentOther], total: 2 },
+  });
+  mockUseChatThreads.mockReturnValue({
+    isLoading: false,
+    data: { items: [mockThread], total: 1 },
+  });
+  mockUseCreateChatThread.mockReturnValue({
+    isPending: false,
+    mutateAsync: vi.fn().mockResolvedValue({
+      ...mockThread,
+      id: "thread-new",
+      session_id: "session-new",
+      title: "New Chat",
+    }),
+  });
+  mockUseDeleteChatThread.mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+  });
+  mockUseTouchChatThread.mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue(mockThread),
+  });
+  mockGetChatThread.mockResolvedValue(mockThread);
+  mockGetChatThreadMessages.mockResolvedValue({
+    messages: [{ role: "user", content: "Hello world" }],
   });
 });
 
@@ -82,6 +116,10 @@ describe("ChatPage", () => {
       isLoading: false,
       data: { items: [], total: 0 },
     });
+    mockUseChatThreads.mockReturnValue({
+      isLoading: false,
+      data: { items: [], total: 0 },
+    });
 
     renderChatPage();
     expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument();
@@ -91,6 +129,10 @@ describe("ChatPage", () => {
 
   it("keeps message list scrollable between fixed header and composer", () => {
     mockUseMyAccessResources.mockReturnValue({
+      isLoading: false,
+      data: { items: [], total: 0 },
+    });
+    mockUseChatThreads.mockReturnValue({
       isLoading: false,
       data: { items: [], total: 0 },
     });
@@ -120,11 +162,22 @@ describe("ChatPage", () => {
   });
 
   it("starts a new chat with the sidebar agent copied at that moment", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      ...mockThread,
+      id: "thread-new",
+      session_id: "session-new",
+      title: "New Chat",
+    });
+    mockUseCreateChatThread.mockReturnValue({ isPending: false, mutateAsync });
+
     renderChatPage();
 
     selectSidebarAgent("research-orchestrator");
     startNewChat();
 
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith("research-orchestrator");
+    });
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
     });
@@ -149,6 +202,21 @@ describe("ChatPage", () => {
   });
 
   it("uses the sidebar agent when starting another new chat", async () => {
+    const mutateAsync = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...mockThread,
+        id: "thread-1",
+        session_id: "session-1",
+      })
+      .mockResolvedValueOnce({
+        ...mockThread,
+        id: "thread-2",
+        session_id: "session-2",
+        agent_name: "other-agent",
+      });
+    mockUseCreateChatThread.mockReturnValue({ isPending: false, mutateAsync });
+
     renderChatPage();
 
     selectSidebarAgent("research-orchestrator");
@@ -162,24 +230,15 @@ describe("ChatPage", () => {
     expect(screen.getByText("Talking to other-agent")).toBeInTheDocument();
   });
 
-  it("selects agent when restoring a recent chat by session id", async () => {
-    localStorage.setItem(
-      "agents_chat_sessions",
-      JSON.stringify([
-        {
-          id: "session-abc",
-          agentName: "research-orchestrator",
-          title: "Hello world",
-          timestamp: Date.now(),
-          messages: [{ role: "user", content: "Hello world" }],
-        },
-      ]),
-    );
-
+  it("selects agent when restoring a recent chat by thread id", async () => {
     renderChatPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Hello world" }));
 
+    await waitFor(() => {
+      expect(mockGetChatThread).toHaveBeenCalledWith("thread-abc");
+      expect(mockGetChatThreadMessages).toHaveBeenCalledWith("thread-abc");
+    });
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
     });

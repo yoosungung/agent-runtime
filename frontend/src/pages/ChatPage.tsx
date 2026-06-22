@@ -1,38 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { invokeAgentStream } from "../lib/agentsInvoke";
-import { generateSessionId } from "../lib/sessionId";
+import {
+  getChatThread,
+  getChatThreadMessages,
+  migrateLegacyChatSessions,
+  useChatThreads,
+  useCreateChatThread,
+  useDeleteChatThread,
+  useTouchChatThread,
+  type ChatMessage,
+} from "../lib/chatThreads";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
 }
-
-interface ChatSession {
-  id: string;
-  agentName: string;
-  title: string;
-  timestamp: number;
-  messages: Message[];
-}
-
-const loadSessions = (): ChatSession[] => {
-  try {
-    const data = localStorage.getItem("agents_chat_sessions");
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveSessions = (sessions: ChatSession[]) => {
-  try {
-    localStorage.setItem("agents_chat_sessions", JSON.stringify(sessions));
-  } catch (e) {
-    console.error("Failed to save chat sessions", e);
-  }
-};
 
 // Simple Markdown Parser Component
 function RichText({ text }: { text: string }) {
@@ -173,18 +157,26 @@ function MarkdownRenderer({ content }: { content: string }) {
 export function ChatPage() {
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [chatAgent, setChatAgent] = useState<string>("");
-  const [sessionId, setSessionId] = useState<string>(generateSessionId);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
+  const [loadingThread, setLoadingThread] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const migrationStarted = useRef(false);
 
   const { data: agentList, isLoading: agentsLoading } = useMyAccessResources("agent");
+  const { data: threadsData, isLoading: threadsLoading } = useChatThreads();
+  const createThread = useCreateChatThread();
+  const deleteThread = useDeleteChatThread();
+  const touchThread = useTouchChatThread();
+
+  const threads = threadsData?.items ?? [];
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -192,49 +184,61 @@ export function ChatPage() {
     container.scrollTop = container.scrollHeight;
   }, [messages]);
 
-  // Sync messages to localStorage
   useEffect(() => {
-    if (messages.length === 0 || !chatAgent) return;
+    if (migrationStarted.current || agentsLoading) return;
+    const agents = agentList?.items ?? [];
+    if (agents.length === 0) return;
+    migrationStarted.current = true;
+    void migrateLegacyChatSessions(new Set(agents.map((a) => a.name)));
+  }, [agentList, agentsLoading]);
 
-    const firstUserMsg = messages.find((m) => m.role === "user")?.content || "New Chat";
-    const title = firstUserMsg.slice(0, 30) + (firstUserMsg.length > 30 ? "..." : "");
-
-    const currentSessions = loadSessions();
-    const existingIdx = currentSessions.findIndex((s) => s.id === sessionId);
-    const updatedSession: ChatSession = {
-      id: sessionId,
-      agentName: chatAgent,
-      title,
-      timestamp: Date.now(),
-      messages,
-    };
-
-    if (existingIdx >= 0) {
-      currentSessions[existingIdx] = updatedSession;
-    } else {
-      currentSessions.unshift(updatedSession);
-    }
-
-    currentSessions.sort((a, b) => b.timestamp - a.timestamp);
-    saveSessions(currentSessions);
-    setSessions(currentSessions);
-  }, [messages, chatAgent, sessionId]);
-
-  function handleNewChat() {
-    if (!selectedAgent) return;
+  async function handleNewChat() {
+    if (!selectedAgent || createThread.isPending) return;
     if (abortRef.current) {
       abortRef.current.abort();
     }
-    setChatAgent(selectedAgent);
-    setSessionId(generateSessionId());
-    setMessages([]);
+    try {
+      const thread = await createThread.mutateAsync(selectedAgent);
+      setChatAgent(selectedAgent);
+      setActiveThreadId(thread.id);
+      setSessionId(thread.session_id);
+      setMessages([]);
+      setError(null);
+      setIsStreaming(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to start new chat");
+    }
+  }
+
+  async function handleSelectThread(threadId: string) {
+    if (loadingThread || isStreaming) return;
+    setLoadingThread(true);
     setError(null);
-    setIsStreaming(false);
+    try {
+      const [thread, history] = await Promise.all([
+        getChatThread(threadId),
+        getChatThreadMessages(threadId),
+      ]);
+      setSelectedAgent(thread.agent_name);
+      setChatAgent(thread.agent_name);
+      setActiveThreadId(thread.id);
+      setSessionId(thread.session_id);
+      setMessages(
+        history.messages.map((m: ChatMessage) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load chat");
+    } finally {
+      setLoadingThread(false);
+    }
   }
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || !chatAgent || isStreaming) return;
+    if (!text || !chatAgent || !sessionId || isStreaming) return;
 
     setInput("");
     setError(null);
@@ -289,6 +293,15 @@ export function ChatPage() {
               if (last?.role === "assistant") {
                 next[next.length - 1] = { ...last, streaming: false };
               }
+              if (activeThreadId) {
+                const firstUserMsg =
+                  next.find((m) => m.role === "user")?.content || "New Chat";
+                const title =
+                  firstUserMsg.slice(0, 30) + (firstUserMsg.length > 30 ? "..." : "");
+                void touchThread
+                  .mutateAsync({ threadId: activeThreadId, title })
+                  .catch(() => undefined);
+              }
               return next;
             });
           },
@@ -319,16 +332,14 @@ export function ChatPage() {
     }
   }
 
-  const handleDeleteSession = (idToDelete: string, e: React.MouseEvent) => {
+  const handleDeleteSession = (threadId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const currentSessions = loadSessions();
-    const updated = currentSessions.filter((s) => s.id !== idToDelete);
-    saveSessions(updated);
-    setSessions(updated);
+    void deleteThread.mutateAsync(threadId).catch(() => undefined);
 
-    if (sessionId === idToDelete) {
+    if (activeThreadId === threadId) {
       setChatAgent("");
-      setSessionId(generateSessionId());
+      setActiveThreadId(null);
+      setSessionId("");
       setMessages([]);
       setError(null);
     }
@@ -366,7 +377,7 @@ export function ChatPage() {
         <div className="p-3 border-b border-gray-200 shrink-0">
           <button
             onClick={handleNewChat}
-            disabled={!selectedAgent || isStreaming}
+            disabled={!selectedAgent || isStreaming || createThread.isPending}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 bg-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -428,23 +439,20 @@ export function ChatPage() {
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
               Recent Chats
             </h2>
-            {sessions.length === 0 ? (
+            {threadsLoading ? (
+              <p className="text-xs text-gray-400 px-1">Loading chats...</p>
+            ) : threads.length === 0 ? (
               <p className="text-xs text-gray-400 px-1 italic">No recent chats</p>
             ) : (
               <div className="space-y-1">
-                {sessions.map((s) => {
-                  const isActive = sessionId === s.id;
+                {threads.map((s) => {
+                  const isActive = activeThreadId === s.id;
                   return (
                     <button
                       key={s.id}
-                      onClick={() => {
-                        setSelectedAgent(s.agentName);
-                        setChatAgent(s.agentName);
-                        setSessionId(s.id);
-                        setMessages(s.messages);
-                        setError(null);
-                      }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded text-sm transition-colors flex items-center justify-between group cursor-pointer ${
+                      onClick={() => void handleSelectThread(s.id)}
+                      disabled={loadingThread || isStreaming}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-sm transition-colors flex items-center justify-between group cursor-pointer disabled:opacity-50 ${
                         isActive
                           ? "bg-blue-50 text-blue-700 font-medium"
                           : "text-gray-700 hover:bg-gray-50"
@@ -517,9 +525,9 @@ export function ChatPage() {
               <h1 className="text-base font-semibold text-gray-900 truncate">
                 {chatAgent ? `Chat: ${chatAgent}` : "Chat"}
               </h1>
-              {chatAgent && (
+              {chatAgent && sessionId && (
                 <p className="text-[10px] text-gray-500 font-mono truncate">
-                  ID: {sessionId.slice(0, 8)}...
+                  ID: {activeThreadId?.slice(0, 8) ?? sessionId.slice(0, 8)}...
                 </p>
               )}
             </div>
@@ -552,7 +560,7 @@ export function ChatPage() {
               </h3>
               <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
                 {chatAgent
-                  ? "Type your message below. The chat history will be automatically stored locally."
+                  ? "Type your message below. Chat history is stored on the server."
                   : selectedAgent
                     ? "Click New Chat to start a conversation with the selected agent."
                     : "Choose an agent from the list on the left, then click New Chat."}

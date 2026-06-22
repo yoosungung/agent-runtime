@@ -19,6 +19,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     PrimaryKeyConstraint,
     String,
     UniqueConstraint,
@@ -221,6 +222,37 @@ class InfraMetaRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class ChatThreadRow(Base):
+    __tablename__ = "chat_threads"
+    __table_args__ = (
+        Index("ix_chat_threads_user_list", "user_id", "deleted_at", "last_message_at"),
+        Index("ix_chat_threads_user_agent", "user_id", "agent_name"),
+        UniqueConstraint("user_id", "provider_session_id", name="uq_chat_threads_user_provider_session"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    thread_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_meta: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    title: Mapped[str] = mapped_column(
+        String(256), nullable=False, default="New Chat", server_default="New Chat"
+    )
+    last_message_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LlmPresetRow(Base):

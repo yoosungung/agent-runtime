@@ -29,17 +29,18 @@
 
 ### DB / 업스트림
 
-- **Postgres 직결** — 다섯 테이블의 **쓰기 소유자**:
+- **Postgres 직결** — 여섯 테이블의 **쓰기 소유자**:
   - `source_meta` (immutable·versioned) — INSERT/DELETE/retire
   - `user_meta` (mutable, per-principal) — upsert/DELETE
   - `llm_presets` (mutable, platform LLM config) — CRUD
+  - `chat_threads` (mutable, per-user Chat UI thread registry) — CRUD + soft delete
   - `users` (login credentials + admin flag) — INSERT/UPDATE/DELETE + 비밀번호 해싱
   - `user_resource_access` (user ↔ (kind,name) 매핑) — INSERT/DELETE(grant/revoke)
   - `refresh_tokens`는 제외 — auth가 issue/rotate/revoke하는 짧은 수명 상태라 auth 전용으로 유지.
   - DSN: `POSTGRES_DSN` (write, asyncpg URL). 읽기 replica 분리는 admin 규모에선 과하므로 MVP는 primary 단일.
   - `runtime_common.db.make_engine` / `session_scope` 재사용.
   - SQLAlchemy 모델: **`runtime_common.db.models` 공용 사용** (backend·deploy-api·auth 세 서비스가 같은 선언을 import). backend가 자체 `models.py`를 두지 않는다. 공용화는 [../packages/common/DESIGN.md](../packages/common/DESIGN.md) "공용 DB 모델 리팩토링" 참조.
-  - 마이그레이션: **`backend/migrations/0001_init.sql`** (auth·메타 등), **`0002_vfs.sql`** (`vfs_agent_files`, `vfs_user_files` — `users` FK). path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
+  - 마이그레이션: **`backend/migrations/0001_init.sql`** … **`0006_chat_threads.sql`**. path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
 - **auth 서비스**: `AUTH_URL` — `/login`, `/refresh`, `/logout`, `/verify` 프록시.
 - **deploy-api는 호출하지 않는다** — admin은 DB를 직접 보므로 proxy 단계를 거치지 않는다. deploy-api의 resolve 캐시(in-memory, 5s TTL)는 자연 만료로 eventual consistency. auth도 같은 이유로 `users`/`user_resource_access` read 캐시(TTL ~5s)가 admin write 이후 자연 만료.
 
@@ -69,6 +70,12 @@
 | `POST` | `/api/source-meta/{id}/retire` | `retired=true` toggle | soft delete |
 | `DELETE` | `/api/source-meta/{id}` | Postgres DELETE + bundle 파일 정리(ours) | dev/stage only (`ALLOW_HARD_DELETE`) |
 | `GET` | `/api/me/access-resources` | `Principal.access` ∩ routable `source_meta` | self-service |
+| `GET` | `/api/me/chat/threads` | 본인 `chat_threads` 목록 | 페이지네이션, `deleted_at IS NULL` |
+| `POST` | `/api/me/chat/threads` | thread 생성 (`agent_name`, optional `session_id`) | 응답에 invoke용 `session_id` |
+| `GET` | `/api/me/chat/threads/{id}` | thread 상세 + `session_id` | 소유권 검증 |
+| `DELETE` | `/api/me/chat/threads/{id}` | soft delete (`deleted_at`) | |
+| `POST` | `/api/me/chat/threads/{id}/touch` | `title`·`last_message_at` 갱신 | |
+| `GET` | `/api/me/chat/threads/{id}/messages` | provider adapter로 UI 메시지 hydrate | read-only runtime PG |
 | `GET` | `/api/me/user-meta` | 본인 `user_meta` + template | ACL `kind`+`name` |
 | `PUT` | `/api/me/user-meta` | 본인 UPSERT (`principal_id=username`) | template required 검증 |
 | `DELETE` | `/api/me/user-meta` | 본인 DELETE | |
@@ -222,6 +229,33 @@ admin backend가 **bundle 파일의 물리적 저장**도 책임진다. deploy-a
 - **범위**: S3는 `S3_PREFIX` 밖 key 거부. local은 `tmp/` 숨김·CRUD 금지.
 - **참조 보호**: `{sha256}.zip`/`.sig`가 `source_meta.checksum`으로 참조 중이면 delete/move **409**.
 - **감사**: `bucket.mkdir`, `bucket.upload`, `bucket.delete`, `bucket.move`.
+
+#### VFS admin (general agent `/agent/` shared files)
+
+general-tier agent의 Postgres VFS(`vfs_agent_files`)를 admin SPA에서 직접 CRUD한다. **agent-base 런타임 경로와 병렬** — backend는 `VFS_DSN`(미설정 시 `POSTGRES_DSN` fallback)으로 asyncpg pool을 열고 `runtime_common.vfs.AsyncpgAgentVfsStore`를 재사용한다. deploy-api·agent-base로 프록시하지 않음.
+
+라우터: `/api/vfs/*` (`require_admin` + CSRF). 구현: `routers/vfs.py`.
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/vfs/agents` | general agent 목록 + VFS 집계(`file_count`, `total_bytes`, `last_modified`) |
+| GET | `/api/vfs/agents/{kind}/{name}/entries` | `list_dir` (`path` query) |
+| GET | `/api/vfs/agents/{kind}/{name}/files` | 파일 읽기 (`path` query) |
+| PUT | `/api/vfs/agents/{kind}/{name}/files` | 신규 파일 생성 |
+| PATCH | `/api/vfs/agents/{kind}/{name}/files` | 덮어쓰기 또는 find-replace |
+| DELETE | `/api/vfs/agents/{kind}/{name}/files` | 경로·하위 트리 삭제 (`path` query) |
+| POST | `/api/vfs/agents/{kind}/{name}/folders` | 빈 폴더 생성 |
+
+- **범위**: `vfs_agent_files`만 (MVP). `/user/` 개인 영역은 향후.
+- **스코프 키**: `(kind, agent_name)` — 버전 무관.
+- **제한**: UTF-8 텍스트, `MAX_VFS_FILE_BYTES` (기본 1 MiB), `..` path 거절.
+- **감사**: `vfs.agent.write`, `vfs.agent.delete`, `vfs.agent.mkdir`.
+
+| Env | Default | 설명 |
+|-----|---------|------|
+| `VFS_DSN` | `""` (→ `POSTGRES_DSN`) | VFS asyncpg pool DSN |
+| `VFS_PGBOUNCER` | `false` | PgBouncer transaction mode |
+| `MAX_VFS_FILE_BYTES` | `1048576` | admin VFS 파일 상한 |
 
 - **업로드 플로우 (zip 전용 `POST /api/source-meta/bundle`)**:
   1. 프런트엔드: `<input type=file>` → `FormData`로 POST (multipart). 파트는 `file`(zip), 선택적으로 `sig`(서명 blob), `meta`(JSON: `{kind,name,version,runtime_pool,entrypoint,config?}`).

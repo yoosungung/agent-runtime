@@ -47,6 +47,12 @@ spec:
               value: http://backend.runtime.svc.cluster.local:8000/bundles
             - name: INITIAL_ADMIN_PASSWORD_FILE
               value: /run/secrets/initial-admin-password
+            - name: VFS_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+                  optional: true
           volumeMounts:
             - name: initial-admin-password
               mountPath: /run/secrets/initial-admin-password

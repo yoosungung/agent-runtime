@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     ALLOW_HARD_DELETE: bool = False
     BACKEND_SERVE_SPA: bool = True
 
+    # VFS admin (general agent /agent/ shared files)
+    VFS_DSN: str = ""
+    VFS_PGBOUNCER: bool = False
+    MAX_VFS_FILE_BYTES: int = 1_048_576  # 1 MiB
+
     LOG_LEVEL: str = "INFO"
 
 
