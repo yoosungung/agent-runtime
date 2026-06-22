@@ -39,13 +39,7 @@ make k8s-apply-dev
 make k8s-rollout-restart   # GHA 빌드 후 :latest pull
 ```
 
-이미지 빌드 (GHCR push):
-
-```bash
-gh workflow run "Build and push images" --ref main
-# backend만 반영 시
-kubectl -n runtime rollout restart deployment/backend
-```
+컨테이너 이미지 빌드·GHCR push는 GitHub Actions — [## Commands](#commands) 참조.
 
 `k8s-apply-*`는 overlay 한 번으로 **Garage + runtime 스택**을 함께 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 
@@ -252,3 +246,47 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 - `python-agent/` — FastAPI + `POST /invoke` + `/healthz` + `/readyz`
 - `python-mcp/` — 동일 구조, MCP 서버 역할
 - `go-agent/` — Go `net/http` 구현 예제 (멀티스테이지 빌드, alpine 최종 이미지)
+
+## Commands
+
+### 컨테이너 이미지 빌드 (GitHub Actions → GHCR)
+
+워크플로: [`.github/workflows/build-images.yml`](../.github/workflows/build-images.yml)
+
+| 트리거 | 용도 |
+|--------|------|
+| `workflow_dispatch` | dev/stage 배포용 — **커밋 push 후** 수동 실행 (일반적) |
+| Release **published** | 태그 릴리스와 함께 빌드 |
+
+빌드 대상(6종): `backend`, `agent-base`, `mcp-base`, `auth`, `deploy-api`, `ext-authz`
+
+태그: `ghcr.io/yoosungung/agent-runtime/<service>:latest` 및 `:<git-sha>`
+
+```bash
+# 1) 변경분을 원격 main에 push (GHA는 checkout ref 기준)
+git push origin main
+
+# 2) 워크플로 실행 (Makefile 래퍼)
+make build-images
+
+# 또는 gh 직접 호출
+gh workflow run "Build and push images" --ref main
+
+# 3) 진행 확인
+gh run list --workflow=build-images.yml --limit=3
+gh run watch   # 최근 run ID 지정 시: gh run watch <run-id>
+
+# 4) 클러스터에 반영 (dev overlay는 :latest + imagePullPolicy: Always)
+make k8s-rollout-restart
+# backend / agent pool만:
+kubectl -n runtime rollout restart deployment/backend \
+  deployment/agent-pool-compiled-graph deployment/agent-pool-adk
+```
+
+Release publish로 빌드:
+
+```bash
+gh release create v0.2.0 --title "v0.2.0" --target main
+```
+
+로컬 `docker build` + `docker push`는 GHCR `write:packages` PAT가 필요하다. pull 전용 PAT(`registry-creds`)로는 push 불가 — **GHA 사용을 권장**.

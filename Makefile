@@ -7,7 +7,7 @@ S3_BUCKET ?= agent-bundles
         registry-secret ensure-registry-secret _bootstrap-registry-secret \
         ncr-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         k8s-apply-garage k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
-        k8s-rollout-restart k8s-redeploy-dev \
+        k8s-rollout-restart k8s-redeploy-dev build-images \
         db-migrate db-migrate-all \
         diagram diagram-png
 
@@ -114,6 +114,11 @@ k8s-rollout-restart: ## rolling restart all Deployments in $(NAMESPACE) (picks u
 	kubectl -n $(NAMESPACE) rollout restart deployment
 
 k8s-redeploy-dev: k8s-apply-dev k8s-rollout-restart ## apply dev overlay → rollout (images from GHCR via GHA release)
+
+REF ?= main
+build-images: ## trigger GHA build-images workflow (push REF first; watch: gh run list --workflow=build-images.yml)
+	gh workflow run "Build and push images" --ref $(REF)
+	@echo "Triggered. Watch: gh run list --workflow=build-images.yml --limit=1"
 
 # --- db -------------------------------------------------------------------
 

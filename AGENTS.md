@@ -46,7 +46,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 - **Python**: 3.12 고정 (`.python-version`).
 - **패키지 매니저**: uv — `uv sync --all-packages`. 워크스페이스 멤버는 `pyproject.toml`의 `[tool.uv.workspace].members`.
 - **자주 쓰는 명령**: `make sync` / `make lint` / `make fmt` / `make typecheck` / `make test`
-  - 이미지 빌드: GitHub Release publish → GHA (`.github/workflows/build-images.yml`)
+  - 이미지 빌드: `make build-images` (GHA `workflow_dispatch`) 또는 Release publish — [deploy/DESIGN.md § Commands](deploy/DESIGN.md#commands)
   - k8s: `make k8s-apply-dev` / `make k8s-rollout-restart`
   - DB: `make db-migrate-all`
   - GHCR pull secret: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`

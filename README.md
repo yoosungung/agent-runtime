@@ -52,14 +52,17 @@ uv run uvicorn deploy_api.app:app --reload --port 8002
 
 ### Build & deploy
 
-Images are built by **GitHub Actions** on **GitHub Release** publish (`.github/workflows/build-images.yml`). Tags: `:latest` and commit SHA on `ghcr.io/yoosungung/agent-runtime/<service>`.
+Images are built by **GitHub Actions** (`.github/workflows/build-images.yml`) and pushed to `ghcr.io/yoosungung/agent-runtime/<service>` (`:latest` + commit SHA).
 
 ```bash
-gh release create v0.1.0 --title "dev 0.1.0" --target main
+git push origin main
+make build-images              # workflow_dispatch — see deploy/DESIGN.md § Commands
 make k8s-apply-dev
 make db-migrate-all
 make k8s-rollout-restart
 ```
+
+Release publish also triggers the same workflow: `gh release create v0.1.0 --title "dev 0.1.0" --target main`
 
 Private GHCR: `make k8s-apply-dev`가 `registry-creds`를 자동 생성(gh 로그인 또는 `GITHUB_USER`/`GITHUB_PAT`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
 
