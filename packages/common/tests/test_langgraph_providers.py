@@ -80,3 +80,34 @@ def test_prepare_langgraph_llm_combines_export_and_resolve(monkeypatch):
     model = lg.prepare_langgraph_llm({"anthropic_api_key": "sk-ant"})
     assert model == "openai:gpt-5.4-nano"
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant"
+
+
+def test_resolve_model_spec_preset(monkeypatch):
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_MODE", "frontier")
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_MODEL_ID", "claude-3-5-sonnet")
+
+    assert lg.resolve_model_spec({"langgraph": {"model": "preset:TEST_PRESET"}}) == "anthropic:claude-3-5-sonnet"
+
+
+def test_resolve_model_spec_preset_openai_compatible(monkeypatch):
+    monkeypatch.setenv("LLM_PRESET_TEST_COMPAT_MODE", "openai_compatible")
+    monkeypatch.setenv("LLM_PRESET_TEST_COMPAT_MODEL_ID", "meta-llama/Llama-3")
+
+    assert lg.resolve_model_spec({"langgraph": {"model": "preset:TEST_COMPAT"}}) == "openai:meta-llama/Llama-3"
+
+
+def test_export_llm_api_keys_preset(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+    
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_MODE", "frontier")
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_API_KEY", "sk-ant-preset-key")
+    monkeypatch.setenv("LLM_PRESET_TEST_PRESET_API_BASE", "http://preset-base/v1")
+
+    lg.export_llm_api_keys({"langgraph": {"model": "preset:TEST_PRESET"}})
+    
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-preset-key"
+    assert os.environ["OPENAI_API_BASE"] == "http://preset-base/v1"
+

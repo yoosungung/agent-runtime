@@ -221,3 +221,25 @@ class InfraMetaRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class LlmPresetRow(Base):
+    __tablename__ = "llm_presets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    frontier_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    openai_api_base: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    slm_runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    api_key_configured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+

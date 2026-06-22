@@ -77,3 +77,21 @@ def test_build_session_service_memory_opt_out(monkeypatch):
     result = build_session_service({"adk": {"session_service": "memory"}}, secrets)
 
     assert result is fake_memory
+
+
+def test_adk_get_model_preset(monkeypatch):
+    from runtime_common.providers.adk import get_model
+
+    monkeypatch.setenv("LLM_PRESET_MY_GEMINI_MODE", "frontier")
+    monkeypatch.setenv("LLM_PRESET_MY_GEMINI_PROVIDER", "google")
+    monkeypatch.setenv("LLM_PRESET_MY_GEMINI_MODEL_ID", "gemini-2.5-pro")
+
+    assert get_model({"adk": {"model": "preset:MY_GEMINI"}}) == "google:gemini-2.5-pro"
+
+
+def test_adk_get_model_default_fallback(monkeypatch):
+    from runtime_common.providers.adk import get_model
+
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "google:gemini-2.0-flash-exp")
+    assert get_model({}) == "google:gemini-2.0-flash-exp"
+

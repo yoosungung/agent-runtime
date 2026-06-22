@@ -44,11 +44,42 @@ def export_llm_api_keys(cfg: dict) -> None:
         if val := cfg.get(cfg_key):
             os.environ[env_key] = val
 
+    # Support preset dynamic mapping (look into both langgraph and adk config sections)
+    model_spec = cfg.get("langgraph", {}).get("model") or cfg.get("adk", {}).get("model")
+    if model_spec and model_spec.startswith("preset:"):
+        preset_name = model_spec[len("preset:"):].strip()
+        api_key = os.environ.get(f"LLM_PRESET_{preset_name}_API_KEY", "").strip()
+        api_base = os.environ.get(f"LLM_PRESET_{preset_name}_API_BASE", "").strip()
+        mode = os.environ.get(f"LLM_PRESET_{preset_name}_MODE", "").strip()
+        provider = os.environ.get(f"LLM_PRESET_{preset_name}_PROVIDER", "openai").strip()
+
+        if api_key:
+            if mode == "openai_compatible":
+                os.environ["OPENAI_API_KEY"] = api_key
+            else:
+                if provider == "openai":
+                    os.environ["OPENAI_API_KEY"] = api_key
+                elif provider == "anthropic":
+                    os.environ["ANTHROPIC_API_KEY"] = api_key
+                elif provider == "google":
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    os.environ["GEMINI_API_KEY"] = api_key
+        if api_base:
+            os.environ["OPENAI_API_BASE"] = api_base
+
 
 def resolve_model_spec(cfg: dict) -> str:
     """Resolve DeepAgents/LangGraph model: cfg → platform env → repo default."""
     explicit = get_model_spec(cfg)
     if explicit:
+        if explicit.startswith("preset:"):
+            preset_name = explicit[len("preset:"):].strip()
+            mode = os.environ.get(f"LLM_PRESET_{preset_name}_MODE", "").strip()
+            model_id = os.environ.get(f"LLM_PRESET_{preset_name}_MODEL_ID", "").strip()
+            provider = os.environ.get(f"LLM_PRESET_{preset_name}_PROVIDER", "openai").strip()
+            if mode == "openai_compatible":
+                return f"openai:{model_id}"
+            return f"{provider}:{model_id}"
         return explicit
     platform = os.environ.get("DEFAULT_LLM_MODEL", "").strip()
     if platform:

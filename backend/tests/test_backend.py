@@ -1195,6 +1195,95 @@ async def test_get_infra_meta_after_upsert(client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
+# llm_presets
+# ---------------------------------------------------------------------------
+
+
+async def test_llm_presets_crud(client: AsyncClient):
+    # 1. List presets initially empty
+    resp = await client.get("/api/llm-presets", headers=_csrf_headers())
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    # 2. Create preset
+    resp = await client.post(
+        "/api/llm-presets",
+        json={
+            "name": "CLAUDE_TEST",
+            "description": "My test preset",
+            "mode": "frontier",
+            "frontier_provider": "anthropic",
+            "model_id": "claude-3-5-sonnet",
+            "is_default": True,
+            "api_key": "sk-ant-test-key",
+        },
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "CLAUDE_TEST"
+    assert data["is_default"] is True
+    assert data["api_key_configured"] is True
+    preset_id = data["id"]
+
+    # 3. Retrieve preset
+    resp = await client.get(f"/api/llm-presets/{preset_id}", headers=_csrf_headers())
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "CLAUDE_TEST"
+
+    # 4. Duplicate name should fail
+    resp = await client.post(
+        "/api/llm-presets",
+        json={
+            "name": "CLAUDE_TEST",
+            "mode": "frontier",
+            "model_id": "claude-other",
+        },
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 409
+
+    # 5. Invalid name pattern should fail (Pydantic validation -> 422)
+    resp = await client.post(
+        "/api/llm-presets",
+        json={
+            "name": "claude-test",
+            "mode": "frontier",
+            "model_id": "claude-other",
+        },
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 422
+
+    # 6. Update preset
+    resp = await client.put(
+        f"/api/llm-presets/{preset_id}",
+        json={
+            "description": "Updated desc",
+            "mode": "frontier",
+            "frontier_provider": "anthropic",
+            "model_id": "claude-3-5-opus",
+            "is_default": False,
+        },
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["model_id"] == "claude-3-5-opus"
+    assert resp.json()["is_default"] is False
+
+    # 7. Delete preset
+    resp = await client.delete(f"/api/llm-presets/{preset_id}", headers=_csrf_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+    # 8. List empty again
+    resp = await client.get("/api/llm-presets", headers=_csrf_headers())
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+
+# ---------------------------------------------------------------------------
 # Bundle upload / download
 # ---------------------------------------------------------------------------
 

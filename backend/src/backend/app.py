@@ -32,6 +32,7 @@ from backend.routers import me_user_meta as me_user_meta_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
+from backend.routers import llm_presets as llm_presets_router_module
 from backend.settings import get_settings
 from runtime_common.auth import AuthClient
 from runtime_common.db import make_engine, make_session_factory, session_scope
@@ -246,6 +247,7 @@ app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
 app.include_router(user_meta_router_module.router)  # /api/user-meta/*
 app.include_router(infra_meta_router_module.router)  # /api/infra-meta/*
+app.include_router(llm_presets_router_module.router)  # /api/llm-presets/*
 app.include_router(bucket_router_module.router)  # /api/bucket/*
 app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password

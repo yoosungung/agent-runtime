@@ -164,7 +164,7 @@ async def upsert_infra_meta(
         try:
             await reconcile_infra(
                 k8s,
-                env=row.env,
+                db,
                 secrets_patch=validated_secrets,
             )
         except Exception as exc:

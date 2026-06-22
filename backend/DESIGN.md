@@ -29,9 +29,10 @@
 
 ### DB / 업스트림
 
-- **Postgres 직결** — 네 테이블의 **쓰기 소유자**:
+- **Postgres 직결** — 다섯 테이블의 **쓰기 소유자**:
   - `source_meta` (immutable·versioned) — INSERT/DELETE/retire
   - `user_meta` (mutable, per-principal) — upsert/DELETE
+  - `llm_presets` (mutable, platform LLM config) — CRUD
   - `users` (login credentials + admin flag) — INSERT/UPDATE/DELETE + 비밀번호 해싱
   - `user_resource_access` (user ↔ (kind,name) 매핑) — INSERT/DELETE(grant/revoke)
   - `refresh_tokens`는 제외 — auth가 issue/rotate/revoke하는 짧은 수명 상태라 auth 전용으로 유지.
@@ -76,6 +77,10 @@
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
 | `GET` | `/api/infra-meta` | Postgres SELECT global infra row | secret 값 없음, `secret_keys`만 |
 | `PUT` | `/api/infra-meta` | Postgres UPSERT + K8s reconcile | `{env?, secrets?}` — secrets는 K8s Secret만, DB에는 key 이름 |
+| `GET` | `/api/llm-presets` | Postgres SELECT all presets | admin only |
+| `POST` | `/api/llm-presets` | Postgres INSERT + K8s reconcile | `{name, description?, mode, model_id, api_key?, ...}` |
+| `PUT` | `/api/llm-presets/{id}` | Postgres UPDATE + K8s reconcile | `{description?, mode, model_id, api_key?, ...}` |
+| `DELETE` | `/api/llm-presets/{id}` | Postgres DELETE + K8s reconcile | |
 | `GET` | `/api/users` | Postgres SELECT, filter `username`/`tenant`/`disabled` | 페이지네이션 |
 | `GET` | `/api/users/{id}` | Postgres SELECT by id | 비밀번호 해시는 응답에 없음 |
 | `POST` | `/api/users` | argon2id hash + Postgres INSERT | `{username, password, tenant?, is_admin?}`, 409 중복 |

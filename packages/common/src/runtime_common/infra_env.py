@@ -35,6 +35,8 @@ _LEGACY_ENV_ALIASES: dict[str, str] = {
 def validate_infra_env_key(key: str) -> None:
     if key in RESERVED_INFRA_ENV_KEYS:
         raise ValueError(f"env key {key!r} is reserved by the platform")
+    if key.startswith("LLM_PRESET_"):
+        raise ValueError(f"env key {key!r} cannot start with LLM_PRESET_ prefix (reserved for LLM presets)")
     if not _ENV_KEY_RE.match(key):
         raise ValueError(f"env key {key!r} must match [A-Z][A-Z0-9_]* (container env var name)")
 

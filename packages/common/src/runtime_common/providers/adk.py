@@ -9,6 +9,7 @@ into ``LlmAgent(...)`` and (eventually) ``Runner(...)`` construction.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -40,7 +41,21 @@ def sqlalchemy_asyncpg_dsn(dsn: str) -> str:
 
 
 def get_model(cfg: dict) -> str:
-    return _section(cfg).get("model", "google:gemini-2.0-flash")
+    explicit = _section(cfg).get("model")
+    if explicit:
+        if explicit.startswith("preset:"):
+            preset_name = explicit[len("preset:"):].strip()
+            mode = os.environ.get(f"LLM_PRESET_{preset_name}_MODE", "").strip()
+            model_id = os.environ.get(f"LLM_PRESET_{preset_name}_MODEL_ID", "").strip()
+            provider = os.environ.get(f"LLM_PRESET_{preset_name}_PROVIDER", "google").strip()
+            if mode == "openai_compatible":
+                return f"openai:{model_id}"
+            return f"{provider}:{model_id}"
+        return explicit
+    platform = os.environ.get("DEFAULT_LLM_MODEL", "").strip()
+    if platform:
+        return platform
+    return "google:gemini-2.0-flash"
 
 
 def get_max_llm_calls(cfg: dict) -> int:

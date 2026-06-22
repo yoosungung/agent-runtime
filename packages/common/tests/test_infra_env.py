@@ -37,6 +37,11 @@ def test_validate_infra_env_patch_rejects_reserved():
         validate_infra_env_patch({"POD_NAME": "x"})
 
 
+def test_validate_infra_env_patch_rejects_llm_preset():
+    with pytest.raises(ValueError, match="cannot start with LLM_PRESET_"):
+        validate_infra_env_patch({"LLM_PRESET_MY_PRESET_API_KEY": "x"})
+
+
 def test_merge_infra_env_preserves_extra_keys():
     merged = merge_infra_env(
         {"OPIK_URL": "old", "CUSTOM_VAR": "keep"},

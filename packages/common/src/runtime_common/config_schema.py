@@ -84,7 +84,7 @@ class LangGraphSourceConfig(BaseModel):
     )
     model: str | None = Field(
         default=None,
-        description="LLM model spec for DeepAgents, e.g. 'anthropic:claude-sonnet-4-6'. "
+        description="LLM model spec for DeepAgents, e.g. 'anthropic:claude-sonnet-4-6' or 'preset:MY_PRESET'. "
         "Ignored by plain compiled_graph bundles.",
     )
 
@@ -108,7 +108,7 @@ class AdkSourceConfig(BaseModel):
 
     model: str = Field(
         default="google:gemini-2.0-flash",
-        description="LLM model spec, e.g. 'google:gemini-2.0-flash' or 'anthropic:claude-sonnet-4-6'.",
+        description="LLM model spec, e.g. 'google:gemini-2.0-flash', 'anthropic:claude-sonnet-4-6', or 'preset:MY_PRESET'.",
     )
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_output_tokens: int = Field(default=8192, ge=1)

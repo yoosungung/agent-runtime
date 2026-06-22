@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { InfraMetaPage } from "../pages/InfraMetaPage";
@@ -24,7 +24,6 @@ vi.mock("../hooks/useInfraMeta", () => ({
       scope_key: "",
       env: {
         OPIK_URL: "http://opik/api",
-        DEFAULT_LLM_MODEL: "openai:gpt-4o-mini",
       },
       secret_keys: ["OPENAI_API_KEY"],
       updated_at: null,
@@ -38,19 +37,65 @@ vi.mock("../hooks/useInfraMeta", () => ({
   }),
 }));
 
+vi.mock("../hooks/useLlmPresets", () => ({
+  useLlmPresets: () => ({
+    data: [
+      {
+        id: 1,
+        name: "GPT4_MINI",
+        description: "Default OpenAI model",
+        mode: "frontier",
+        frontier_provider: "openai",
+        model_id: "gpt-4o-mini",
+        openai_api_base: null,
+        slm_runtime: null,
+        is_default: true,
+        api_key_configured: true,
+        created_at: "2026-06-22T00:00:00Z",
+        updated_at: "2026-06-22T00:00:00Z",
+      }
+    ],
+    isLoading: false,
+    isError: false,
+  }),
+  useCreateLlmPreset: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useUpdateLlmPreset: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useDeleteLlmPreset: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 describe("InfraMetaPage", () => {
-  it("renders platform infra form with LLM provider options", () => {
+  it("renders platform infra form with tabs and handles navigation", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
         <InfraMetaPage />
       </QueryClientProvider>,
     );
-    expect(screen.getByText("Platform")).toBeInTheDocument();
+    // General tab renders by default
+    expect(screen.getByText("Platform Settings")).toBeInTheDocument();
     expect(screen.getByText("Opik URL")).toBeInTheDocument();
-    expect(screen.getByText("(configured)")).toBeInTheDocument();
-    expect(screen.getByText("Frontier (cloud API)")).toBeInTheDocument();
-    expect(screen.getByText(/Self-hosted \(vLLM \/ SGLang\)/)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("gpt-4o-mini")).toBeInTheDocument();
+
+    // Navigate to Presets tab
+    const presetsTab = screen.getByRole("button", { name: "LLM Presets" });
+    fireEvent.click(presetsTab);
+    expect(screen.getByText("GPT4_MINI")).toBeInTheDocument();
+    expect(screen.getByText("gpt-4o-mini")).toBeInTheDocument();
+    expect(screen.getByText("API Key Wired")).toBeInTheDocument();
+
+    // Navigate to Global API Keys tab
+    const keysTab = screen.getByRole("button", { name: "Global API Keys" });
+    fireEvent.click(keysTab);
+    expect(screen.getByText("OpenAI API Key")).toBeInTheDocument();
+    expect(screen.getByText("configured")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("••••••••••••••••••••• (unchanged)")).toBeInTheDocument();
   });
 });

@@ -15,8 +15,8 @@
     - `Principal`에 `grace_applied: bool` 추가 — `/verify` 에서 내려받은 "이 요청이 exp 유예로 통과되었는가" 플래그. gateway가 감사·관측에 사용.
   - `db/` — Postgres에 붙는 서비스들의 공용 레이어 (gateway/base image는 import 하지 않는다):
     - `db/engine.py` — async SQLAlchemy engine/session factory + `session_scope` 컨텍스트. `make_engine(dsn, pgbouncer=False)` / `make_session_factory(engine)` / `session_scope(factory)`.
-    - `db/models.py` — **공용 SQLAlchemy row 모델**. 6개 테이블 전부: `UserRow`, `UserResourceAccessRow`, `RefreshTokenRow`, `ApiKeyRow`, `SourceMetaRow`, `UserMetaRow`. 세 서비스(deploy-api / auth / backend)가 **동일 선언을 import** — 과거에 서비스별 `models.py`가 같은 테이블을 3중 재선언하던 중복을 제거.
-    - `db/__init__.py` — 엔진 유틸만 re-export (`make_engine`, `make_session_factory`, `session_scope`). 모델은 `from runtime_common.db.models import SourceMetaRow` 처럼 명시적으로 import — engine만 쓰는 쪽(`runtime_common.db.engine`)은 SQLAlchemy declarative 모델을 로드하지 않음.
+    - `db/models.py` — **공용 SQLAlchemy row 모델**. 7개 테이블 전부: `UserRow`, `UserResourceAccessRow`, `RefreshTokenRow`, `ApiKeyRow`, `SourceMetaRow`, `UserMetaRow`, `LlmPresetRow`. 세 서비스(deploy-api / auth / backend)가 **동일 선언을 import** — 과거에 서비스별 `models.py`가 같은 테이블을 3중 재선언하던 중복을 제거.
+    - `db/__init__.py` — 엔진 유틸만 re-export (`make_engine`, `make_session_factory`, `session_scope`). 모델은 `from runtime_common.db.models import SourceMetaRow, LlmPresetRow` 처럼 명시적으로 import — engine만 쓰는 쪽(`runtime_common.db.engine`)은 SQLAlchemy declarative 모델을 로드하지 않음.
     - **schemas.py와의 관계**: `schemas.py`(pydantic)는 HTTP wire 계약으로 **모든** 서비스·런타임이 import. `db/models.py`(SQLAlchemy)는 **DB에 붙는 서비스만** import. 두 파일은 합치지 않는다 — gateway/pool이 SQLAlchemy 의존을 안 끌게 하기 위함.
     - **변환 헬퍼**: `SourceMeta.from_row(row: SourceMetaRow) -> SourceMeta` 같은 classmethod를 `schemas.py`에 추가해 deploy-api·backend의 수동 필드 매핑을 제거.
   - `auth.py` — `AuthClient` (auth 서비스 호출용 thin httpx 래퍼). `verify(token, grace_sec: int = 0) -> Principal` — 엣지 gateway는 기본값(0), 내부 경로는 운영값(예: 300) 전달. 서버측 `GRACE_MAX_SEC`로 clamp. 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period".
@@ -48,12 +48,14 @@
     - **`providers/pg_infra.py`** — agent-base pod lifespan용 shared Postgres: `init_checkpointer` / `get_shared_checkpointer`, `get_adk_session_service` cache.
     - **`providers/langgraph.py`** (LangGraph / DeepAgents 공용)
       - `get_recursion_limit(cfg)` / `get_model_spec(cfg)` — cfg 에서 단순 값 추출.
-      - `export_llm_api_keys(cfg)` / `resolve_model_spec(cfg)` / `prepare_langgraph_llm(cfg)` — LangGraph·DeepAgents·general agent 공통 LLM model + API key env wiring (`cfg.langgraph.model` → `DEFAULT_LLM_MODEL` env → repo default).
+      - `export_llm_api_keys(cfg)` / `resolve_model_spec(cfg)` / `prepare_langgraph_llm(cfg)` — LangGraph·DeepAgents·general agent 공통 LLM model + API key env wiring. `preset:NAME` 형식 참조를 지원하여 `LLM_PRESET_{NAME}_*` 환경변수를 파싱해 동적으로 API Key와 API Base URL을 프로세스에 매핑합니다.
+      - **주의(동시성 경합)**: preset API key는 빌드(factory/build) 시점에 프로세스 환경변수(`os.environ`)에 바인딩(mutate)됩니다. `export_llm_api_keys`는 프로세스 전역 `os.environ`을 수정하므로, 동시 invoke 환경에서 API Key 경합을 방지하려면 이 함수 호출 직후 클라이언트(LangChain 등)를 **동기적으로 즉시 인스턴스화**해야 합니다 (비동기 `await` 지점을 두지 않음).
       - `build_checkpointer(cfg, secrets)` — `cfg.langgraph.checkpointer` 기본 **`postgres`**. `postgres` 는 agent-base lifespan의 shared `AsyncPostgresSaver` (`pg_infra`). `{none, memory, sqlite, redis, mongo}` 는 per-factory. DSN 은 `secrets["CHECKPOINTER_DSN"]` (redis/sqlite/mongo 등).
       - `build_store(cfg, secrets)` — `cfg.langgraph.store.{backend, index}` → `InMemoryStore` / `AsyncPostgresStore` / `AsyncRedisStore`. `index.embed`/`dims` 가 있으면 semantic search 활성. DSN 은 `secrets["STORE_DSN"]`.
       - `build_cache(cfg, secrets)` — `cfg.langgraph.cache ∈ {none, memory, sqlite, redis}` → `InMemoryCache` / `SqliteCache` / `RedisCache`. DSN 은 `secrets["CACHE_DSN"]`.
     - **`providers/adk.py`** (Google ADK)
-      - `get_model(cfg)` / `get_max_llm_calls(cfg)` — 단순 값 추출.
+      - `get_model(cfg)` — cfg 의 model 명세를 분석하여 반환. `preset:NAME` 형식을 지원하여 해당 프리셋의 환경변수(`LLM_PRESET_{NAME}_*`)로부터 provider 및 model_id를 동적으로 조합합니다. 명시적 스펙이 없으면 `DEFAULT_LLM_MODEL` 환경 변수 값을 사용합니다.
+      - `get_max_llm_calls(cfg)` — 단순 값 추출.
       - `build_generate_content_config(cfg)` — `cfg.adk.{temperature, max_output_tokens, top_p, top_k}` → `genai_types.GenerateContentConfig`.
       - `build_session_service(cfg, secrets)` — `cfg.adk.session_service` 기본 **`database`**. DSN `secrets["SESSION_DB_DSN"]` → `postgresql+asyncpg://` 로 정규화 후 ADK ``DatabaseSessionService`` 에 전달.
       - `build_memory_service(cfg, secrets)` — `cfg.adk.memory_service ∈ {memory, vertexai}`.

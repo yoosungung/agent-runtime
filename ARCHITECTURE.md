@@ -24,7 +24,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **pool `/invoke`의 `session_id`는 대화 연속성 키**. agent pool은 동일 `session_id`로 LangGraph checkpoint(`thread_id`)·ADK session을 **runtime Postgres**에 persist한다 (기본). UI localStorage는 표시용 임시 구현.
 - **`access`는 `/verify` 응답에 번들**. ext-authz가 별도 authorize 호출을 하지 않도록 한 번에 내려온다.
 - **config는 source + user 두 층**. deploy-api는 병합하지 않고 그대로 내려보낸다 — cache 경계와 감사 지점 분리.
-- **`infra_meta`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리.
+- **`infra_meta` 및 `llm_presets`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리. 에이전트/MCP 번들은 `preset:NAME` 형식으로 등록된 LLM 프리셋을 참조하며, reconciler가 `LLM_PRESET_{NAME}_*` 환경 변수 및 시크릿으로 투영합니다. 프리셋 API key는 빌드(factory/build) 시점에 프로세스 환경변수(`os.environ`)에 바인딩(mutate)되므로, 동시 invoke 환경에서의 경합 방지를 위해 factory 호출 직후 즉시 클라이언트를 동기식으로 인스턴스화해야 합니다.
 - **LangGraph 체크포인터 기본은 Postgres** (`CHECKPOINTER_DSN`, VFS와 동일 DB). 대화 상태가 pod-local이 아니므로 session affinity 불필요. `checkpointer: none`/`redis` 등은 명시 override.
 - **데이터플레인은 Envoy(C++)**. ext-authz는 스케줄링·인가 결정만. 바디 릴레이·SSE 패스스루는 Envoy.
 - **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `/invoke-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
@@ -107,6 +107,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 | `source_meta` | admin backend | deploy-api | immutable·versioned |
 | `user_meta` | admin backend | deploy-api | mutable |
 | `infra_meta` | admin backend | — | platform env; K8s reconciler가 pool pod에 주입 |
+| `llm_presets` | admin backend | — | LLM presets; K8s reconciler가 pool pod에 주입 |
 | `users` | admin backend | auth | 로그인 credentials |
 | `user_resource_access` | admin backend | auth | user ↔ `(kind, name)` ACL |
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
@@ -235,17 +236,17 @@ CREATE TABLE api_keys (
 
 email-server 등 per-principal 예시는 [backend/DESIGN.md](backend/DESIGN.md) 참조.
 
-### 5.1 infra_meta (platform env)
+### 5.1 infra_meta / llm_presets (platform env)
 
 source/user meta와 **orthogonal**. principal·번들과 무관하게 pool pod container env로 전달.
 
-| 측면 | `infra_meta` | `source_meta.config` | `user_meta.config` | Kustomize `runtime-env` |
+| 측면 | `infra_meta` / `llm_presets` | `source_meta.config` | `user_meta.config` | Kustomize `runtime-env` |
 |---|---|---|---|---|
 | 범위 | platform (global) | 번들/버전 | principal × 번들 | 클러스터 bootstrap |
 | 수명 | 운영 중 mutable | immutable (버전) | invoke마다 fresh | 배포 시 |
 | 전달 | flat env → ConfigMap + Secret → pod env | resolve → merge → factory cfg | resolve → merge → factory cfg | gitops envFrom |
-| 예시 | `OPIK_URL`, `ANTHROPIC_API_KEY`, 임의 `[A-Z][A-Z0-9_]*` | MCP provider, default model | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
+| 예시 | `OPIK_URL`, `LLM_PRESET_{NAME}_MODEL_ID`, `LLM_PRESET_{NAME}_API_KEY` 등 | MCP provider, preset reference (`preset:NAME`) | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
 
-**API/DB/K8s**: `env`는 flat container env var 이름(`[A-Z][A-Z0-9_]*`, reserved 제외). PUT은 partial merge, 빈 문자열이면 키 삭제. **Admin UI**는 Opik·LLM keys 등 curated 필드만 편집; 추가 env는 API/e2e로 설정.
+**API/DB/K8s**: `env`는 flat container env var 이름(`[A-Z][A-Z0-9_]*`, reserved 제외). LLM Preset을 등록하면 `LLM_PRESET_{NAME}_*` 형태의 환경변수가 자동 매핑되어 컨테이너에 주입됩니다. **Admin UI**는 Opik 및 LLM Presets 탭을 제공하여 이들을 관리합니다.
 
 **infra에 두지 않을 것**: 번들 도메인 credential → `source_meta.config`; principal identity → `user_meta.config`; custom image 전용 env → `source_meta.pool_env`(infra보다 우선).
