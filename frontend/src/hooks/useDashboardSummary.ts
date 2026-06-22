@@ -20,7 +20,7 @@ export interface RecentIssue {
   name: string;
   version: string;
   status: string;
-  deploy_mode: string;
+  deploy_mode: "general" | "bundle" | "image";
   created_at: string;
 }
 
