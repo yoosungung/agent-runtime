@@ -499,43 +499,12 @@ async def jwks() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# API keys — service-to-service calls without username/password flow
+# API keys — user-bound; create via /v1/admin/api-keys (backend BFF bridge)
 # ---------------------------------------------------------------------------
 
 
-class CreateApiKeyRequest(BaseModel):
-    name: str
-    tenant: str | None = None
-    expires_in_days: int | None = None
-
-
-@app.post("/v1/api-keys", status_code=201)
-async def create_api_key(req: CreateApiKeyRequest) -> dict:
-    """Create a new API key. Returns the plain key ONCE — it is never stored."""
-    secret = secrets.token_hex(32)
-    key_hash = _ph.hash(secret)
-    expires_at: datetime | None = None
-    if req.expires_in_days is not None:
-        expires_at = datetime.now(tz=UTC) + timedelta(days=req.expires_in_days)
-
-    async with session_scope(app.state.session_factory) as session:
-        row = ApiKeyRow(
-            key_hash=key_hash,
-            name=req.name,
-            tenant=req.tenant,
-            expires_at=expires_at,
-        )
-        session.add(row)
-        await session.flush()
-        row_id = row.id
-
-    plain_key = f"ak_{row_id}_{secret}"
-    logger.info("api_key_created", extra={"name": req.name, "id": row_id, "tenant": req.tenant})
-    return {"key": plain_key, "id": row_id, "name": req.name}
-
-
 async def _verify_api_key(token: str) -> Principal:
-    """Parse and validate an API key token, returning a Principal on success."""
+    """Parse and validate a user-bound API key token."""
     parts = token.split("_", 2)  # "ak", "<id>", "<secret>"
     if len(parts) != 3 or parts[0] != "ak":
         raise HTTPException(status_code=401, detail="invalid api key format")
@@ -552,7 +521,6 @@ async def _verify_api_key(token: str) -> Principal:
     if row is None:
         raise HTTPException(status_code=401, detail="invalid api key")
 
-    # Argon2 verification is slow — done outside the DB session (session already closed above)
     try:
         _ph.verify(row.key_hash, secret)
     except VerifyMismatchError as exc:
@@ -563,13 +531,35 @@ async def _verify_api_key(token: str) -> Principal:
 
     if row.expires_at is not None:
         now_utc = datetime.now(tz=UTC)
-        if now_utc > row.expires_at:
+        expires_at = row.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if now_utc > expires_at:
             raise HTTPException(status_code=401, detail="api key expired")
 
+    if row.user_id is None:
+        raise HTTPException(status_code=401, detail="api key not bound to user")
+
+    async with session_scope(app.state.session_factory) as session:
+        user_result = await session.execute(select(UserRow).where(UserRow.id == row.user_id))
+        user = user_result.scalar_one_or_none()
+
+    if user is None or user.disabled:
+        raise HTTPException(status_code=401, detail="user not found or disabled")
+
+    cache: _AccessCache = app.state.access_cache
+    access = cache.get(user.id)
+    if access is None:
+        access = await _fetch_access(user.id)
+        cache.set(user.id, access)
+
     return Principal(
-        sub=f"apikey:{row.name}",
-        user_id=0,
-        tenant=row.tenant,
-        access=[],
+        sub=user.username,
+        user_id=user.id,
+        tenant=user.tenant,
+        role=parse_role(user.role),
+        must_change_password=user.must_change_password,
+        access=access,
         grace_applied=False,
+        api_key_id=row.id,
     )

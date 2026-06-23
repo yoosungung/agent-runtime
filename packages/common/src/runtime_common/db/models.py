@@ -102,6 +102,9 @@ class ApiKeyRow(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     key_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     tenant: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -238,6 +241,7 @@ class ChatThreadRow(Base):
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     agent_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_version: Mapped[str] = mapped_column(String(128), nullable=False)
     thread_type: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_session_id: Mapped[str] = mapped_column(String(128), nullable=False)
     provider_meta: Mapped[dict[str, Any]] = mapped_column(

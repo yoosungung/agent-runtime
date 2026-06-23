@@ -116,13 +116,44 @@ async def test_create_and_list_chat_threads(client: AsyncClient) -> None:
     assert created["title"] == "New Chat"
     assert created["session_id"]
     assert created["id"] != created["session_id"]
+    assert created["agent_version"] == "v1"
 
     list_resp = await client.get("/api/me/chat/threads")
     assert list_resp.status_code == 200
     body = list_resp.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == created["id"]
+    assert body["items"][0]["agent_version"] == "v1"
     assert "session_id" not in body["items"][0]
+
+
+@pytest.mark.asyncio
+async def test_create_thread_pins_latest_agent_version(client: AsyncClient) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from backend.app import app
+
+    async with app.state.session_factory() as session:
+        session.add(
+            SourceMetaRow(
+                id=11,
+                kind="agent",
+                name="chat-bot",
+                version="v2",
+                runtime_pool="agent:compiled_graph",
+                entrypoint="app:factory",
+                bundle_uri="s3://bundles/chat-bot-v2.zip",
+                created_at=datetime.now(UTC) + timedelta(seconds=10),
+            )
+        )
+        await session.commit()
+
+    create_resp = await client.post(
+        "/api/me/chat/threads",
+        json={"agent_name": "chat-bot"},
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["agent_version"] == "v2"
 
 
 @pytest.mark.asyncio

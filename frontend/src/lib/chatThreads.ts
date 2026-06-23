@@ -4,6 +4,7 @@ import { apiJson, type PageResponse } from "./api";
 export interface ChatThreadListItem {
   id: string;
   agent_name: string;
+  agent_version: string;
   thread_type: string;
   title: string;
   last_message_at: string;

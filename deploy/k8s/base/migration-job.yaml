@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0006_chat_threads.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0008_chat_threads_agent_version.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -339,16 +339,57 @@ data:
 
     CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_threads_user_provider_session
         ON chat_threads (user_id, provider_session_id);
+  0007_api_keys_user_id.sql: |
+    -- Bind API keys to users; reuse user_resource_access on /verify.
+    -- Requires: users, api_keys (0001_init.sql)
+
+    ALTER TABLE api_keys
+        ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id) ON DELETE CASCADE;
+
+    CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+  0008_chat_threads_agent_version.sql: |
+    -- agents-runtime — pin agent version on chat threads
+    -- Requires: chat_threads (0006_chat_threads.sql), source_meta (0001_init.sql)
+
+    ALTER TABLE chat_threads
+        ADD COLUMN IF NOT EXISTS agent_version VARCHAR(128);
+
+    UPDATE chat_threads AS ct
+    SET agent_version = COALESCE(
+        (
+            SELECT sm.version
+            FROM source_meta AS sm
+            WHERE sm.kind = 'agent'
+              AND sm.name = ct.agent_name
+              AND sm.retired = false
+              AND sm.status != 'pending'
+            ORDER BY sm.created_at DESC
+            LIMIT 1
+        ),
+        (
+            SELECT sm.version
+            FROM source_meta AS sm
+            WHERE sm.kind = 'agent'
+              AND sm.name = ct.agent_name
+            ORDER BY sm.created_at DESC
+            LIMIT 1
+        ),
+        'unknown'
+    )
+    WHERE ct.agent_version IS NULL;
+
+    ALTER TABLE chat_threads
+        ALTER COLUMN agent_version SET NOT NULL;
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0006
+  name: db-migrate-0008
   namespace: runtime
   annotations:
-    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0006)
+    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0008)
     # when migration scripts change; delete obsolete completed Jobs if desired.
-    migration-version: "0006"
+    migration-version: "0008"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -390,6 +431,10 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0005_llm_presets.sql
               echo "Applying /migrations/0006_chat_threads.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0006_chat_threads.sql
+              echo "Applying /migrations/0007_api_keys_user_id.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0007_api_keys_user_id.sql
+              echo "Applying /migrations/0008_chat_threads_agent_version.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0008_chat_threads_agent_version.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

@@ -42,6 +42,15 @@ Postgres는 아키텍처 상 **auth / deploy-api에만 연결**된다. 따라서
 
 admin grant/revoke 후 즉시 반영이 필요하면 `POST /v1/admin/invalidate-access` (backend가 호출).
 
+### API keys (user-bound)
+
+- 발급·목록·폐기는 backend BFF `GET|POST|DELETE /api/me/api-keys` — 세션 JWT + CSRF. auth admin bridge:
+  - `POST /v1/admin/api-keys` — `{user_id, name, expires_in_days?}` → plain key **1회** 반환
+  - `GET /v1/admin/api-keys?user_id=` — 메타만 (해시·plaintext 없음)
+  - `DELETE /v1/admin/api-keys/{id}?user_id=` — `disabled=true`
+- `/verify`에서 `ak_<id>_<secret>` 토큰은 `api_keys.user_id` → `users` 조회 후 JWT와 동일한 `Principal` 구성: `sub=username`, `access`는 `user_resource_access`(+ general visibility). `api_key_id` 필드로 키 단위 감사.
+- `user_id` 없는 레거시 키·비활성 user·`users.disabled` → 401. 계정 정지 시 backend가 해당 user의 모든 키를 `disabled`로 마킹.
+
 ### 테이블 (신규)
 마이그레이션은 [`backend/migrations/0001_init.sql`](../../backend/migrations/0001_init.sql)에 통합(모든 테이블 단일 파일).
 

@@ -30,6 +30,7 @@ from backend.routers import custom_images as custom_images_router_module
 from backend.routers import dashboard as dashboard_router_module
 from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import llm_presets as llm_presets_router_module
+from backend.routers import me_api_keys as me_api_keys_router_module
 from backend.routers import me_user_meta as me_user_meta_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
@@ -262,6 +263,7 @@ app.add_middleware(
 app.include_router(auth_router_module.router)  # /api/auth/*
 app.include_router(auth_router_module.me_router)  # /api/me
 app.include_router(me_user_meta_router_module.router)  # /api/me/user-meta, /api/me/access-resources
+app.include_router(me_api_keys_router_module.router)  # /api/me/api-keys
 app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
 app.include_router(user_meta_router_module.router)  # /api/user-meta/*

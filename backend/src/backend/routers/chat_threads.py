@@ -33,6 +33,7 @@ MAX_TITLE_LEN = 256
 class ChatThreadListItem(BaseModel):
     id: str
     agent_name: str
+    agent_version: str
     thread_type: str
     title: str
     last_message_at: datetime
@@ -120,6 +121,7 @@ def _to_list_item(row: ChatThreadRow) -> ChatThreadListItem:
     return ChatThreadListItem(
         id=row.id,
         agent_name=row.agent_name,
+        agent_version=row.agent_version,
         thread_type=row.thread_type,
         title=row.title,
         last_message_at=row.last_message_at,
@@ -196,6 +198,7 @@ async def create_chat_thread(
         id=str(uuid.uuid4()),
         user_id=principal.user_id,
         agent_name=body.agent_name,
+        agent_version=source.version,
         thread_type=thread_type.value,
         provider_session_id=provider_session_id,
         provider_meta=build_provider_meta(

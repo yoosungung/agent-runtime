@@ -40,7 +40,7 @@
   - DSN: `POSTGRES_DSN` (write, asyncpg URL). 읽기 replica 분리는 admin 규모에선 과하므로 MVP는 primary 단일.
   - `runtime_common.db.make_engine` / `session_scope` 재사용.
   - SQLAlchemy 모델: **`runtime_common.db.models` 공용 사용** (backend·deploy-api·auth 세 서비스가 같은 선언을 import). backend가 자체 `models.py`를 두지 않는다. 공용화는 [../packages/common/DESIGN.md](../packages/common/DESIGN.md) "공용 DB 모델 리팩토링" 참조.
-  - 마이그레이션: **`backend/migrations/0001_init.sql`** … **`0006_chat_threads.sql`**. path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
+  - 마이그레이션: **`backend/migrations/0001_init.sql`** … **`0008_chat_threads_agent_version.sql`**. path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
 - **auth 서비스**: `AUTH_URL` — `/login`, `/refresh`, `/logout`, `/verify` 프록시.
 - **deploy-api는 호출하지 않는다** — admin은 DB를 직접 보므로 proxy 단계를 거치지 않는다. deploy-api의 resolve 캐시(in-memory, 5s TTL)는 자연 만료로 eventual consistency. auth도 같은 이유로 `users`/`user_resource_access` read 캐시(TTL ~5s)가 admin write 이후 자연 만료.
 
@@ -71,14 +71,17 @@
 | `DELETE` | `/api/source-meta/{id}` | Postgres DELETE + bundle 파일 정리(ours) | dev/stage only (`ALLOW_HARD_DELETE`) |
 | `GET` | `/api/me/access-resources` | `Principal.access` ∩ routable `source_meta` | self-service |
 | `GET` | `/api/me/chat/threads` | 본인 `chat_threads` 목록 | 페이지네이션, `deleted_at IS NULL` |
-| `POST` | `/api/me/chat/threads` | thread 생성 (`agent_name`, optional `session_id`) | 응답에 invoke용 `session_id` |
-| `GET` | `/api/me/chat/threads/{id}` | thread 상세 + `session_id` | 소유권 검증 |
+| `POST` | `/api/me/chat/threads` | thread 생성 (`agent_name`, optional `session_id`) | latest agent version을 `agent_version`에 pin; 응답에 invoke용 `session_id` |
+| `GET` | `/api/me/chat/threads/{id}` | thread 상세 + `session_id` + `agent_version` | 소유권 검증 |
 | `DELETE` | `/api/me/chat/threads/{id}` | soft delete (`deleted_at`) | |
 | `POST` | `/api/me/chat/threads/{id}/touch` | `title`·`last_message_at` 갱신 | |
 | `GET` | `/api/me/chat/threads/{id}/messages` | provider adapter로 UI 메시지 hydrate | read-only runtime PG |
 | `GET` | `/api/me/user-meta` | 본인 `user_meta` + template | ACL `kind`+`name` |
 | `PUT` | `/api/me/user-meta` | 본인 UPSERT (`principal_id=username`) | template required 검증 |
 | `DELETE` | `/api/me/user-meta` | 본인 DELETE | |
+| `GET` | `/api/me/api-keys` | 본인 API key 목록 (plaintext 없음) | auth admin bridge |
+| `POST` | `/api/me/api-keys` | 본인 API key 발급 — plain key **1회** | `{name, expires_in_days?}` |
+| `DELETE` | `/api/me/api-keys/{id}` | 본인 key 폐기 (`disabled`) | |
 | `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | admin only |
 | `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | admin break-glass / e2e |
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |

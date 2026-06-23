@@ -29,6 +29,7 @@ async def session_factory():
                 id="11111111-1111-4111-8111-111111111111",
                 user_id=1,
                 agent_name="bot",
+                agent_version="v1",
                 thread_type="custom",
                 provider_session_id="sess-1",
                 title="t",

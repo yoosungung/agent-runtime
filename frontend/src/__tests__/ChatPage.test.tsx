@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "../pages/ChatPage";
+import { invokeAgentStream } from "../lib/agentsInvoke";
 
 const mockUseMyAccessResources = vi.fn();
 const mockUseChatThreads = vi.fn();
@@ -52,6 +53,7 @@ const mockAgentOther = {
 const mockThread = {
   id: "thread-abc",
   agent_name: "research-orchestrator",
+  agent_version: "v1",
   thread_type: "langgraph",
   title: "Hello world",
   last_message_at: "2026-01-01T00:00:00Z",
@@ -61,6 +63,7 @@ const mockThread = {
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  vi.mocked(invokeAgentStream).mockReset();
   mockMigrateLegacyChatSessions.mockResolvedValue(undefined);
   mockUseMyAccessResources.mockReturnValue({
     isLoading: false,
@@ -92,7 +95,7 @@ beforeEach(() => {
 });
 
 function selectSidebarAgent(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: new RegExp(`${name} \\(`) }));
+  fireEvent.click(screen.getByRole("button", { name }));
 }
 
 function startNewChat() {
@@ -150,7 +153,7 @@ describe("ChatPage", () => {
     renderChatPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: "research-orchestrator (v1)" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "research-orchestrator" })).toBeInTheDocument();
     });
     expect(mockUseMyAccessResources).toHaveBeenCalledWith("agent");
   });
@@ -179,7 +182,9 @@ describe("ChatPage", () => {
       expect(mutateAsync).toHaveBeenCalledWith("research-orchestrator");
     });
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByText("Start your conversation with research-orchestrator"),
@@ -192,13 +197,17 @@ describe("ChatPage", () => {
     selectSidebarAgent("research-orchestrator");
     startNewChat();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+      ).toBeInTheDocument();
     });
 
     selectSidebarAgent("other-agent");
 
-    expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
-    expect(screen.getByText("Talking to research-orchestrator")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Talking to research-orchestrator @ v1")).toBeInTheDocument();
   });
 
   it("uses the sidebar agent when starting another new chat", async () => {
@@ -214,6 +223,7 @@ describe("ChatPage", () => {
         id: "thread-2",
         session_id: "session-2",
         agent_name: "other-agent",
+        agent_version: "v2",
       });
     mockUseCreateChatThread.mockReturnValue({ isPending: false, mutateAsync });
 
@@ -225,9 +235,9 @@ describe("ChatPage", () => {
     startNewChat();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Chat: other-agent" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Chat: other-agent @ v2" })).toBeInTheDocument();
     });
-    expect(screen.getByText("Talking to other-agent")).toBeInTheDocument();
+    expect(screen.getByText("Talking to other-agent @ v2")).toBeInTheDocument();
   });
 
   it("selects agent when restoring a recent chat by thread id", async () => {
@@ -240,13 +250,51 @@ describe("ChatPage", () => {
       expect(mockGetChatThreadMessages).toHaveBeenCalledWith("thread-abc");
     });
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+      ).toBeInTheDocument();
     });
     expect(screen.getByTestId("chat-messages")).toHaveTextContent("Hello world");
-    expect(screen.getByText("Talking to research-orchestrator")).toBeInTheDocument();
+    expect(screen.getByText("Talking to research-orchestrator @ v1")).toBeInTheDocument();
 
     selectSidebarAgent("other-agent");
-    expect(screen.getByRole("heading", { name: "Chat: research-orchestrator" })).toBeInTheDocument();
-    expect(screen.getByText("Talking to research-orchestrator")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Talking to research-orchestrator @ v1")).toBeInTheDocument();
+  });
+
+  it("sends pinned agent version on invoke", async () => {
+    vi.mocked(invokeAgentStream).mockImplementation(async (_req, handlers) => {
+      handlers.onDone();
+    });
+
+    renderChatPage();
+
+    selectSidebarAgent("research-orchestrator");
+    startNewChat();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Chat: research-orchestrator @ v1" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Type a message/i), {
+      target: { value: "Hi there" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }));
+
+    await waitFor(() => {
+      expect(invokeAgentStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "research-orchestrator",
+          version: "v1",
+          sessionId: "session-new",
+        }),
+        expect.any(Object),
+        expect.any(AbortSignal),
+      );
+    });
   });
 });

@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from backend.deps import (
 from backend.passwords import check_policy, hash_password, verify_password
 from backend.settings import Settings
 from runtime_common.auth import AuthClient
-from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
+from runtime_common.db.models import ApiKeyRow, SourceMetaRow, UserResourceAccessRow, UserRow
 from runtime_common.roles import UserRole, role_at_least
 
 logger = logging.getLogger(__name__)
@@ -338,6 +338,11 @@ async def patch_user(
         update_data["role"] = update_data["role"].value
     for field, value in update_data.items():
         setattr(row, field, value)
+
+    if is_disabling:
+        await db.execute(
+            update(ApiKeyRow).where(ApiKeyRow.user_id == id).values(disabled=True)
+        )
 
     row.updated_at = datetime.now(UTC)
 

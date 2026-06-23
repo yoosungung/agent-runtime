@@ -86,5 +86,31 @@ class AuthClient:
         resp = await self._client.post("/logout", json={"refresh_token": refresh_token})
         resp.raise_for_status()
 
+    async def create_api_key(
+        self,
+        *,
+        user_id: int,
+        name: str,
+        expires_in_days: int | None = None,
+    ) -> dict:
+        payload: dict = {"user_id": user_id, "name": name}
+        if expires_in_days is not None:
+            payload["expires_in_days"] = expires_in_days
+        resp = await self._client.post("/v1/admin/api-keys", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def list_api_keys(self, user_id: int) -> list[dict]:
+        resp = await self._client.get("/v1/admin/api-keys", params={"user_id": user_id})
+        resp.raise_for_status()
+        return resp.json()
+
+    async def disable_api_key(self, user_id: int, key_id: int) -> None:
+        resp = await self._client.delete(
+            f"/v1/admin/api-keys/{key_id}",
+            params={"user_id": user_id},
+        )
+        resp.raise_for_status()
+
     async def aclose(self) -> None:
         await self._client.aclose()

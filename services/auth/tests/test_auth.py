@@ -19,7 +19,7 @@ from argon2 import PasswordHasher
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import JSON
+from sqlalchemy import JSON, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -405,9 +405,11 @@ class TestJwks:
 class TestApiKeys:
     def _make_api_key_row(self, key_hash: str, name: str = "ci-bot", disabled: bool = False):
         row = MagicMock()
+        row.id = 7
         row.key_hash = key_hash
         row.name = name
         row.tenant = "acme"
+        row.user_id = 1
         row.disabled = disabled
         row.expires_at = None
         return row
@@ -430,44 +432,7 @@ class TestApiKeys:
         app.state.username_limiter = _RateLimiter(max_attempts=5, window_sec=300.0)
         app.state.ip_limiter = _RateLimiter(max_attempts=20, window_sec=300.0)
 
-    async def test_create_api_key_returns_ak_prefixed_key(self, rsa_keypair):
-        priv, pub = rsa_keypair
-        # Mock session where flush() sets row.id
-        mock_session = AsyncMock()
-        mock_session.commit = AsyncMock()
-        mock_session.rollback = AsyncMock()
-        mock_session.close = AsyncMock()
-
-        async def fake_flush():
-            # Simulate DB auto-increment assigning an id
-            mock_session._added_row.id = 42
-
-        mock_session.flush = fake_flush
-
-        def capture_add(row):
-            mock_session._added_row = row
-            row.id = 42  # set id immediately so flush can use it
-
-        mock_session.add = capture_add
-        mock_factory = MagicMock()
-        mock_factory.return_value = mock_session
-
-        settings = _make_settings(priv, pub)
-        app.state.settings = settings
-        app.state.engine = MagicMock()
-        app.state.session_factory = mock_factory
-        app.state.access_cache = _AccessCache(ttl_sec=60.0)
-        app.state.username_limiter = _RateLimiter(max_attempts=5, window_sec=300.0)
-        app.state.ip_limiter = _RateLimiter(max_attempts=20, window_sec=300.0)
-
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/v1/api-keys", json={"name": "ci-bot", "tenant": "acme"})
-        assert resp.status_code == 201
-        body = resp.json()
-        assert body["key"].startswith("ak_")
-        assert body["name"] == "ci-bot"
-
-    async def test_verify_with_api_key_returns_principal(self, rsa_keypair):
+    async def test_verify_with_unbound_api_key_returns_401(self, rsa_keypair):
         from argon2 import PasswordHasher as _PasswordHasher
 
         priv, pub = rsa_keypair
@@ -476,13 +441,12 @@ class TestApiKeys:
         key_hash = ph.hash(secret)
         token = f"ak_7_{secret}"
         api_row = self._make_api_key_row(key_hash, name="ci-bot")
+        api_row.user_id = None
         self._inject_state_with_api_row(priv, pub, api_row)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/verify", json={"token": token, "grace_sec": 0})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["sub"] == "apikey:ci-bot"
+        assert resp.status_code == 401
 
     async def test_verify_with_disabled_api_key_returns_401(self, rsa_keypair):
         from argon2 import PasswordHasher as _PasswordHasher
@@ -615,3 +579,115 @@ class TestLogoutRevoke:
         # Token must now be rejected
         resp = await client.post("/refresh", json={"refresh_token": rt})
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# User-bound API keys — SQLite integration
+# ---------------------------------------------------------------------------
+
+
+class TestUserBoundApiKeys:
+    async def _grant_access(self, session_factory, user_id: int, kind: str, name: str) -> None:
+        from runtime_common.db.models import UserResourceAccessRow
+
+        async with session_factory() as session:
+            session.add(UserResourceAccessRow(user_id=user_id, kind=kind, name=name))
+            await session.commit()
+
+    async def test_admin_create_and_verify_returns_user_principal(self, db_client):
+        from runtime_common.db.models import UserRow
+
+        client, sf = db_client
+        await _create_user_in_db(sf, "alice", "pass1234!")
+        async with sf() as session:
+            result = await session.execute(select(UserRow).where(UserRow.username == "alice"))
+            user = result.scalar_one()
+        await self._grant_access(sf, user.id, "agent", "chat-bot")
+
+        create = await client.post(
+            "/v1/admin/api-keys",
+            json={"user_id": user.id, "name": "laptop"},
+        )
+        assert create.status_code == 201
+        body = create.json()
+        assert body["key"].startswith("ak_")
+        assert body["name"] == "laptop"
+
+        verify = await client.post("/verify", json={"token": body["key"], "grace_sec": 0})
+        assert verify.status_code == 200
+        principal = verify.json()
+        assert principal["sub"] == "alice"
+        assert principal["user_id"] == user.id
+        assert principal["api_key_id"] == body["id"]
+        assert {"kind": "agent", "name": "chat-bot"} in principal["access"]
+
+    async def test_unbound_api_key_returns_401(self, db_client):
+        from argon2 import PasswordHasher as _PasswordHasher
+
+        from runtime_common.db.models import ApiKeyRow
+
+        client, sf = db_client
+        ph = _PasswordHasher()
+        secret = "c" * 64
+        async with sf() as session:
+            session.add(ApiKeyRow(key_hash=ph.hash(secret), name="orphan"))
+            await session.commit()
+            result = await session.execute(select(ApiKeyRow).where(ApiKeyRow.name == "orphan"))
+            row = result.scalar_one()
+
+        token = f"ak_{row.id}_{secret}"
+        resp = await client.post("/verify", json={"token": token, "grace_sec": 0})
+        assert resp.status_code == 401
+
+    async def test_disabled_user_api_key_returns_401(self, db_client):
+        from runtime_common.db.models import UserRow
+
+        client, sf = db_client
+        await _create_user_in_db(sf, "bob", "pass1234!")
+        async with sf() as session:
+            result = await session.execute(select(UserRow).where(UserRow.username == "bob"))
+            user = result.scalar_one()
+            user.disabled = True
+            await session.commit()
+
+        create = await client.post(
+            "/v1/admin/api-keys",
+            json={"user_id": user.id, "name": "stale"},
+        )
+        assert create.status_code == 400
+
+    async def test_list_and_disable_api_keys(self, db_client):
+        from runtime_common.db.models import ApiKeyRow, UserRow
+
+        client, sf = db_client
+        await _create_user_in_db(sf, "carol", "pass1234!")
+        async with sf() as session:
+            result = await session.execute(select(UserRow).where(UserRow.username == "carol"))
+            user = result.scalar_one()
+
+        create = await client.post(
+            "/v1/admin/api-keys",
+            json={"user_id": user.id, "name": "ci"},
+        )
+        key_id = create.json()["id"]
+        plain = create.json()["key"]
+
+        listed = await client.get(f"/v1/admin/api-keys?user_id={user.id}")
+        assert listed.status_code == 200
+        items = listed.json()
+        assert len(items) == 1
+        assert items[0]["id"] == key_id
+        assert items[0]["name"] == "ci"
+        assert "key" not in items[0]
+
+        disable = await client.delete(f"/v1/admin/api-keys/{key_id}?user_id={user.id}")
+        assert disable.status_code == 204
+
+        verify = await client.post("/verify", json={"token": plain, "grace_sec": 0})
+        assert verify.status_code == 401
+
+        async with sf() as session:
+            result = await session.execute(select(ApiKeyRow).where(ApiKeyRow.id == key_id))
+            row = result.scalar_one()
+            assert row.disabled is True
+

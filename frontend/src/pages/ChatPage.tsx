@@ -157,6 +157,7 @@ function MarkdownRenderer({ content }: { content: string }) {
 export function ChatPage() {
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [chatAgent, setChatAgent] = useState<string>("");
+  const [chatAgentVersion, setChatAgentVersion] = useState<string>("");
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -200,6 +201,7 @@ export function ChatPage() {
     try {
       const thread = await createThread.mutateAsync(selectedAgent);
       setChatAgent(selectedAgent);
+      setChatAgentVersion(thread.agent_version);
       setActiveThreadId(thread.id);
       setSessionId(thread.session_id);
       setMessages([]);
@@ -221,6 +223,7 @@ export function ChatPage() {
       ]);
       setSelectedAgent(thread.agent_name);
       setChatAgent(thread.agent_name);
+      setChatAgentVersion(thread.agent_version);
       setActiveThreadId(thread.id);
       setSessionId(thread.session_id);
       setMessages(
@@ -238,7 +241,7 @@ export function ChatPage() {
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || !chatAgent || !sessionId || isStreaming) return;
+    if (!text || !chatAgent || !chatAgentVersion || !sessionId || isStreaming) return;
 
     setInput("");
     setError(null);
@@ -274,6 +277,7 @@ export function ChatPage() {
       await invokeAgentStream(
         {
           agent: chatAgent,
+          version: chatAgentVersion,
           input: { message: text },
           sessionId,
           stream: true,
@@ -338,6 +342,7 @@ export function ChatPage() {
 
     if (activeThreadId === threadId) {
       setChatAgent("");
+      setChatAgentVersion("");
       setActiveThreadId(null);
       setSessionId("");
       setMessages([]);
@@ -363,7 +368,7 @@ export function ChatPage() {
         </option>
         {agents.map((a) => (
           <option key={a.source_meta_id} value={a.name}>
-            {a.name} ({a.version})
+            {a.name}
           </option>
         ))}
       </select>
@@ -424,9 +429,7 @@ export function ChatPage() {
                           d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                         />
                       </svg>
-                      <span className="truncate">
-                        {a.name} <span className="text-xs opacity-75">({a.version})</span>
-                      </span>
+                      <span className="truncate">{a.name}</span>
                     </button>
                   );
                 })}
@@ -513,6 +516,7 @@ export function ChatPage() {
             <button
               onClick={() => {
                 setChatAgent("");
+                setChatAgentVersion("");
                 setError(null);
               }}
               className="md:hidden p-1.5 rounded hover:bg-gray-100 text-gray-500 mr-1 shrink-0 cursor-pointer"
@@ -523,7 +527,11 @@ export function ChatPage() {
             </button>
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-gray-900 truncate">
-                {chatAgent ? `Chat: ${chatAgent}` : "Chat"}
+                {chatAgent
+                  ? chatAgentVersion
+                    ? `Chat: ${chatAgent} @ ${chatAgentVersion}`
+                    : `Chat: ${chatAgent}`
+                  : "Chat"}
               </h1>
               {chatAgent && sessionId && (
                 <p className="text-[10px] text-gray-500 font-mono truncate">
@@ -623,7 +631,11 @@ export function ChatPage() {
             />
             <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 bg-gray-50 rounded-b-lg">
               <span className="text-xs text-gray-500 truncate mr-2">
-                {chatAgent ? `Talking to ${chatAgent}` : "No active chat"}
+                {chatAgent
+                  ? chatAgentVersion
+                    ? `Talking to ${chatAgent} @ ${chatAgentVersion}`
+                    : `Talking to ${chatAgent}`
+                  : "No active chat"}
               </span>
               <button
                 onClick={handleSend}

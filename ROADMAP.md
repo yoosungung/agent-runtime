@@ -15,19 +15,6 @@
 
 - [ ] **BundleLoader scoped namespace import** — performance report §6.2. `importlib` 전역 `sys.path`/`sys.modules` 대신 checksum 격리 loader(예: `importlib.machinery.ModuleSpec` + 전용 namespace) 도입 검토. **현재 보류**: reload 제거·LRU evict 시 `sys.modules`/disk 정리·checksum-scoped entry module name으로 단기 완화만 적용.
 
-- [ ] **api_keys 활성화** — `_verify_api_key`가 `access=[]` 반환해 모든 invoke 403. ACL 방식 셋 중 하나 결정 후 구현:
-  - `api_key_resource_access(api_key_id, kind, name)` 테이블 신설 (가장 대칭적)
-  - `tenant` 기반 ACL (단순, 세밀도 낮음)
-  - API key를 기존 user에 묶어 `user_resource_access` 재사용
-
-  결정 전까지 운영에서 사용 금지. 현재 skeleton만 존재(`POST /v1/api-keys` 발급은 동작, invoke는 항상 403).
-
-- [ ] **chat에서 agent 버전 핀 정책** — `/chat` 드롭다운이 `{name} ({version})`로 표시하지만 페이로드는 `name`만 보내 항상 latest로 라우팅. 두 안 중 택1:
-  - (선택 1) `value`를 `${name}@${version}`로 인코딩 → 송신 직전 분해해 페이로드에 `version` 포함. 운영자가 특정 버전 회귀 테스트 가능.
-  - (선택 2) chat은 항상 latest 정책으로 못박고 표시에서 version 제거. UI 단순화.
-
-  현재 동작은 (선택 2)에 가깝지만 표시·동작 불일치라 결정 필요.
-
 ### 인프라 확장
 
 - [ ] **mTLS/SPIRE 기반 내부 caller 인증** — 현재는 NetworkPolicy로 경계 강제. SPIFFE/SPIRE 도입 시 인증서 CN으로 internal/edge 판단, `grace_sec` 동적 결정 가능.

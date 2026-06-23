@@ -208,6 +208,7 @@ class Principal(BaseModel):
     grace_applied: bool = False
     role: UserRole = UserRole.USER
     must_change_password: bool = False
+    api_key_id: int | None = None
 
     @model_validator(mode="before")
     @classmethod

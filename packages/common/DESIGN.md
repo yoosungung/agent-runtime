@@ -12,14 +12,15 @@
     - `UserMeta(principal_id, config: dict, secrets_ref: str | None, updated_at)` — per-principal 덮어쓰기.
     - `ResolveResponse(source: SourceMeta, user: UserMeta | None)`
     - `AgentInvokeRequest` / `McpInvokeRequest`는 **식별자 기반** — meta/bundle 정보를 직접 담지 않는다.
-    - `Principal`에 `grace_applied: bool` 추가 — `/verify` 에서 내려받은 "이 요청이 exp 유예로 통과되었는가" 플래그. gateway가 감사·관측에 사용.
+    - `Principal`에 `grace_applied: bool` — `/verify` 에서 내려받은 "이 요청이 exp 유예로 통과되었는가" 플래그. gateway가 감사·관측에 사용.
+    - `Principal.api_key_id` — user-bound API key로 `/verify` 통과 시 설정. `sub`/`user_id`/`access`는 JWT와 동일( username + `user_resource_access` ).
   - `db/` — Postgres에 붙는 서비스들의 공용 레이어 (gateway/base image는 import 하지 않는다):
     - `db/engine.py` — async SQLAlchemy engine/session factory + `session_scope` 컨텍스트. `make_engine(dsn, pgbouncer=False)` / `make_session_factory(engine)` / `session_scope(factory)`.
     - `db/models.py` — **공용 SQLAlchemy row 모델**. 7개 테이블 전부: `UserRow`, `UserResourceAccessRow`, `RefreshTokenRow`, `ApiKeyRow`, `SourceMetaRow`, `UserMetaRow`, `LlmPresetRow`. 세 서비스(deploy-api / auth / backend)가 **동일 선언을 import** — 과거에 서비스별 `models.py`가 같은 테이블을 3중 재선언하던 중복을 제거.
     - `db/__init__.py` — 엔진 유틸만 re-export (`make_engine`, `make_session_factory`, `session_scope`). 모델은 `from runtime_common.db.models import SourceMetaRow, LlmPresetRow` 처럼 명시적으로 import — engine만 쓰는 쪽(`runtime_common.db.engine`)은 SQLAlchemy declarative 모델을 로드하지 않음.
     - **schemas.py와의 관계**: `schemas.py`(pydantic)는 HTTP wire 계약으로 **모든** 서비스·런타임이 import. `db/models.py`(SQLAlchemy)는 **DB에 붙는 서비스만** import. 두 파일은 합치지 않는다 — gateway/pool이 SQLAlchemy 의존을 안 끌게 하기 위함.
     - **변환 헬퍼**: `SourceMeta.from_row(row: SourceMetaRow) -> SourceMeta` 같은 classmethod를 `schemas.py`에 추가해 deploy-api·backend의 수동 필드 매핑을 제거.
-  - `auth.py` — `AuthClient` (auth 서비스 호출용 thin httpx 래퍼). `verify(token, grace_sec: int = 0) -> Principal` — 엣지 gateway는 기본값(0), 내부 경로는 운영값(예: 300) 전달. 서버측 `GRACE_MAX_SEC`로 clamp. 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period".
+  - `auth.py` — `AuthClient` (auth 서비스 호출용 thin httpx 래퍼). `verify(token, grace_sec: int = 0) -> Principal` — 엣지 gateway는 기본값(0), 내부 경로는 운영값(예: 300) 전달. 서버측 `GRACE_MAX_SEC`로 clamp. 전체 정책은 [ARCHITECTURE.md](../../ARCHITECTURE.md) §1 "내부 호출의 토큰 Grace Period". backend BFF용 `create_api_key` / `list_api_keys` / `disable_api_key` → auth `/v1/admin/api-keys`.
   - **`deploy_client.py`** — `DeployApiClient`. gateway·agent-base·mcp-base가 공유. 주요 메서드:
     - `resolve(kind, name, version, principal) -> ResolveResponse`
     - ETag + 로컬 LRU 캐시(크기·TTL 설정 가능). 조건부 요청(`If-None-Match`) 지원.

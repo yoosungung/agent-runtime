@@ -22,6 +22,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **사용자/권한 테이블도 동일 규칙**. auth는 `/login`·`/verify`를 위해 `users`·`user_resource_access` **read-only**. 쓰기는 **admin backend만**. `refresh_tokens`는 예외로 auth가 소유. admin이 비밀번호 변경·계정 비활성 시 auth의 `POST /admin/revoke-tokens`를 호출.
 - **pool `/invoke` payload는 식별자만**: agent는 `{agent, version, input, session_id, principal}`, mcp는 `{server, version, tool, arguments, principal}`. meta는 pool이 deploy-api에 **재조회**한다 — 단, Envoy 경유(bundle/image pool) 요청은 ext-authz가 **`x-resolve`** 헤더(base64 `ResolveResponse`)로 resolve 스냅샷을 전달하고 pool은 **헤더가 있으면 deploy-api 호출을 생략**한다. 직접 pool 호출·헤더 불일치·식별자 mismatch 시에는 deploy-api 재조회로 폴백.
 - **pool `/invoke`의 `session_id`는 대화 연속성 키**. agent pool은 동일 `session_id`로 LangGraph checkpoint(`thread_id`)·ADK session을 **runtime Postgres**에 persist한다 (기본). Chat UI Recent Chats 목록의 정본은 admin `chat_threads`(플랫폼 `id`); invoke `session_id` = `chat_threads.provider_session_id`. 대화 본문은 provider 저장소가 소유한다.
+- **Chat thread는 생성 시 agent version을 pin**. `chat_threads.agent_version`은 New Chat 시점의 latest `source_meta.version`을 저장한다. 이후 invoke body·`x-runtime-version`은 thread의 pinned version을 사용 — mid-thread silent upgrade 방지. pinned version이 retired되면 invoke 404; 자동 latest 승격 없음.
 - **`access`는 `/verify` 응답에 번들**. ext-authz가 별도 authorize 호출을 하지 않도록 한 번에 내려온다.
 - **config는 source + user 두 층**. deploy-api는 병합하지 않고 그대로 내려보낸다 — cache 경계와 감사 지점 분리.
 - **`infra_meta` 및 `llm_presets`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리. 에이전트/MCP 번들은 `preset:NAME` 형식으로 등록된 LLM 프리셋을 참조하며, reconciler가 `LLM_PRESET_{NAME}_*` 환경 변수 및 시크릿으로 투영합니다. 프리셋 API key는 빌드(factory/build) 시점에 프로세스 환경변수(`os.environ`)에 바인딩(mutate)되므로, 동시 invoke 환경에서의 경합 방지를 위해 factory 호출 직후 즉시 클라이언트를 동기식으로 인스턴스화해야 합니다.
@@ -111,7 +112,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 | `users` | admin backend | auth | 로그인 credentials |
 | `user_resource_access` | admin backend | auth | user ↔ `(kind, name)` ACL |
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
-| `api_keys` | auth | auth | **비활성**(설계 미완 — [ROADMAP.md](ROADMAP.md)) |
+| `api_keys` | auth (admin bridge) / backend BFF | auth | user-bound; `user_resource_access` 재사용 |
 
 마이그레이션: `backend/migrations/0001_init.sql`. 적용: `make db-migrate` 또는 `make db-migrate-all`.
 
@@ -209,6 +210,7 @@ CREATE TABLE refresh_tokens (
 
 CREATE TABLE api_keys (
     id         SERIAL       PRIMARY KEY,
+    user_id    BIGINT       REFERENCES users(id) ON DELETE CASCADE,
     key_hash   VARCHAR(128) UNIQUE NOT NULL,
     name       VARCHAR(128) NOT NULL,
     tenant     VARCHAR(64),
@@ -216,7 +218,10 @@ CREATE TABLE api_keys (
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ
 );
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 ```
+
+`user_id`가 NULL인 레거시 행은 `/verify`에서 거부. 발급은 backend BFF `POST /api/me/api-keys` → auth `POST /v1/admin/api-keys`. `/verify` 시 `Principal.sub`는 **username**(JWT와 동일), `api_key_id`로 감사 구분.
 
 `user_resource_access`에 `source_meta` FK 없음: ACL은 `(kind, name)`까지만, 버전별 ACL은 설계 밖.
 
