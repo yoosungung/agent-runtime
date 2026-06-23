@@ -111,6 +111,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 | `llm_presets` | admin backend | — | LLM presets; K8s reconciler가 pool pod에 주입 |
 | `users` | admin backend | auth | 로그인 credentials |
 | `user_resource_access` | admin backend | auth | user ↔ `(kind, name)` ACL |
+| `chat_threads` | admin backend | — | per-user Chat UI thread registry; `agent_version` pin |
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
 | `api_keys` | auth (admin bridge) / backend BFF | auth | user-bound; `user_resource_access` 재사용 |
 
@@ -224,6 +225,27 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 `user_id`가 NULL인 레거시 행은 `/verify`에서 거부. 발급은 backend BFF `POST /api/me/api-keys` → auth `POST /v1/admin/api-keys`. `/verify` 시 `Principal.sub`는 **username**(JWT와 동일), `api_key_id`로 감사 구분.
 
 `user_resource_access`에 `source_meta` FK 없음: ACL은 `(kind, name)`까지만, 버전별 ACL은 설계 밖.
+
+### chat_threads
+
+```sql
+CREATE TABLE chat_threads (
+    id                  UUID         PRIMARY KEY,
+    user_id             BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_name          VARCHAR(128) NOT NULL,
+    agent_version       VARCHAR(128) NOT NULL,   -- pinned at thread creation (0008)
+    thread_type         VARCHAR(16)  NOT NULL,   -- 'langgraph' | 'adk' | 'custom'
+    provider_session_id VARCHAR(128) NOT NULL,   -- invoke session_id
+    provider_meta       JSONB        NOT NULL DEFAULT '{}',
+    title               VARCHAR(256) NOT NULL DEFAULT 'New Chat',
+    last_message_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    deleted_at          TIMESTAMPTZ,
+    purged_at           TIMESTAMPTZ
+);
+```
+
+마이그레이션: `0006_chat_threads.sql`, `0008_chat_threads_agent_version.sql`(legacy row backfill).
 
 ---
 
