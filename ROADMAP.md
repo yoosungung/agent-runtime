@@ -11,10 +11,6 @@
 - [ ] **cfg body fallback** (리스크 A 확장): cfg가 16KB를 초과해야 하는 케이스 발생 시, ext-authz가 헤더 대신 invoke body에 `_meta.cfg` 필드로 주입하는 옵션을 도입. body 변형은 image contract를 깨므로 admin이 명시적 opt-in.
 - [ ] **image signature 검증**: cosign + admission webhook. 신뢰 registry 화이트리스트 + 서명 검증.
 
-### 설계 결정 필요
-
-- [ ] **BundleLoader scoped namespace import** — performance report §6.2. `importlib` 전역 `sys.path`/`sys.modules` 대신 checksum 격리 loader(예: `importlib.machinery.ModuleSpec` + 전용 namespace) 도입 검토. **현재 보류**: reload 제거·LRU evict 시 `sys.modules`/disk 정리·checksum-scoped entry module name으로 단기 완화만 적용.
-
 ### 인프라 확장
 
 - [ ] **mTLS/SPIRE 기반 내부 caller 인증** — 현재는 NetworkPolicy로 경계 강제. SPIFFE/SPIRE 도입 시 인증서 CN으로 internal/edge 판단, `grace_sec` 동적 결정 가능.

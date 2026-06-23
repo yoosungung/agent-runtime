@@ -24,6 +24,17 @@ bundles/
 - `pyproject.toml` — 번들 전용 deps (베이스 이미지에 없는 패키지)
 - (선택) README — config·시크릿·운영 절차
 
+## import 규칙 (pool 런타임)
+
+pool pod의 `BundleLoader`는 checksum별 namespace(`_rt_bundle_{checksum}`)로 번들을 격리 로드한다. 번들 작성 시:
+
+- zip 루트 기준 **절대 import** 사용 — `from utils import …`, `from providers.outlook import …` (현재 `email_bundle` 등과 동일 패턴).
+- `runtime_common.*`, `httpx` 등 **베이스/워크스페이스 패키지**는 그대로 import.
+- pool 배포 시 `sys.path` 조작 **불필요** — `app.py`의 `sys.path.insert`는 로컬 단독 실행용이며 런타임 loader가 무시한다.
+- import 중 백그라운드 스레드에서 추가 import를 하면 namespace 격리가 깨질 수 있으므로 factory/build 시점 import는 동기로 유지.
+
+상세: [packages/common/DESIGN.md](../packages/common/DESIGN.md) `bundle_import.py`.
+
 ## 배포
 
 배포 절차 정본: [deploy/examples/mcp-base/README.md](../deploy/examples/mcp-base/README.md) (zip → upload → `source_meta` 등록 → ACL·`user_meta`).

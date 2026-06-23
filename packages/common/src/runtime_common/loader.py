@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import importlib.util
 import logging
 import shutil
-import sys
 import tempfile
 import threading
 import zipfile
@@ -24,6 +22,12 @@ from urllib.parse import urlparse
 
 import httpx
 
+from runtime_common.bundle_import import (
+    import_entrypoint,
+    namespace_for_key,
+    purge_namespace_modules,
+    unregister_namespace,
+)
 from runtime_common.schemas import SourceMeta
 
 logger = logging.getLogger(__name__)
@@ -51,45 +55,6 @@ def _load_public_key(pem: str) -> Any:
         raise ValueError(f"invalid bundle_signing_public_key PEM: {exc}") from exc
 
 
-def _scoped_module_name(entry_key: str, module_name: str) -> str:
-    """Unique module name per cache entry to reduce cross-bundle sys.modules collisions."""
-    safe_key = entry_key.replace(":", "_").replace("/", "_")[:80]
-    return f"_rt_bundle_{safe_key}_{module_name.replace('.', '_')}"
-
-
-def _resolve_module_file(bundle_dir: Path, module_name: str) -> Path:
-    parts = module_name.split(".")
-    as_file = bundle_dir.joinpath(*parts).with_suffix(".py")
-    if as_file.is_file():
-        return as_file
-    as_pkg_init = bundle_dir.joinpath(*parts, "__init__.py")
-    if as_pkg_init.is_file():
-        return as_pkg_init
-    raise BundleImportError(
-        f"module file not found for {module_name!r} under {bundle_dir}"
-    )
-
-
-def _purge_bundle_modules(bundle_dir: Path) -> None:
-    """Remove sys.modules entries whose __file__ lives under bundle_dir."""
-    prefix = str(bundle_dir.resolve())
-    to_remove = [
-        name
-        for name, mod in list(sys.modules.items())
-        if mod is not None
-        and getattr(mod, "__file__", None)
-        and str(Path(mod.__file__).resolve()).startswith(prefix)
-    ]
-    for name in to_remove:
-        del sys.modules[name]
-
-
-def _remove_bundle_sys_path(bundle_dir: Path) -> None:
-    bundle_dir_str = str(bundle_dir.resolve())
-    while bundle_dir_str in sys.path:
-        sys.path.remove(bundle_dir_str)
-
-
 def _remove_bundle_dir(bundle_dir: Path) -> None:
     if not bundle_dir.exists():
         return
@@ -115,6 +80,7 @@ class BundleLoader:
         # keyed by checksum (or name:version fallback) -> factory callable
         self._entries: OrderedDict[str, Any] = OrderedDict()
         self._bundle_dirs: dict[str, Path] = {}
+        self._bundle_namespaces: dict[str, str] = {}
         self._lock = threading.Lock()
         self._verify_signatures = verify_signatures
         self._public_key: Any = None
@@ -142,6 +108,7 @@ class BundleLoader:
 
             self._entries[key] = entrypoint
             self._bundle_dirs[key] = bundle_dir
+            self._bundle_namespaces[key] = namespace_for_key(key)
             self._entries.move_to_end(key)
             while len(self._entries) > self._max_entries:
                 evicted_key, _ = self._entries.popitem(last=False)
@@ -350,9 +317,12 @@ class BundleLoader:
 
     def _evict_entry(self, key: str) -> None:
         bundle_dir = self._bundle_dirs.pop(key, None)
+        namespace = self._bundle_namespaces.pop(key, None)
+        if namespace is not None:
+            unregister_namespace(namespace)
+        elif bundle_dir is not None:
+            purge_namespace_modules(namespace_for_key(key))
         if bundle_dir is not None:
-            _purge_bundle_modules(bundle_dir)
-            _remove_bundle_sys_path(bundle_dir)
             _remove_bundle_dir(bundle_dir)
         if self._on_evict is not None:
             self._on_evict(key)
@@ -364,21 +334,8 @@ class BundleLoader:
         if not attr:
             raise BundleFetchError(f"entrypoint must be 'module:attr', got {meta.entrypoint!r}")
 
-        module_file = _resolve_module_file(bundle_dir, module_name)
-        scoped_name = _scoped_module_name(entry_key, module_name)
-
-        bundle_dir_str = str(bundle_dir.resolve())
-        if bundle_dir_str not in sys.path:
-            sys.path.insert(0, bundle_dir_str)
-
         try:
-            spec = importlib.util.spec_from_file_location(scoped_name, module_file)
-            if spec is None or spec.loader is None:
-                raise BundleImportError(f"cannot create module spec for {module_file}")
-
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[scoped_name] = module
-            spec.loader.exec_module(module)
+            module = import_entrypoint(bundle_dir, entry_key, module_name)
         except Exception as exc:
             raise BundleImportError(
                 f"failed to import bundle {meta.name}@{meta.version}: {exc}"

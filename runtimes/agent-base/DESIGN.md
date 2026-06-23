@@ -18,7 +18,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
   - payload: `{agent, version?, input, session_id?, principal}` — 식별자만 받는다. 번들 정보는 안 받는다.
   1. **`DeployApiClient.resolve(kind='agent', name=agent, version=version, principal=principal.id)`** → `{source, user}` 획득.
   2. `source.runtime_pool`이 `agent:{RUNTIME_KIND}`와 일치하는지 검증. 불일치 시 400.
-  3. `BundleLoader.load(source)` — 디스크 캐시에 없으면 `bundle_uri`에서 zip 다운로드·체크섬 검증·압축 해제·`sys.path` 추가·`module:attr` import.
+  3. `BundleLoader.load(source)` — 디스크 캐시에 없으면 `bundle_uri`에서 zip 다운로드·체크섬 검증·압축 해제·checksum namespace import·`module:attr` import.
   4. 로더가 리턴한 `factory`를 **`factory(cfg, secrets)` 형태**로 호출해서 instance 얻음.
      - `cfg` = `runtime_common.factory.merge_configs(source.config, user.config if user else None)` — **shallow merge, user가 같은 키면 덮어씀**. source-only / user-only 키는 그대로 유지. 자세한 합의는 [ARCHITECTURE.md](../../ARCHITECTURE.md) §5 "source_meta / user_meta config 병합".
      - `secrets` = `SecretResolver` 인스턴스 (실제 비밀값은 `user.secrets_ref`에서 lazy resolve)
@@ -33,7 +33,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
   - `langchain-anthropic`, `langchain-openai` — `init_chat_model` 이 `cfg.langgraph.model` 의 `provider:` 접두어로 자동 분기. 새 provider 지원 시 이 deps 목록을 늘린다 (번들에 두지 말 것 — cold-start 비용·중복).
   - ADK 가 비-Gemini 모델을 부를 때는 번들 코드가 `LiteLlm("openai/...")` / `LiteLlm("anthropic/...")` 으로 wrap. `litellm` 은 `google-adk` 의존으로 따라온다.
 - **캐시**:
-  - 번들: pod당 `BUNDLE_CACHE_MAX`(기본 16)개 버전을 디스크 + 인-프로세스 import 캐시로 유지. 키는 `source.checksum`.
+  - 번들: pod당 `BUNDLE_CACHE_MAX`(기본 16)개 버전을 디스크 + 인-프로세스 import 캐시로 유지. 키는 `source.checksum`. checksum별 `_rt_bundle_{checksum}` namespace로 import graph 격리 — 동일 pod에 여러 번들이 warm일 때 `utils` 같은 공통 모듈명 충돌 없음. LRU evict 시 namespace·디스크·registry warm 집합에서 함께 제거.
   - **user_meta는 매 invoke마다 fresh 조회** (짧은 TTL 로컬 캐시는 옵션). 번들과 수명이 다르기 때문.
 - **Postgres (VFS + session persistence)**: `VFS_DSN`, `CHECKPOINTER_DSN`, `SESSION_DB_DSN` env — deploy-api resolve는 여전히 HTTP only. checkpoint 테이블은 pod startup `AsyncPostgresSaver.setup()` 으로 auto-migrate.
 - **cold-start**: 첫 호출 시 번들 fetch + import 비용 발생. warm이면 resolve RTT + 해시 lookup만.

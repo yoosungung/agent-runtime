@@ -34,7 +34,18 @@
     - `configure_opik()` — `OPIK_URL_OVERRIDE` / `OPIK_WORKSPACE` 환경변수를 읽어 SDK를 초기화. `opik.configure()` 대신 env var 우선(컨테이너 환경에서 `~/.opik.config` 파일 쓰기 없음). `OPIK_TRACK_DISABLE=true` 이면 no-op.
     - `opik_trace_context(name, project_name, session_id, user_id, metadata)` — `opik.start_as_current_trace()` 래퍼. invoke 경계에서 호출해 per-request ContextVar 격리를 보장. Opik SDK가 `contextvars.ContextVar` 기반이므로 FastAPI asyncio task 단위로 자동 격리 — 동시 invoke 간 trace 혼용 없음.
   - `loader.py` — **Lambda 스타일 동적 번들 로더**. `SourceMeta`를 받아 아카이브를 받아오고(sha256 검증 → 서명 검증 → 압축 해제), 엔트리포인트 `module:attr`를 import 하고, 프로세스 내 LRU 캐시에 보관. agent-base와 mcp-base가 공유. `user_meta`는 만지지 않음 — 호출자(runner)가 처리.
+    - **디스크 캐시**: `{cache_dir}/{name}-{version}-{digest16}/` — checksum 있으면 digest16은 checksum 앞 16자, 없으면 name+version+uri 해시.
+    - **인-프로세스 LRU**: 키는 `source.checksum`(없으면 `name:version`). `max_entries` 초과 시 가장 오래된 항목 evict → namespace unregister + 디스크 삭제 + `on_evict(checksum)` 콜백(registry warm 집합 동기화용).
+    - **import**: `bundle_import.import_entrypoint()` 위임. `sys.path`에 번들 디렉터리를 넣지 않음.
     - **번들 서명 검증**: `BUNDLE_VERIFY_SIGNATURES=true`이면 `source_meta.sig_uri`에서 서명 파일을 받아 공개키(`BUNDLE_SIGNING_PUBLIC_KEY` PEM)로 검증. 실패 시 `BundleSignatureError`(→ HTTP 500). 지원 키: ECDSA P-256(cosign 기본), Ed25519. `cryptography` 라이브러리 사용 — 별도 바이너리 없음. dev에서는 기본 off; prod에서는 반드시 켤 것. 서명 형식: `cosign sign-blob --key` 출력(base64 DER). `sig_uri` 스킴은 `http(s)://` · `file://` 지원.
+  - **`bundle_import.py`** — checksum-scoped import namespace. `loader.py` 전용; pool 외부에서 import 하지 않는다.
+    - **namespace 이름**: `_rt_bundle_{safe_key}` — `safe_key`는 cache entry key(checksum 또는 `name:version`)에서 `:`/`/` → `_`, 최대 80자.
+    - **등록**: 번들 최초 load 시 `MetaPathFinder`를 `sys.meta_path` 맨 앞에 삽입. `_rt_bundle_{key}.*` 모듈만 해당 finder가 처리.
+    - **모듈 해석**: bundle zip 루트 기준 — `foo.py`, `pkg/__init__.py`, `pkg/sub.py`, `pkg/`(implicit namespace 디렉터리) 지원.
+    - **절대 import 리다이렉트**: 모듈 exec 중 `builtins.__import__` hook. `level==0`이고 bundle_dir에 해당 파일/패키지가 있으면 `_rt_bundle_{key}.{name}`으로 import. bundle_dir에 없으면(`httpx`, `runtime_common.*` 등) 표준 import 경로 유지.
+    - **상대 import**: hook 개입 없음 — `from .models import X` 등은 Python 기본 규칙(`__package__`)으로 동작.
+    - **evict**: `unregister_namespace()` — finder 제거 + `sys.modules`에서 namespace prefix 전체 purge.
+    - **제약**: import hook은 **모듈 exec 동안만** 활성(동기 import). import 중 백그라운드 스레드 spawn 시 격리 보장 없음(번들 작성자 책임). C extension(`.so`)은 미지원 — zip 번들은 `.py`만 가정.
   - **`config_schema.py`** — `source_meta.config` / `user_meta.config` 의 단일 진실 소스. Pydantic 모델로 런타임별 허용 키·타입·기본값을 명세.
     - `SourceConfig` — 전체 source config 루트. 공통(`timeout_seconds`, `log_level`) + 런타임 섹션(`langgraph`, `adk`, `fastmcp`, `mcp`). 루트는 `extra="allow"` — 번들 작성자가 자기만의 top-level 키 추가 가능 (예: `mcp_server`, `naver`, `anthropic_api_key`). 표준 섹션 내부는 여전히 `extra="forbid"` 로 strict.
     - `UserConfig` — per-principal override 루트. `EmailUserConfig`, `OutlookUserConfig`, `GmailUserConfig` 등 invoke 시 identity.

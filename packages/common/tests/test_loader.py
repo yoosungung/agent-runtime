@@ -4,7 +4,6 @@ import base64
 import hashlib
 import io
 import zipfile
-from pathlib import Path
 
 import pytest
 import respx
@@ -209,6 +208,8 @@ def test_entrypoint_missing_colon_raises(tmp_path):
 def test_evict_cleans_sys_modules_and_disk(tmp_path):
     import sys
 
+    from runtime_common.bundle_import import namespace_for_key
+
     cache_dir = str(tmp_path / "cache")
     loader = BundleLoader(cache_dir=cache_dir, max_entries=1)
 
@@ -242,23 +243,112 @@ def test_evict_cleans_sys_modules_and_disk(tmp_path):
 
     loader.load(meta_a)
     bundle_dir_a = loader._bundle_dirs[cs_a]
+    ns_a = namespace_for_key(cs_a)
     assert bundle_dir_a.exists()
-    assert any(
-        getattr(mod, "__file__", None)
-        and str(Path(mod.__file__).resolve()).startswith(str(bundle_dir_a.resolve()))
-        for mod in sys.modules.values()
-        if mod is not None
-    )
+    assert ns_a in sys.modules
 
     loader.load(meta_b)
     assert cs_a not in loader.warm_checksums()
     assert not bundle_dir_a.exists()
-    assert not any(
-        getattr(mod, "__file__", None)
-        and str(Path(mod.__file__).resolve()).startswith(str(bundle_dir_a.resolve()))
-        for mod in sys.modules.values()
-        if mod is not None
+    assert ns_a not in sys.modules
+
+
+def test_namespace_isolates_same_module_name(tmp_path):
+    """Two bundles with identically named local modules must not collide."""
+    cache_dir = str(tmp_path / "cache")
+    loader = BundleLoader(cache_dir=cache_dir, max_entries=8)
+
+    bytes_a = _make_zip(
+        {
+            "utils.py": "VALUE = 'from-a'\n",
+            "main.py": "from utils import VALUE\ndef factory(): return VALUE\n",
+        }
     )
+    path_a = tmp_path / "bundle_a.zip"
+    path_a.write_bytes(bytes_a)
+    cs_a = "sha256:" + hashlib.sha256(bytes_a).hexdigest()
+    meta_a = SourceMeta(
+        kind="agent",
+        name="agent-a",
+        version="v1",
+        runtime_pool="agent:custom",
+        entrypoint="main:factory",
+        bundle_uri=f"file://{path_a}",
+        checksum=cs_a,
+    )
+
+    bytes_b = _make_zip(
+        {
+            "utils.py": "VALUE = 'from-b'\n",
+            "main.py": "from utils import VALUE\ndef factory(): return VALUE\n",
+        }
+    )
+    path_b = tmp_path / "bundle_b.zip"
+    path_b.write_bytes(bytes_b)
+    cs_b = "sha256:" + hashlib.sha256(bytes_b).hexdigest()
+    meta_b = SourceMeta(
+        kind="agent",
+        name="agent-b",
+        version="v1",
+        runtime_pool="agent:custom",
+        entrypoint="main:factory",
+        bundle_uri=f"file://{path_b}",
+        checksum=cs_b,
+    )
+
+    assert loader.load(meta_a)() == "from-a"
+    assert loader.load(meta_b)() == "from-b"
+    assert loader.load(meta_a)() == "from-a"
+
+
+def test_namespace_does_not_add_bundle_dir_to_sys_path(tmp_path):
+    import sys
+
+    module_src = "def factory(): return 'hello'\n"
+    bundle_bytes = _make_zip({"mymod.py": module_src})
+    zip_path = tmp_path / "bundle.zip"
+    zip_path.write_bytes(bundle_bytes)
+    checksum = "sha256:" + hashlib.sha256(bundle_bytes).hexdigest()
+    meta = _meta(bundle_uri=f"file://{zip_path}", checksum=checksum)
+
+    sys_path_before = list(sys.path)
+    cache_dir = str(tmp_path / "cache")
+    loader = BundleLoader(cache_dir=cache_dir, max_entries=8)
+    loader.load(meta)
+    assert sys.path == sys_path_before
+
+
+def test_namespace_nested_package_import(tmp_path):
+    cache_dir = str(tmp_path / "cache")
+    loader = BundleLoader(cache_dir=cache_dir, max_entries=8)
+
+    bundle_bytes = _make_zip(
+        {
+            "helpers.py": "LABEL = 'nested'\n",
+            "providers/outlook.py": (
+                "from helpers import LABEL\n"
+                "def marker(): return LABEL\n"
+            ),
+            "main.py": (
+                "from providers.outlook import marker\n"
+                "def factory(): return marker()\n"
+            ),
+        }
+    )
+    zip_path = tmp_path / "bundle.zip"
+    zip_path.write_bytes(bundle_bytes)
+    checksum = "sha256:" + hashlib.sha256(bundle_bytes).hexdigest()
+    meta = SourceMeta(
+        kind="agent",
+        name="nested-agent",
+        version="v1",
+        runtime_pool="agent:custom",
+        entrypoint="main:factory",
+        bundle_uri=f"file://{zip_path}",
+        checksum=checksum,
+    )
+
+    assert loader.load(meta)() == "nested"
 
 
 def test_cache_eviction_max_entries_one(tmp_path):
