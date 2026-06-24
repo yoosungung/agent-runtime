@@ -57,3 +57,4 @@ secrets/
 .s3-config.json
 
 .claude/worktrees
+.data/

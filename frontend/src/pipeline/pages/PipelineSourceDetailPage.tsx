@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FileDropZone } from "../../components/FileDropZone";
 import { PageHeader } from "../../components/PageHeader";
+import { MANUAL_DEFAULT_ALLOWED_EXTENSIONS } from "../lib/manualSourceDefaults";
 import {
   useDeletePipelineSource,
   useIngestPipelineSource,
@@ -173,9 +174,10 @@ export function PipelineSourceDetailPage() {
   }
 
   const allowedExt =
-    typeof source.config.allowed_extensions === "string"
+    typeof source.config.allowed_extensions === "string" &&
+    source.config.allowed_extensions.trim()
       ? source.config.allowed_extensions
-      : ".pdf,.hwp,.docx,.txt,.md";
+      : MANUAL_DEFAULT_ALLOWED_EXTENSIONS;
   const maxMb =
     typeof source.config.max_file_mb === "number"
       ? source.config.max_file_mb
@@ -274,8 +276,9 @@ export function PipelineSourceDetailPage() {
             accept={allowedExt}
             maxMb={maxMb}
             multiple
+            allowDirectories
             onFiles={handleUpload}
-            label="Drag & drop files or click to select (multiple)"
+            label="Drag & drop files or folders, or click to select"
           />
           <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
             <input

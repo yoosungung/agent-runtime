@@ -51,4 +51,16 @@ describe("apiFetch", () => {
     const { apiJson } = await import("../lib/api");
     await expect(apiJson("/api/test")).rejects.toThrow("bad request");
   });
+
+  it("formats FastAPI validation detail array", async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 422,
+      ok: false,
+      json: async () => ({
+        detail: [{ type: "enum", loc: ["body", "driver"], msg: "Input should be 'manual'" }],
+      }),
+    });
+    const { apiJson } = await import("../lib/api");
+    await expect(apiJson("/api/test")).rejects.toThrow("driver: Input should be 'manual'");
+  });
 });

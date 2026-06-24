@@ -257,3 +257,121 @@ async def test_source_not_found(pipeline_client):
     mock_store.get_source.return_value = None
     resp = await client.get("/api/pipeline/sources/00000000-0000-4000-8000-000000000001")
     assert resp.status_code == 404
+
+
+def test_source_driver_includes_manual():
+    from path_graph.contracts.source import SourceDriver
+
+    assert SourceDriver.MANUAL.value == "manual"
+
+
+@pytest.mark.asyncio
+async def test_create_manual_source(pipeline_client, monkeypatch):
+    client, mock_store = pipeline_client
+    from path_graph.contracts.source import SourceDriver, SourceProfile
+
+    manual = SourceProfile(
+        tenant="dev",
+        id="22222222-2222-4222-8222-222222222222",
+        name="manual-docs",
+        driver=SourceDriver.MANUAL,
+        source_id="manual:docs",
+        config={"allowed_extensions": ".pdf"},
+    )
+    mock_store.create_source.return_value = manual
+    resp = await client.post(
+        "/api/pipeline/sources",
+        headers=_csrf_headers(),
+        json={
+            "name": "manual-docs",
+            "driver": "manual",
+            "source_id": "manual:docs",
+            "config": {"allowed_extensions": ".pdf", "max_file_mb": 100},
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["driver"] == "manual"
+
+
+def _manual_profile(**overrides):
+    from path_graph.contracts.source import SourceDriver, SourceProfile
+
+    defaults = {
+        "tenant": "dev",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "name": "manual-docs",
+        "driver": SourceDriver.MANUAL,
+        "source_id": "manual:docs",
+        "config": {},
+        "enabled": True,
+        "last_batch_id": "batch-prev",
+        "last_run_status": "submitted",
+    }
+    defaults.update(overrides)
+    return SourceProfile(**defaults)
+
+
+@pytest.mark.asyncio
+async def test_ingest_rejects_when_workflow_running(pipeline_client, monkeypatch):
+    client, mock_store = pipeline_client
+    mock_store.get_source.return_value = _manual_profile()
+    mock_store.get_pipeline_run_by_batch.return_value = {
+        "id": "run-1",
+        "workflow_name": "ingest-manual-docs-xyz",
+        "argo_uid": "uid-1",
+        "batch_id": "batch-prev",
+        "status": "submitted",
+    }
+
+    async def _running_phase(**_kwargs):
+        return "Running"
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_phase",
+        _running_phase,
+    )
+
+    resp = await client.post(
+        "/api/pipeline/sources/22222222-2222-4222-8222-222222222222/ingest",
+        headers=_csrf_headers(),
+        json={"document_ids": []},
+    )
+    assert resp.status_code == 409
+    assert "이미 수행 중" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ingest_allows_when_workflow_finished(pipeline_client, monkeypatch):
+    client, mock_store = pipeline_client
+    mock_store.get_source.return_value = _manual_profile()
+    mock_store.get_pipeline_run_by_batch.return_value = {
+        "id": "run-1",
+        "workflow_name": "ingest-manual-docs-xyz",
+        "argo_uid": "uid-1",
+        "batch_id": "batch-prev",
+        "status": "submitted",
+    }
+
+    async def _succeeded_phase(**_kwargs):
+        return "Succeeded"
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_phase",
+        _succeeded_phase,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.build_ingest_manifest",
+        lambda *args, **kwargs: {
+            "batch_id": "batch-new",
+            "manifest_key": "manifest/key",
+            "file_count": 0,
+        },
+    )
+
+    resp = await client.post(
+        "/api/pipeline/sources/22222222-2222-4222-8222-222222222222/ingest",
+        headers=_csrf_headers(),
+        json={"document_ids": []},
+    )
+    assert resp.status_code == 202
+    assert resp.json()["batch_id"] == "batch-new"

@@ -10,7 +10,12 @@ import psycopg
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
-from backend.pipeline_helpers import pg_settings_for_source, resolve_credential_secret
+from backend.pipeline_helpers import (
+    assert_source_ingest_idle,
+    pg_settings_for_source,
+    pipeline_blob_settings,
+    resolve_credential_secret,
+)
 from backend.deps import check_csrf, get_settings, require_admin
 from backend.pipeline_argo import submit_collect_ingest_rag, submit_ingest_rag
 from backend.pipeline_cron import (
@@ -28,6 +33,7 @@ from path_graph.admin.uploads import (
     list_documents_for_source,
     upload_raw_files,
 )
+from path_graph.config import Settings as PgSettings
 from path_graph.contracts.source import SourceCreate, SourceDriver, SourceProfile, SourceUpdate
 from runtime_common.schemas import Principal
 
@@ -155,6 +161,7 @@ def _require_manual_source(profile: SourceProfile) -> None:
 async def _submit_ingest_for_manifest(
     *,
     settings: Settings,
+    pg_settings: PgSettings,
     store: SourceStore,
     tenant: str,
     source_uuid: str,
@@ -179,7 +186,9 @@ async def _submit_ingest_for_manifest(
             argo_uid="",
         )
 
-    manifest_json = await asyncio.to_thread(manifest_lines_to_json, manifest_key)
+    manifest_json = await asyncio.to_thread(
+        manifest_lines_to_json, manifest_key, settings=pg_settings
+    )
     argo = await submit_ingest_rag(
         settings=settings,
         tenant=tenant,
@@ -529,20 +538,30 @@ async def ingest_source_documents(
     if not profile.enabled:
         raise HTTPException(status_code=400, detail="Source is disabled")
     _require_manual_source(profile)
+    await assert_source_ingest_idle(
+        settings=settings,
+        store=store,
+        tenant=tenant,
+        profile=profile,
+    )
 
     document_ids = body.document_ids or None
+    dsn = _path_graph_dsn(settings)
+    pg_settings = pipeline_blob_settings(settings, dsn)
     try:
         built = await asyncio.to_thread(
             build_ingest_manifest,
             profile,
             document_ids,
-            dsn=_path_graph_dsn(settings),
+            settings=pg_settings,
+            dsn=dsn,
         )
     except UploadValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return await _submit_ingest_for_manifest(
         settings=settings,
+        pg_settings=pg_settings,
         store=store,
         tenant=tenant,
         source_uuid=source_id,

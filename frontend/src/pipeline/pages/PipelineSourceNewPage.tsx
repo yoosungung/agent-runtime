@@ -8,6 +8,7 @@ import {
 } from "../hooks/usePipeline";
 import { usePipelineCredentials } from "../hooks/usePipelineCredentials";
 import { parseGDriveFolderId } from "../lib/gdriveConfig";
+import { MANUAL_DEFAULT_ALLOWED_EXTENSIONS } from "../lib/manualSourceDefaults";
 
 const DRIVERS: { value: SourceDriver; label: string }[] = [
   { value: "sharepoint", label: "SharePoint" },
@@ -24,7 +25,7 @@ function defaultConfig(driver: SourceDriver): Record<string, unknown> {
     return { folder_id: "", folder_path: "" };
   }
   if (driver === "manual") {
-    return { allowed_extensions: ".pdf,.hwp,.docx,.txt,.md", max_file_mb: "100" };
+    return { allowed_extensions: MANUAL_DEFAULT_ALLOWED_EXTENSIONS, max_file_mb: "100" };
   }
   return { folder: "" };
 }
@@ -289,7 +290,7 @@ export function PipelineSourceNewPage() {
                   onChange={(e) =>
                     setConfig({ ...config, allowed_extensions: e.target.value })
                   }
-                  placeholder=".pdf,.hwp,.docx"
+                  placeholder={MANUAL_DEFAULT_ALLOWED_EXTENSIONS}
                   className="border border-gray-300 rounded px-3 py-2 w-full font-mono text-sm"
                 />
               </div>

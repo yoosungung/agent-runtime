@@ -152,6 +152,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 
+    if settings.PIPELINE_CONSOLE_ENABLED:
+        from backend.pipeline_deps_check import assert_path_graph_console_ready
+
+        assert_path_graph_console_ready()
+
     engine = make_engine(settings.POSTGRES_DSN, pgbouncer=settings.POSTGRES_PGBOUNCER)
     app.state.settings = settings
     app.state.engine = engine

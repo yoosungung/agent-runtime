@@ -23,6 +23,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
 COPY backend/ ./backend/
+# Editable path-graph (uv.lock: ../path-graph/pipeline → /path-graph/pipeline)
+COPY path-graph/pipeline /path-graph/pipeline
 
 RUN uv sync --frozen --package backend --no-dev
 

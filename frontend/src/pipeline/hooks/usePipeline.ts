@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, apiJson } from "../../lib/api";
+import { apiFetch, apiJson, formatApiErrorDetail } from "../../lib/api";
 
 export type SourceDriver = "sharepoint" | "gdrive" | "onedrive" | "manual";
 
@@ -201,10 +201,10 @@ export function useUploadPipelineFiles(id: string) {
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
-        throw Object.assign(new Error(body?.detail ?? `HTTP ${resp.status}`), {
-          status: resp.status,
-          body,
-        });
+        throw Object.assign(
+          new Error(formatApiErrorDetail(body?.detail, `HTTP ${resp.status}`)),
+          { status: resp.status, body },
+        );
       }
       return resp.json() as Promise<{
         items: UploadFileResult[];

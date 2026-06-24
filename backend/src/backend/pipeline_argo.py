@@ -56,6 +56,51 @@ def _workflow_body(
     }
 
 
+_ACTIVE_WORKFLOW_PHASES = frozenset({"Running", "Pending"})
+
+
+async def get_workflow_phase(
+    *,
+    settings: Settings,
+    workflow_name: str,
+) -> str | None:
+    """Return Argo Workflow phase, or None if the workflow no longer exists."""
+    if not workflow_name:
+        return None
+    api_client = None
+    try:
+        api_client = await make_api_client(settings)
+        custom = k8s_client.CustomObjectsApi(api_client)
+        wf = await custom.get_namespaced_custom_object(
+            group=_ARGO_GROUP,
+            version=_ARGO_VERSION,
+            namespace=settings.PATH_GRAPH_ARGO_NAMESPACE,
+            plural=_ARGO_PLURAL,
+            name=workflow_name,
+        )
+        return str((wf.get("status") or {}).get("phase") or "")
+    except ApiException as exc:
+        if exc.status == 404:
+            return None
+        logger.warning(
+            "argo get workflow failed",
+            extra={"status": exc.status, "workflow": workflow_name},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Argo workflow lookup failed: {exc.reason or exc.status}",
+        ) from exc
+    except Exception as exc:
+        logger.warning("argo client unavailable: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Argo Workflows unavailable — connect to cluster or set K8S_IN_CLUSTER=false",
+        ) from exc
+    finally:
+        if api_client is not None:
+            await api_client.close()
+
+
 async def _submit_workflow(
     *,
     settings: Settings,
