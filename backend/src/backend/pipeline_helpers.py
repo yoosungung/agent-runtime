@@ -73,6 +73,17 @@ async def resolve_credential_secret(
     return credential.k8s_secret_name
 
 
+def _infer_s3_region(endpoint: str, region: str) -> str:
+    """Default Garage region when S3_REGION is unset (common in local port-forward)."""
+    normalized = region.strip() or "us-east-1"
+    if normalized != "us-east-1":
+        return normalized
+    lowered = endpoint.lower()
+    if "garage" in lowered or ":3900" in lowered:
+        return "garage"
+    return normalized
+
+
 def pipeline_blob_settings(backend: Settings, dsn: str) -> PgSettings:
     """Align path-graph blob store with pipeline Argo pods (Garage S3).
 
@@ -81,40 +92,52 @@ def pipeline_blob_settings(backend: Settings, dsn: str) -> PgSettings:
     """
     base = get_pg_settings()
     normalized = dsn.replace("postgresql+asyncpg://", "postgresql://")
+    updates: dict[str, object] = {}
     if base.path_graph_dsn != normalized:
-        base = base.model_copy(update={"path_graph_dsn": normalized})
+        updates["path_graph_dsn"] = normalized
 
-    if os.environ.get("PIPELINE_STORAGE_BACKEND", "").strip().lower() == "s3":
-        access = os.environ.get("S3_ACCESS_KEY", "").strip()
-        secret = os.environ.get("S3_SECRET_KEY", "").strip()
-        if access and secret and (base.s3_endpoint_url or os.environ.get("S3_ENDPOINT_URL")):
-            return base
-
-    endpoint = (backend.S3_ENDPOINT_URL or os.environ.get("S3_ENDPOINT_URL", "")).strip()
+    endpoint = (
+        os.environ.get("S3_ENDPOINT_URL", "").strip()
+        or backend.S3_ENDPOINT_URL
+        or base.s3_endpoint_url
+    ).strip()
     bucket = (
         os.environ.get("PATH_GRAPH_S3_BUCKET", "").strip()
+        or os.environ.get("S3_BUCKET", "").strip()
         or backend.S3_BUCKET
-        or os.environ.get("S3_BUCKET", "")
+        or base.s3_bucket
     ).strip()
     access = (
         os.environ.get("S3_ACCESS_KEY", "").strip()
+        or os.environ.get("S3_ACCESS_KEY_ID", "").strip()
         or backend.S3_ACCESS_KEY_ID
-        or os.environ.get("S3_ACCESS_KEY_ID", "")
+        or base.s3_access_key
     ).strip()
     secret = (
         os.environ.get("S3_SECRET_KEY", "").strip()
+        or os.environ.get("S3_SECRET_ACCESS_KEY", "").strip()
         or backend.S3_SECRET_ACCESS_KEY
-        or os.environ.get("S3_SECRET_ACCESS_KEY", "")
+        or base.s3_secret_key
     ).strip()
-    region = (
-        os.environ.get("S3_REGION", "").strip()
-        or backend.S3_REGION
-        or "us-east-1"
-    ).strip()
+    region = _infer_s3_region(
+        endpoint,
+        (
+            os.environ.get("S3_REGION", "").strip()
+            or backend.S3_REGION
+            or base.s3_region
+            or "us-east-1"
+        ).strip(),
+    )
 
-    if endpoint and bucket and access and secret:
-        return base.model_copy(
-            update={
+    want_s3 = (
+        os.environ.get("PIPELINE_STORAGE_BACKEND", "").strip().lower() == "s3"
+        or base.pipeline_storage_backend.strip().lower() == "s3"
+    )
+    if (want_s3 or (endpoint and bucket and access and secret)) and (
+        endpoint and bucket and access and secret
+    ):
+        updates.update(
+            {
                 "pipeline_storage_backend": "s3",
                 "s3_endpoint_url": endpoint,
                 "s3_bucket": bucket,
@@ -123,7 +146,8 @@ def pipeline_blob_settings(backend: Settings, dsn: str) -> PgSettings:
                 "s3_region": region,
             }
         )
-    return base
+
+    return base.model_copy(update=updates) if updates else base
 
 
 def _pg_base_settings(dsn: str, backend: Settings | None = None) -> PgSettings:

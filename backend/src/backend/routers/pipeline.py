@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 import psycopg
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
@@ -494,6 +495,22 @@ async def upload_source_files(
         )
     except UploadValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ClientError as exc:
+        err = exc.response.get("Error", {})
+        code = err.get("Code", "ClientError")
+        msg = err.get("Message", str(exc))
+        logger.warning(
+            "pipeline raw upload S3 failed",
+            extra={
+                "code": code,
+                "bucket": pg_settings.s3_bucket,
+                "endpoint": pg_settings.s3_endpoint_url,
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"S3 upload failed ({code}): {msg}",
+        ) from exc
 
     return UploadFilesResponse(**result)
 
