@@ -135,11 +135,11 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron` 수정 |
 | `DELETE` | `/api/pipeline/sources/{id}` | 삭제 |
 | `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run (`file_count`, `sample_names`) |
-| `POST` | `/api/pipeline/sources/{id}/run` | collect → manifest → Argo `pipeline-ingest-rag` submit |
+| `POST` | `/api/pipeline/sources/{id}/run` | **202** — Argo `pipeline-collect-ingest-rag` submit (async collect+ingest) |
 | `GET` | `/api/pipeline/runs` | `pipeline_runs` + 최근 `documents` 요약 |
 | `GET` | `/api/pipeline/dead-letters` | `ingest_state=dead_letter` documents |
 
-도메인: editable dep `path-graph` (`path_graph.admin.*`). Argo: `pipeline_argo.py` (`PATH_GRAPH_ARGO_NAMESPACE`, `PATH_GRAPH_WF_TEMPLATE`). 로컬 dev Argo 미연결 시 run → 503.
+도메인: editable dep `path-graph` (`path_graph.admin.*`). Argo: `pipeline_argo.py` (`PATH_GRAPH_COLLECT_WF_TEMPLATE`, `PATH_GRAPH_INGEST_WF_TEMPLATE`). ingest WF는 `batch_manifest_key`(S3) 우선. 로컬 dev Argo 미연결 시 run → 503.
 
 **Bundle 모드 vs General vs Image 모드 분류**:
 - `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)
