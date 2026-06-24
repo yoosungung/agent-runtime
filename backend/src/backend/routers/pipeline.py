@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -11,9 +12,10 @@ from pydantic import BaseModel, Field
 
 from backend.pipeline_helpers import pg_settings_for_source
 from backend.deps import check_csrf, get_settings, require_admin
-from backend.pipeline_argo import submit_ingest_rag
+from backend.pipeline_argo import submit_collect_ingest_rag
 from backend.settings import Settings
-from path_graph.admin.runner import collect_source, manifest_lines_to_json, probe_source
+from path_graph.admin.credentials import CredentialStore
+from path_graph.admin.runner import probe_source
 from path_graph.admin.sources import SourceStore
 from path_graph.contracts.source import SourceCreate, SourceDriver, SourceProfile, SourceUpdate
 from runtime_common.schemas import Principal
@@ -93,7 +95,7 @@ class TestSourceResponse(BaseModel):
 class RunSourceResponse(BaseModel):
     batch_id: str
     manifest_key: str
-    file_count: int
+    file_count: int | None = None
     workflow_name: str
     argo_uid: str
 
@@ -217,7 +219,7 @@ async def test_source_endpoint(
     return TestSourceResponse(**result)
 
 
-@router.post("/sources/{source_id}/run")
+@router.post("/sources/{source_id}/run", status_code=202)
 async def run_source(
     source_id: str,
     request: Request,
@@ -232,40 +234,34 @@ async def run_source(
     if not profile.enabled:
         raise HTTPException(status_code=400, detail="Source is disabled")
 
-    try:
-        pg_settings = await pg_settings_for_source(
-            request, settings, profile, _path_graph_dsn(settings)
+    dsn = _path_graph_dsn(settings)
+    credential_secret = ""
+    if profile.credential_id:
+        cred_store = CredentialStore(dsn)
+        credential = await asyncio.to_thread(
+            cred_store.get_credential, tenant, profile.credential_id
         )
-        collected = await asyncio.to_thread(collect_source, profile, settings=pg_settings)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if credential is None:
+            raise HTTPException(status_code=400, detail="Source credential not found")
+        if credential.oauth_status != "connected":
+            raise HTTPException(
+                status_code=400,
+                detail="Credential is not connected — complete OAuth first",
+            )
+        credential_secret = credential.k8s_secret_name
+        # Validate secrets readable before submitting WF.
+        await pg_settings_for_source(request, settings, profile, dsn)
 
-    batch_id = collected["batch_id"]
-    manifest_key = collected["manifest_key"]
-    file_count = collected["file_count"]
+    batch_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    manifest_key = f"batches/{tenant}/{batch_id}/manifest.jsonl"
 
-    if file_count == 0:
-        await asyncio.to_thread(
-            store.record_run,
-            tenant,
-            source_id,
-            batch_id=batch_id,
-            status="empty",
-        )
-        return RunSourceResponse(
-            batch_id=batch_id,
-            manifest_key=manifest_key,
-            file_count=0,
-            workflow_name="",
-            argo_uid="",
-        )
-
-    manifest_json = await asyncio.to_thread(manifest_lines_to_json, manifest_key)
-    argo = await submit_ingest_rag(
+    argo = await submit_collect_ingest_rag(
         settings=settings,
         tenant=tenant,
-        batch_manifest_json=manifest_json,
+        source_id=source_id,
+        batch_id=batch_id,
         source_name=profile.name,
+        credential_secret=credential_secret,
     )
     run_id = str(uuid4())
     await asyncio.to_thread(
@@ -287,7 +283,7 @@ async def run_source(
     return RunSourceResponse(
         batch_id=batch_id,
         manifest_key=manifest_key,
-        file_count=file_count,
+        file_count=None,
         workflow_name=argo["workflow_name"],
         argo_uid=argo["argo_uid"],
     )

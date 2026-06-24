@@ -71,8 +71,12 @@ export function PipelineSourceDetailPage() {
       if (res.file_count === 0) {
         setRunResult("No files collected — workflow not submitted.");
       } else {
+        const files =
+          res.file_count == null
+            ? "collect + ingest"
+            : `${res.file_count} file(s)`;
         setRunResult(
-          `Submitted batch ${res.batch_id} (${res.file_count} files) → workflow ${res.workflow_name || "—"}`,
+          `Submitted batch ${res.batch_id} (${files}) → workflow ${res.workflow_name || "—"}`,
         );
       }
     } catch (e) {

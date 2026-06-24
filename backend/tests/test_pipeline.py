@@ -235,29 +235,18 @@ async def test_test_source(pipeline_client, monkeypatch):
 async def test_run_source(pipeline_client, monkeypatch):
     client, mock_store = pipeline_client
     monkeypatch.setattr(
-        "backend.routers.pipeline.collect_source",
-        lambda profile, batch_id=None, settings=None: {
-            "batch_id": "batch-1",
-            "manifest_key": "batches/dev/batch-1/manifest.jsonl",
-            "file_count": 2,
-        },
-    )
-    monkeypatch.setattr(
-        "backend.routers.pipeline.manifest_lines_to_json",
-        lambda key: '[{"tenant":"dev"}]',
-    )
-    monkeypatch.setattr(
-        "backend.routers.pipeline.submit_ingest_rag",
-        AsyncMock(return_value={"workflow_name": "ingest-kms-abc", "argo_uid": "uid-1"}),
+        "backend.routers.pipeline.submit_collect_ingest_rag",
+        AsyncMock(return_value={"workflow_name": "collect-kms-abc", "argo_uid": "uid-1"}),
     )
     resp = await client.post(
         "/api/pipeline/sources/11111111-1111-4111-8111-111111111111/run",
         headers=_csrf_headers(),
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
-    assert data["batch_id"] == "batch-1"
-    assert data["workflow_name"] == "ingest-kms-abc"
+    assert data["workflow_name"] == "collect-kms-abc"
+    assert data["batch_id"]
+    assert data["file_count"] is None
     mock_store.record_run.assert_called_once()
     mock_store.insert_pipeline_run.assert_called_once()
 

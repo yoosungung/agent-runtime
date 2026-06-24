@@ -81,7 +81,9 @@ class Settings(BaseSettings):
     PIPELINE_CONSOLE_ENABLED: bool = True
     PATH_GRAPH_DSN: str = ""  # fallback: POSTGRES_DSN (psycopg postgresql://)
     PATH_GRAPH_ARGO_NAMESPACE: str = "path-graph"
-    PATH_GRAPH_WF_TEMPLATE: str = "pipeline-ingest-rag"
+    PATH_GRAPH_COLLECT_WF_TEMPLATE: str = "pipeline-collect-ingest-rag"
+    PATH_GRAPH_INGEST_WF_TEMPLATE: str = "pipeline-ingest-rag"
+    PATH_GRAPH_WF_TEMPLATE: str = "pipeline-collect-ingest-rag"
     PATH_GRAPH_CREDENTIAL_NAMESPACE: str = "path-graph"
     PIPELINE_CREDENTIAL_LOCAL_DIR: str = "/var/lib/admin/pipeline-credentials"
     PIPELINE_OAUTH_STATE_KEY: str = ""

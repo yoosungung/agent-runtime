@@ -126,7 +126,7 @@ export function useRunPipelineSource(id: string) {
       apiJson<{
         batch_id: string;
         manifest_key: string;
-        file_count: number;
+        file_count: number | null;
         workflow_name: string;
         argo_uid: string;
       }>(`/api/pipeline/sources/${id}/run`, { method: "POST" }),
