@@ -40,7 +40,7 @@
   - DSN: `POSTGRES_DSN` (write, asyncpg URL). 읽기 replica 분리는 admin 규모에선 과하므로 MVP는 primary 단일.
   - `runtime_common.db.make_engine` / `session_scope` 재사용.
   - SQLAlchemy 모델: **`runtime_common.db.models` 공용 사용** (backend·deploy-api·auth 세 서비스가 같은 선언을 import). backend가 자체 `models.py`를 두지 않는다. 공용화는 [../packages/common/DESIGN.md](../packages/common/DESIGN.md) "공용 DB 모델 리팩토링" 참조.
-  - 마이그레이션: **`backend/migrations/0001_init.sql`** … **`0008_chat_threads_agent_version.sql`**. path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
+  - 마이그레이션: **`backend/migrations/0001_init.sql`** … **`0009_users_tenant_not_null.sql`**. path-graph 연동 시 **`path_graph.migrations.iter_migration_sql()`** (`path-graph` 패키지). 적용은 `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate` Job.
 - **auth 서비스**: `AUTH_URL` — `/login`, `/refresh`, `/logout`, `/verify` 프록시.
 - **deploy-api는 호출하지 않는다** — admin은 DB를 직접 보므로 proxy 단계를 거치지 않는다. deploy-api의 resolve 캐시(in-memory, 5s TTL)는 자연 만료로 eventual consistency. auth도 같은 이유로 `users`/`user_resource_access` read 캐시(TTL ~5s)가 admin write 이후 자연 만료.
 
@@ -109,6 +109,37 @@
 | `GET` | **`/bundles/{sha256}.zip`** | 파일시스템(또는 S3 presigned) read-only 서빙 | **auth 없음 — NetworkPolicy로 클러스터 내부만**. pool이 이 URL로 fetch. `bundle_uri`에 박히는 주소. |
 | `GET` | **`/bundles/{sha256}.sig`** | 서명 파일 서빙 (있을 때만) | 위와 동일 경로 규칙 |
 | `POST` | `/api/chat/invoke` | Envoy → agent-pool 스트리밍 프록시 + SSE 정규화 | 아래 "Chat invoke" 참조 |
+
+### Pipeline admin (`/api/pipeline/*`, `PIPELINE_CONSOLE_ENABLED`)
+
+admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.to_thread()`.
+
+**Credentials** (`/api/pipeline/credentials`) — source마다 OAuth 계정. refresh token은 K8s Secret `path-graph-cred-{tenant}-{id}` (로컬 dev: `PIPELINE_CREDENTIAL_LOCAL_DIR`). DB는 `path_graph.source_credentials` 메타만. OAuth 앱은 `PIPELINE_GDRIVE_*` / `PIPELINE_MS_*` env.
+
+| Method | Path | 동작 |
+|--------|------|------|
+| `GET` | `/api/pipeline/credentials` | credential 목록 |
+| `POST` | `/api/pipeline/credentials` | credential 생성 (pending) |
+| `GET` | `/api/pipeline/credentials/{id}/oauth/start` | OAuth authorize URL |
+| `PUT` | `/api/pipeline/credentials/{id}/secrets` | break-glass refresh token (dev) |
+| `GET` | `/api/pipeline/oauth/callback/gdrive` | Google OAuth callback (CSRF 없음) |
+| `GET` | `/api/pipeline/oauth/callback/microsoft` | Microsoft OAuth callback |
+
+**Sources** — `credential_id` 필수 권장. Test/Run은 credential Secret에서 토큰 resolve.
+
+| Method | Path | 동작 |
+|--------|------|------|
+| `GET` | `/api/pipeline/sources` | tenant 스코프 sources 목록 |
+| `POST` | `/api/pipeline/sources` | source 생성 |
+| `GET` | `/api/pipeline/sources/{id}` | 상세 |
+| `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron` 수정 |
+| `DELETE` | `/api/pipeline/sources/{id}` | 삭제 |
+| `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run (`file_count`, `sample_names`) |
+| `POST` | `/api/pipeline/sources/{id}/run` | collect → manifest → Argo `pipeline-ingest-rag` submit |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs` + 최근 `documents` 요약 |
+| `GET` | `/api/pipeline/dead-letters` | `ingest_state=dead_letter` documents |
+
+도메인: editable dep `path-graph` (`path_graph.admin.*`). Argo: `pipeline_argo.py` (`PATH_GRAPH_ARGO_NAMESPACE`, `PATH_GRAPH_WF_TEMPLATE`). 로컬 dev Argo 미연결 시 run → 503.
 
 **Bundle 모드 vs General vs Image 모드 분류**:
 - `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)

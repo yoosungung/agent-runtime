@@ -11,6 +11,7 @@ import { RequireNotForcedChangePassword } from "./components/RequireNotForcedCha
 import { RequireRole } from "./components/RequireRole";
 import { HomeRedirect } from "./components/HomeRedirect";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { pipelineRoutes } from "./pipeline/routes";
 
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
@@ -240,6 +241,7 @@ export function App() {
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings/infra" element={<InfraMetaPage />} />
+                    {pipelineRoutes}
                   </Route>
                 </Route>
               </Route>

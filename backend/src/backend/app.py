@@ -32,6 +32,8 @@ from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import llm_presets as llm_presets_router_module
 from backend.routers import me_api_keys as me_api_keys_router_module
 from backend.routers import me_user_meta as me_user_meta_router_module
+from backend.routers import pipeline_credentials as pipeline_credentials_router_module
+from backend.routers import pipeline as pipeline_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
@@ -277,6 +279,12 @@ app.include_router(chat_threads_router_module.router)  # /api/me/chat/threads
 app.include_router(chat_router_module.router)  # /api/chat/*
 app.include_router(audit_router_module.router)  # /api/audit
 app.include_router(custom_images_router_module.router)  # /api/admin/custom-images/*
+
+_settings = get_settings()
+if _settings.PIPELINE_CONSOLE_ENABLED:
+    app.include_router(pipeline_router_module.router)  # /api/pipeline/*
+    app.include_router(pipeline_credentials_router_module.router)
+    app.include_router(pipeline_credentials_router_module.oauth_router)
 
 # ---------------------------------------------------------------------------
 # Bundle serving (cluster-internal — blocked at Ingress + proxy-header middleware)

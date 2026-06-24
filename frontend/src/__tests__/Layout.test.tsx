@@ -49,6 +49,7 @@ describe("Layout navigation", () => {
     renderLayout("admin");
     expect(screen.queryByRole("link", { name: "Bucket" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "VFS" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Pipeline" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "User" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Audit" })).toBeInTheDocument();
   });

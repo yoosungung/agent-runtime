@@ -23,7 +23,7 @@ async def session_factory():
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        session.add(UserRow(id=1, username="u", password_hash="x", role="user"))
+        session.add(UserRow(id=1, username="u", password_hash="x", tenant="dev", role="user"))
         session.add(
             ChatThreadRow(
                 id="11111111-1111-4111-8111-111111111111",

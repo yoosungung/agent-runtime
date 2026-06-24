@@ -14,7 +14,7 @@ TEST_DSN = "sqlite+aiosqlite:///:memory:"
 _ADMIN_PRINCIPAL = {
     "sub": "admin",
     "user_id": 1,
-    "tenant": None,
+    "tenant": "dev",
     "access": [],
     "grace_applied": False,
     "role": "admin",

@@ -50,7 +50,7 @@ class UserRow(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
-    tenant: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tenant: Mapped[str] = mapped_column(String(64), nullable=False)
     disabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

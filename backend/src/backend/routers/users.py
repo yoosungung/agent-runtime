@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ RE_USERNAME = re.compile(r"^[a-zA-Z0-9_.-]{3,128}$")
 class UserResponse(BaseModel):
     id: int
     username: str
-    tenant: str | None
+    tenant: str
     disabled: bool
     role: UserRole
     must_change_password: bool
@@ -195,7 +195,7 @@ async def get_user(
 class UserCreateRequest(BaseModel):
     username: str
     password: str
-    tenant: str | None = None
+    tenant: str
     role: UserRole = UserRole.USER
 
 
@@ -216,6 +216,9 @@ async def create_user(
         raise HTTPException(status_code=403, detail="Admin access required")
 
     _validate_username(body.username)
+    tenant = body.tenant.strip()
+    if not tenant:
+        raise HTTPException(status_code=400, detail="tenant is required")
     try:
         check_policy(body.password, settings.PASSWORD_MIN_LENGTH)
     except ValueError as exc:
@@ -225,7 +228,7 @@ async def create_user(
     row = UserRow(
         username=body.username,
         password_hash=hashed,
-        tenant=body.tenant,
+        tenant=tenant,
         disabled=False,
         role=body.role.value,
         must_change_password=False,
@@ -264,6 +267,16 @@ class UserPatchRequest(BaseModel):
     tenant: str | None = None
     disabled: bool | None = None
     role: UserRole | None = None
+
+    @field_validator("tenant")
+    @classmethod
+    def _tenant_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("tenant must not be empty")
+        return stripped
 
 
 @router.patch(

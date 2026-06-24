@@ -15,7 +15,7 @@ _CSRF = "test-csrf-token-value"
 _USER_PRINCIPAL = {
     "sub": "alice",
     "user_id": 2,
-    "tenant": None,
+    "tenant": "dev",
     "access": [{"kind": "agent", "name": "chat-bot"}],
     "grace_applied": False,
     "role": "user",
@@ -63,6 +63,7 @@ async def client(monkeypatch):
                 id=2,
                 username="alice",
                 password_hash="x",
+                tenant="dev",
                 role="user",
             )
         )

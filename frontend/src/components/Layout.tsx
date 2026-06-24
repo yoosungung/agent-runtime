@@ -87,6 +87,9 @@ export function Layout() {
       <NavLink to="/vfs" className={navLinkClass}>
         VFS
       </NavLink>
+      <NavLink to="/pipeline/sources" className={navLinkClass}>
+        Pipeline
+      </NavLink>
       <NavLink to="/users" className={navLinkClass}>
         User
       </NavLink>
@@ -152,6 +155,9 @@ export function Layout() {
                     </NavLink>
                     <NavLink to="/vfs" className={desktopNavLinkClass}>
                       VFS
+                    </NavLink>
+                    <NavLink to="/pipeline/sources" className={desktopNavLinkClass}>
+                      Pipeline
                     </NavLink>
                     <NavLink to="/users" className={desktopNavLinkClass}>
                       User

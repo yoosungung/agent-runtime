@@ -81,7 +81,14 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /settings/infra                        admin: Platform env (LLM·Opik·OTLP)
 /users                                 admin: 사용자 관리
 /audit                                 admin: 감사 로그
+/pipeline/credentials                  admin: OAuth 연동 (source별 계정)
+/pipeline/sources                      admin: 출처 목록
+/pipeline/sources/new                  admin: 출처 생성 (SharePoint/GDrive/OneDrive)
+/pipeline/sources/:id                  admin: 상세 + Test + Run now
+/pipeline/runs                         admin: runs + dead-letter 탭
 ```
+
+**Pipeline (`/pipeline/*`, admin)** — UI는 `frontend/src/pipeline/`에만 둠. Nav **Pipeline** 링크(admin). OAuth 토큰은 클러스터 `path-graph-env` Secret 안내. `POST /api/pipeline/sources/{id}/run`은 collect 후 Argo WF submit(클러스터 필요).
 
 **Bucket (`/bundle/bucket`, admin)** — Bundle 섹션 탭(Agent/MCP 옆, admin만 표시). `GET /api/bucket/info` 배지(S3/local). breadcrumb + 1-depth listing. toolbar: New Folder · Upload · Move · Delete. `in_use` 행(checkbox disabled, "In use" badge) — `source_meta` 참조 중 번들. delete/move 409 → "Source Meta가 참조 중인 번들입니다…" toast.
 

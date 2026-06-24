@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0008_chat_threads_agent_version.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0009_users_tenant_not_null.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -380,16 +380,26 @@ data:
 
     ALTER TABLE chat_threads
         ALTER COLUMN agent_version SET NOT NULL;
+  0009_users_tenant_not_null.sql: |
+    -- users.tenant NOT NULL (single-tenant deployment; path-graph Admin Console contract).
+    -- Requires: users (0001_init.sql)
+
+    UPDATE users
+    SET tenant = 'dev'
+    WHERE tenant IS NULL OR btrim(tenant) = '';
+
+    ALTER TABLE users
+        ALTER COLUMN tenant SET NOT NULL;
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0008
+  name: db-migrate-0009
   namespace: runtime
   annotations:
-    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0008)
+    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0009)
     # when migration scripts change; delete obsolete completed Jobs if desired.
-    migration-version: "0008"
+    migration-version: "0009"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -435,6 +445,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0007_api_keys_user_id.sql
               echo "Applying /migrations/0008_chat_threads_agent_version.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0008_chat_threads_agent_version.sql
+              echo "Applying /migrations/0009_users_tenant_not_null.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0009_users_tenant_not_null.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

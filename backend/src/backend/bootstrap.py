@@ -46,7 +46,7 @@ async def run_bootstrap(session: AsyncSession, settings) -> None:
     admin = UserRow(
         username=username,
         password_hash=hashed,
-        tenant=None,
+        tenant=(settings.INITIAL_ADMIN_TENANT or "dev").strip(),
         disabled=False,
         role=UserRole.ADMIN.value,
         must_change_password=True,

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Admin bootstrap / allowlist
     ADMIN_USERNAMES: str = ""  # comma-separated fallback
     INITIAL_ADMIN_USERNAME: str = "admin"
+    INITIAL_ADMIN_TENANT: str = "dev"
     INITIAL_ADMIN_PASSWORD: str = ""
     INITIAL_ADMIN_PASSWORD_FILE: str = "/etc/backend/initial-admin-password"
 
@@ -75,6 +76,24 @@ class Settings(BaseSettings):
     VFS_DSN: str = ""
     VFS_PGBOUNCER: bool = False
     MAX_VFS_FILE_BYTES: int = 1_048_576  # 1 MiB
+
+    # Pipeline admin console (path-graph sources / ingest)
+    PIPELINE_CONSOLE_ENABLED: bool = True
+    PATH_GRAPH_DSN: str = ""  # fallback: POSTGRES_DSN (psycopg postgresql://)
+    PATH_GRAPH_ARGO_NAMESPACE: str = "path-graph"
+    PATH_GRAPH_WF_TEMPLATE: str = "pipeline-ingest-rag"
+    PATH_GRAPH_CREDENTIAL_NAMESPACE: str = "path-graph"
+    PIPELINE_CREDENTIAL_LOCAL_DIR: str = "/var/lib/admin/pipeline-credentials"
+    PIPELINE_OAUTH_STATE_KEY: str = ""
+
+    PIPELINE_GDRIVE_CLIENT_ID: str = ""
+    PIPELINE_GDRIVE_CLIENT_SECRET: str = ""
+    PIPELINE_GDRIVE_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/pipeline/oauth/callback/gdrive"
+
+    PIPELINE_MS_CLIENT_ID: str = ""
+    PIPELINE_MS_CLIENT_SECRET: str = ""
+    PIPELINE_MS_TENANT_ID: str = "common"
+    PIPELINE_MS_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/pipeline/oauth/callback/microsoft"
 
     LOG_LEVEL: str = "INFO"
 

@@ -22,7 +22,7 @@ TEST_DSN = "sqlite+aiosqlite:///:memory:"
 _ADMIN_PRINCIPAL = {
     "sub": "admin",
     "user_id": 1,
-    "tenant": None,
+    "tenant": "dev",
     "access": [],
     "grace_applied": False,
     "role": "admin",
@@ -168,7 +168,7 @@ async def _insert_user(
     app_state,
     username: str = "alice",
     role: str = "user",
-    tenant: str | None = None,
+    tenant: str = "dev",
 ) -> UserRow:
     from backend.app import app
     from backend.passwords import hash_password
@@ -463,6 +463,7 @@ async def test_create_user_201(client: AsyncClient):
         json={
             "username": "bob",
             "password": "StrongPassword123!",
+            "tenant": "dev",
             "role": "user",
         },
         headers=_csrf_headers(),
@@ -476,14 +477,14 @@ async def test_create_user_201(client: AsyncClient):
 async def test_create_user_weak_password_400(client: AsyncClient):
     resp = await client.post(
         "/api/users",
-        json={"username": "carol", "password": "short"},
+        json={"username": "carol", "password": "short", "tenant": "dev"},
         headers=_csrf_headers(),
     )
     assert resp.status_code == 400
 
 
 async def test_create_user_duplicate_409(client: AsyncClient):
-    body = {"username": "dave", "password": "StrongPassword123!", "role": "user"}
+    body = {"username": "dave", "password": "StrongPassword123!", "tenant": "dev", "role": "user"}
     await client.post("/api/users", json=body, headers=_csrf_headers())
     resp = await client.post("/api/users", json=body, headers=_csrf_headers())
     assert resp.status_code == 409
@@ -1793,7 +1794,7 @@ async def test_dashboard_summary_accessible_to_authenticated_user(client: AsyncC
         {
             "sub": "alice",
             "user_id": 2,
-            "tenant": None,
+            "tenant": "dev",
             "access": [],
             "grace_applied": False,
             "role": "user",
