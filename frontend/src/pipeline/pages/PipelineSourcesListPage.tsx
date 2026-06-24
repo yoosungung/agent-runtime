@@ -45,6 +45,7 @@ export function PipelineSourcesListPage() {
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Driver</th>
                 <th className="px-4 py-2 font-medium">Enabled</th>
+                <th className="px-4 py-2 font-medium">Schedule</th>
                 <th className="px-4 py-2 font-medium">Last run</th>
                 <th className="px-4 py-2 font-medium">Status</th>
               </tr>
@@ -52,7 +53,7 @@ export function PipelineSourcesListPage() {
             <tbody className="divide-y divide-gray-100">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
                     No sources yet.{" "}
                     <Link to="/pipeline/sources/new" className="text-blue-600 hover:underline">
                       Create one
@@ -69,6 +70,9 @@ export function PipelineSourcesListPage() {
                     <td className="px-4 py-2 font-medium text-gray-900">{src.name}</td>
                     <td className="px-4 py-2 text-gray-700">{src.driver}</td>
                     <td className="px-4 py-2">{src.enabled ? "Yes" : "No"}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-gray-600">
+                      {src.schedule_cron ?? "—"}
+                    </td>
                     <td className="px-4 py-2 text-gray-600">
                       {formatDate(src.last_run_at)}
                     </td>

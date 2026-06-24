@@ -13,6 +13,7 @@ const DRIVERS: { value: SourceDriver; label: string }[] = [
   { value: "sharepoint", label: "SharePoint" },
   { value: "gdrive", label: "Google Drive" },
   { value: "onedrive", label: "OneDrive" },
+  { value: "manual", label: "Manual upload" },
 ];
 
 function defaultConfig(driver: SourceDriver): Record<string, unknown> {
@@ -21,6 +22,9 @@ function defaultConfig(driver: SourceDriver): Record<string, unknown> {
   }
   if (driver === "gdrive") {
     return { folder_id: "", folder_path: "" };
+  }
+  if (driver === "manual") {
+    return { allowed_extensions: ".pdf,.hwp,.docx,.txt,.md", max_file_mb: "100" };
   }
   return { folder: "" };
 }
@@ -44,6 +48,7 @@ export function PipelineSourceNewPage() {
       Object.entries(defaultConfig("sharepoint")).map(([k, v]) => [k, String(v)]),
     ),
   );
+  const [scheduleCron, setScheduleCron] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function handleDriverChange(next: SourceDriver) {
@@ -79,13 +84,21 @@ export function PipelineSourceNewPage() {
     e.preventDefault();
     setError(null);
     const resolvedConfig =
-      driver === "gdrive" ? buildGDriveConfig(config) : { ...config };
+      driver === "gdrive"
+        ? buildGDriveConfig(config)
+        : driver === "manual"
+          ? {
+              allowed_extensions: (config.allowed_extensions ?? "").trim(),
+              max_file_mb: Number(config.max_file_mb || 100),
+            }
+          : { ...config };
     const body: CreateSourceInput = {
       name: name.trim(),
       driver,
       source_id: sourceId.trim(),
       config: resolvedConfig,
       credential_id: credentialId || undefined,
+      schedule_cron: driver !== "manual" && scheduleCron.trim() ? scheduleCron.trim() : undefined,
     };
     try {
       const created = await createMut.mutateAsync(body);
@@ -105,11 +118,19 @@ export function PipelineSourceNewPage() {
       <PageHeader title="New Pipeline Source" />
 
       <p className="mb-4 text-sm text-gray-600">
-        먼저{" "}
-        <a href="/pipeline/credentials" className="text-blue-600 hover:underline">
-          Credentials
-        </a>
-        에서 OAuth 계정을 연결한 뒤, 아래에서 해당 credential을 선택하세요.
+        {driver === "manual" ? (
+          <>
+            Manual source는 UI에서 raw 파일을 직접 업로드합니다. OAuth credential이 필요 없습니다.
+          </>
+        ) : (
+          <>
+            먼저{" "}
+            <a href="/pipeline/credentials" className="text-blue-600 hover:underline">
+              Credentials
+            </a>
+            에서 OAuth 계정을 연결한 뒤, 아래에서 해당 credential을 선택하세요.
+          </>
+        )}
       </p>
 
       <div className="bg-white shadow rounded-lg p-6 max-w-xl">
@@ -145,30 +166,32 @@ export function PipelineSourceNewPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Credential <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={credentialId}
-              onChange={(e) => setCredentialId(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-2 w-full"
-              required
-            >
-              <option value="">Select connected credential…</option>
-              {(credData?.items ?? [])
-                .filter((c) => c.driver === driver && c.oauth_status === "connected")
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-            </select>
-            <p className="mt-1 text-xs text-gray-500">
-              driver와 일치하고 <code className="bg-gray-100 px-0.5 rounded">connected</code>{" "}
-              상태인 credential만 표시됩니다.
-            </p>
-          </div>
+          {driver !== "manual" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Credential <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={credentialId}
+                onChange={(e) => setCredentialId(e.target.value)}
+                className="border border-gray-300 rounded px-3 py-2 w-full"
+                required
+              >
+                <option value="">Select connected credential…</option>
+                {(credData?.items ?? [])
+                  .filter((c) => c.driver === driver && c.oauth_status === "connected")
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                driver와 일치하고 <code className="bg-gray-100 px-0.5 rounded">connected</code>{" "}
+                상태인 credential만 표시됩니다.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Source ID</label>
@@ -255,6 +278,36 @@ export function PipelineSourceNewPage() {
             </>
           )}
 
+          {driver === "manual" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Allowed extensions
+                </label>
+                <input
+                  value={config.allowed_extensions ?? ""}
+                  onChange={(e) =>
+                    setConfig({ ...config, allowed_extensions: e.target.value })
+                  }
+                  placeholder=".pdf,.hwp,.docx"
+                  className="border border-gray-300 rounded px-3 py-2 w-full font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max file size (MB)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={config.max_file_mb ?? "100"}
+                  onChange={(e) => setConfig({ ...config, max_file_mb: e.target.value })}
+                  className="border border-gray-300 rounded px-3 py-2 w-full"
+                />
+              </div>
+            </>
+          )}
+
           {driver === "onedrive" && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Folder</label>
@@ -263,6 +316,23 @@ export function PipelineSourceNewPage() {
                 onChange={(e) => setConfig({ ...config, folder: e.target.value })}
                 className="border border-gray-300 rounded px-3 py-2 w-full"
               />
+            </div>
+          )}
+
+          {driver !== "manual" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Schedule cron <span className="text-gray-400 font-normal">(선택, UTC)</span>
+              </label>
+              <input
+                value={scheduleCron}
+                onChange={(e) => setScheduleCron(e.target.value)}
+                placeholder="0 2 * * *"
+                className="border border-gray-300 rounded px-3 py-2 w-full font-mono text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                설정 시 Argo CronWorkflow가 주기적으로 collect+ingest를 실행합니다.
+              </p>
             </div>
           )}
 

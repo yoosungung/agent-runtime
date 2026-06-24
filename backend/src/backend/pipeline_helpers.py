@@ -11,6 +11,36 @@ from path_graph.config import Settings as PgSettings, get_settings as get_pg_set
 from path_graph.contracts.source import SourceProfile
 
 
+async def resolve_credential_secret(
+    request,
+    settings: Settings,
+    profile: SourceProfile,
+    dsn: str,
+    *,
+    require_connected: bool = False,
+) -> str:
+    if not profile.credential_id:
+        return ""
+    cred_store = CredentialStore(dsn)
+    credential = cred_store.get_credential(profile.tenant, profile.credential_id)
+    if credential is None:
+        raise HTTPException(status_code=400, detail="Source credential not found")
+    if require_connected and credential.oauth_status != "connected":
+        raise HTTPException(
+            status_code=400,
+            detail="Credential is not connected — complete OAuth first",
+        )
+    if require_connected or profile.enabled:
+        secret_store = await make_credential_secret_store(settings, request)
+        secret_values = await secret_store.read(credential.k8s_secret_name)
+        if require_connected and not secret_values:
+            raise HTTPException(
+                status_code=400,
+                detail="Credential is not connected — complete OAuth or set secrets",
+            )
+    return credential.k8s_secret_name
+
+
 def _pg_base_settings(dsn: str) -> PgSettings:
     base = get_pg_settings()
     normalized = dsn.replace("postgresql+asyncpg://", "postgresql://")

@@ -3,11 +3,20 @@ import { useRef, useState } from "react";
 interface Props {
   accept: string;
   maxMb?: number;
-  onFile: (file: File) => void;
+  onFile?: (file: File) => void;
+  onFiles?: (files: File[]) => void;
+  multiple?: boolean;
   label?: string;
 }
 
-export function FileDropZone({ accept, maxMb = 100, onFile, label }: Props) {
+export function FileDropZone({
+  accept,
+  maxMb = 100,
+  onFile,
+  onFiles,
+  multiple = false,
+  label,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +35,29 @@ export function FileDropZone({ accept, maxMb = 100, onFile, label }: Props) {
     return null;
   }
 
+  function handleFiles(fileList: FileList | File[]) {
+    const arr = Array.from(fileList);
+    if (multiple) {
+      const valid: File[] = [];
+      for (const file of arr) {
+        const err = validate(file);
+        if (err) {
+          setError(err);
+          setFileName(null);
+          return;
+        }
+        valid.push(file);
+      }
+      setError(null);
+      setFileName(
+        valid.length === 1 ? valid[0].name : `${valid.length} files selected`,
+      );
+      onFiles?.(valid);
+      return;
+    }
+    if (arr[0]) handleFile(arr[0]);
+  }
+
   function handleFile(file: File) {
     const err = validate(file);
     if (err) {
@@ -35,7 +67,7 @@ export function FileDropZone({ accept, maxMb = 100, onFile, label }: Props) {
     }
     setError(null);
     setFileName(file.name);
-    onFile(file);
+    onFile?.(file);
   }
 
   return (
@@ -50,8 +82,7 @@ export function FileDropZone({ accept, maxMb = 100, onFile, label }: Props) {
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          const file = e.dataTransfer.files[0];
-          if (file) handleFile(file);
+          if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
         }}
         className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
           dragging
@@ -63,10 +94,10 @@ export function FileDropZone({ accept, maxMb = 100, onFile, label }: Props) {
           ref={inputRef}
           type="file"
           accept={accept}
+          multiple={multiple}
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            if (e.target.files?.length) handleFiles(e.target.files);
           }}
         />
         {fileName ? (

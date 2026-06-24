@@ -125,14 +125,14 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `GET` | `/api/pipeline/oauth/callback/gdrive` | Google OAuth callback (CSRF 없음) |
 | `GET` | `/api/pipeline/oauth/callback/microsoft` | Microsoft OAuth callback |
 
-**Sources** — `credential_id` 필수 권장. Test/Run은 credential Secret에서 토큰 resolve.
+**Sources** — `credential_id` 필수 권장. Test/Run은 credential Secret에서 토큰 resolve. `schedule_cron` 설정 시 BFF가 Argo `CronWorkflow` `pg-cron-{tenant}-{source}` reconcile.
 
 | Method | Path | 동작 |
 |--------|------|------|
 | `GET` | `/api/pipeline/sources` | tenant 스코프 sources 목록 |
 | `POST` | `/api/pipeline/sources` | source 생성 |
 | `GET` | `/api/pipeline/sources/{id}` | 상세 |
-| `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron` 수정 |
+| `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron`/`credential_id` 수정 — cron 변경 시 Argo CronWorkflow reconcile |
 | `DELETE` | `/api/pipeline/sources/{id}` | 삭제 |
 | `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run (`file_count`, `sample_names`) |
 | `POST` | `/api/pipeline/sources/{id}/run` | **202** — Argo `pipeline-collect-ingest-rag` submit (async collect+ingest) |
