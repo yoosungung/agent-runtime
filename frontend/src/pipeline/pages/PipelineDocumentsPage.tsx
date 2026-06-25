@@ -14,13 +14,15 @@ const INGEST_STATE_FILTERS = [
 
 type DocStatusFilter = (typeof INGEST_STATE_FILTERS)[number]["value"];
 
-const VALID_INGEST_STATES = new Set(
-  INGEST_STATE_FILTERS.map((o) => o.value).filter(Boolean),
+const VALID_INGEST_STATES = new Set<Exclude<DocStatusFilter, "">>(
+  INGEST_STATE_FILTERS.map((o) => o.value).filter((v): v is Exclude<DocStatusFilter, ""> => v !== ""),
 );
 
 function statusFromParams(value: string | null): DocStatusFilter {
   if (value === "tombstone") return "purged";
-  if (value && VALID_INGEST_STATES.has(value)) return value as DocStatusFilter;
+  if (value && VALID_INGEST_STATES.has(value as Exclude<DocStatusFilter, "">)) {
+    return value as DocStatusFilter;
+  }
   return "";
 }
 
