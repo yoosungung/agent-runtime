@@ -19,7 +19,11 @@ venv/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
+
+# Local path-graph checkout for backend Docker build (GHA uses separate checkout)
+path-graph/
 
 # OS
 .DS_Store
