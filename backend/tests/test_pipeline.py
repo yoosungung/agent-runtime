@@ -200,6 +200,19 @@ async def test_create_project(pipeline_client):
 
 
 @pytest.mark.asyncio
+async def test_create_project_invalid_slug_returns_422(pipeline_client):
+    client, _mock_store, mock_project_store = pipeline_client
+    mock_project_store.create_project.side_effect = ValueError("invalid project slug")
+    resp = await client.post(
+        "/api/pipeline/projects",
+        headers=_csrf_headers(),
+        json={"name": "Docs", "slug": "###"},
+    )
+    assert resp.status_code == 422
+    assert "invalid project slug" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_create_source(pipeline_client):
     client, mock_store, _mock_project_store = pipeline_client
     resp = await client.post(

@@ -1,6 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { PageHeader } from "../../components/PageHeader";
-import { usePipelineProject, usePipelineSources } from "../hooks/usePipeline";
+import { usePipelineSources } from "../hooks/usePipeline";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -10,7 +9,6 @@ function formatDate(iso: string | null): string {
 export function PipelineSourcesListPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { data: project } = usePipelineProject(projectId);
   const { data, isLoading, isError } = usePipelineSources(projectId);
   const items = data?.items ?? [];
 
@@ -20,15 +18,15 @@ export function PipelineSourcesListPage() {
 
   return (
     <div>
-      <PageHeader title={project ? `${project.name} — Sources` : "Sources"}>
+      <div className="flex justify-end mb-4">
         <button
           type="button"
           onClick={() => navigate(`/pipeline/projects/${projectId}/sources/new`)}
           className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded"
         >
-          New source
+          + New Source
         </button>
-      </PageHeader>
+      </div>
 
       <p className="mb-4 text-sm text-gray-600">
         OAuth 계정은{" "}

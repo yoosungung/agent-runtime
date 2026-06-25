@@ -1,15 +1,11 @@
 import { lazy } from "react";
-import { Route } from "react-router-dom";
+import { Navigate, Route } from "react-router-dom";
 import { PipelineLayout } from "./PipelineLayout";
+import { PipelineProjectShell } from "./components/PipelineProjectShell";
 
-const PipelineProjectsPage = lazy(() =>
-  import("./pages/PipelineProjectsPage").then((m) => ({
-    default: m.PipelineProjectsPage,
-  })),
-);
-const PipelineProjectOverviewPage = lazy(() =>
-  import("./pages/PipelineProjectOverviewPage").then((m) => ({
-    default: m.PipelineProjectOverviewPage,
+const PipelineLandingPage = lazy(() =>
+  import("./pages/PipelineLandingPage").then((m) => ({
+    default: m.PipelineLandingPage,
   })),
 );
 const PipelineSourcesListPage = lazy(() =>
@@ -32,6 +28,21 @@ const PipelineRunsPage = lazy(() =>
     default: m.PipelineRunsPage,
   })),
 );
+const PipelineDocumentsPage = lazy(() =>
+  import("./pages/PipelineDocumentsPage").then((m) => ({
+    default: m.PipelineDocumentsPage,
+  })),
+);
+const PipelineDocumentDetailPage = lazy(() =>
+  import("./pages/PipelineDocumentDetailPage").then((m) => ({
+    default: m.PipelineDocumentDetailPage,
+  })),
+);
+const PipelineMaintenancePage = lazy(() =>
+  import("./pages/PipelineMaintenancePage").then((m) => ({
+    default: m.PipelineMaintenancePage,
+  })),
+);
 const PipelineCredentialsPage = lazy(() =>
   import("./pages/PipelineCredentialsPage").then((m) => ({
     default: m.PipelineCredentialsPage,
@@ -40,15 +51,23 @@ const PipelineCredentialsPage = lazy(() =>
 
 export const pipelineRoutes = (
   <Route path="/pipeline" element={<PipelineLayout />}>
-    <Route index element={<PipelineProjectsPage />} />
-    <Route path="projects/:projectId" element={<PipelineProjectOverviewPage />} />
-    <Route path="projects/:projectId/sources" element={<PipelineSourcesListPage />} />
-    <Route path="projects/:projectId/sources/new" element={<PipelineSourceNewPage />} />
-    <Route
-      path="projects/:projectId/sources/:sourceId"
-      element={<PipelineSourceDetailPage />}
-    />
-    <Route path="projects/:projectId/runs" element={<PipelineRunsPage />} />
+    <Route index element={<PipelineLandingPage />} />
     <Route path="credentials" element={<PipelineCredentialsPage />} />
+    <Route path="projects/:projectId" element={<PipelineProjectShell />}>
+      <Route index element={<Navigate to="sources" replace />} />
+      <Route path="sources" element={<PipelineSourcesListPage />} />
+      <Route path="sources/new" element={<PipelineSourceNewPage />} />
+      <Route
+        path="sources/:sourceId"
+        element={<PipelineSourceDetailPage />}
+      />
+      <Route path="runs" element={<PipelineRunsPage />} />
+      <Route path="documents" element={<PipelineDocumentsPage />} />
+      <Route
+        path="documents/:documentId"
+        element={<PipelineDocumentDetailPage />}
+      />
+      <Route path="maintenance" element={<PipelineMaintenancePage />} />
+    </Route>
   </Route>
 );

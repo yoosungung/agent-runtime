@@ -81,23 +81,20 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /settings/infra                        admin: Platform env (LLM·Opik·OTLP)
 /users                                 admin: 사용자 관리
 /audit                                 admin: 감사 로그
-/pipeline                              admin: Knowledge Projects 목록 (Pipeline 랜딩)
-/pipeline/projects/new                 admin: Project 생성
-/pipeline/projects/:projectId          admin: Overview (binding·통계)
+/pipeline                              admin: Pipeline 랜딩 (프로젝트 미선택 안내·생성)
+/pipeline/credentials                  admin: OAuth (tenant 공용)
+/pipeline/projects/:projectId          → sources 탭으로 redirect
 /pipeline/projects/:projectId/sources
 /pipeline/projects/:projectId/sources/new
 /pipeline/projects/:projectId/sources/:sourceId
 /pipeline/projects/:projectId/runs
-/pipeline/credentials                  admin: OAuth (tenant 공용)
-/files                                 admin: 파일관리 랜딩 (project 선택)
-/files/projects/:projectId/documents
-/files/projects/:projectId/documents/:documentId
-/files/projects/:projectId/lifecycle/tombstones
-/files/projects/:projectId/lifecycle/dead-letters
-/files/projects/:projectId/lifecycle/maintenance
+/pipeline/projects/:projectId/documents
+/pipeline/projects/:projectId/documents/:documentId
+/pipeline/projects/:projectId/maintenance   admin: reconcile·cleanup·purge (헤더 링크)
+/files/*                               → `/pipeline` redirect (구 파일관리)
 ```
 
-**Pipeline (`/pipeline/*`, admin)** — `frontend/src/pipeline/`. Nav **Pipeline**: project·source·수집·ingest·runs. **파일관리** (`/files/*`): `frontend/src/files/` — document 인벤토리·purge/restore/re-ingest·tombstones·reconcile. 공유: `frontend/src/knowledge/` (`KnowledgeProjectContext`, project 스위처). API는 전부 `/api/pipeline/*`. VFS(`/vfs`)는 agent 런타임 파일 — 파일관리와 별개.
+**Pipeline (`/pipeline/*`, admin)** — `frontend/src/pipeline/`. 상단 nav **Pipeline** 단일 진입. **좌측 사이드바**: 검색·**+ New project** 버튼(모달 생성)·Credentials 링크·project 목록(검색 필터). **우측**: project 선택 시 헤더 + 탭(Sources · Runs · Documents). Documents: filename like(클라이언트)·상태 필터(`dead_letter` · `purged` tombstone). Maintenance는 탭이 아닌 project 헤더 **Maintenance** 링크 — reconcile/cleanup/tombstones/dead letters/purge. 공유: `frontend/src/knowledge/` (`KnowledgeProjectContext`). API `/api/pipeline/*`. VFS(`/vfs`)는 agent 런타임 파일 — Pipeline document와 별개.
 
 **ingest_state 배지**: `pending` · `indexed_rag` · `dead_letter` · `purging` · `purged` — `knowledge/components/IngestStateBadge.tsx`.
 

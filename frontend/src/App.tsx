@@ -12,7 +12,6 @@ import { RequireRole } from "./components/RequireRole";
 import { HomeRedirect } from "./components/HomeRedirect";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { pipelineRoutes } from "./pipeline/routes";
-import { filesRoutes } from "./files/routes";
 import { KnowledgeProjectProvider } from "./knowledge/context/KnowledgeProjectContext";
 
 const LoginPage = lazy(() =>
@@ -245,7 +244,7 @@ export function App() {
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings/infra" element={<InfraMetaPage />} />
                     {pipelineRoutes}
-                    {filesRoutes}
+                    <Route path="/files/*" element={<Navigate to="/pipeline" replace />} />
                   </Route>
                 </Route>
               </Route>

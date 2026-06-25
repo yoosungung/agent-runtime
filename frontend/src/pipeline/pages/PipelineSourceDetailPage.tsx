@@ -302,10 +302,10 @@ export function PipelineSourceDetailPage() {
           {pendingCount > 0 ? ` · ${pendingCount} pending ingest` : ""}
         </p>
         <Link
-          to={`/files/projects/${pid}/documents?source_id=${encodeURIComponent(source.source_id)}`}
+          to={`/pipeline/projects/${pid}/documents?source_id=${encodeURIComponent(source.source_id)}`}
           className="text-sm text-blue-600 hover:underline mt-2 inline-block"
         >
-          파일관리에서 보기
+          Documents에서 보기
         </Link>
       </div>
 

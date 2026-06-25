@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { useParams } from "react-router-dom";
-import { KnowledgeSectionLayout } from "../knowledge/components/KnowledgeSectionLayout";
+import { Outlet, useLocation, useParams } from "react-router-dom";
+import { PipelineSidebar } from "./components/PipelineSidebar";
 import { useKnowledgeProjectContext } from "../knowledge/context/KnowledgeProjectContext";
 
 export function PipelineLayout() {
   const { projectId } = useParams<{ projectId?: string }>();
-  const { setSelectedProjectId } = useKnowledgeProjectContext();
+  const location = useLocation();
+  const { selectedProjectId, setSelectedProjectId } = useKnowledgeProjectContext();
 
   useEffect(() => {
     if (projectId) {
@@ -13,25 +14,18 @@ export function PipelineLayout() {
     }
   }, [projectId, setSelectedProjectId]);
 
-  const projectNav = projectId
-    ? [
-        {
-          to: `/pipeline/projects/${projectId}`,
-          label: "Overview",
-          end: true,
-        },
-        { to: `/pipeline/projects/${projectId}/sources`, label: "Sources" },
-        { to: `/pipeline/projects/${projectId}/runs`, label: "Runs" },
-      ]
-    : [{ to: "/pipeline", label: "Projects", end: true }];
+  const activeProjectId =
+    projectId ||
+    (location.pathname.match(/\/pipeline\/projects\/([^/]+)/)?.[1] ?? "") ||
+    selectedProjectId ||
+    "";
 
   return (
-    <KnowledgeSectionLayout
-      section="pipeline"
-      title="Pipeline"
-      projectId={projectId}
-      navItems={projectNav}
-      footerNav={[{ to: "/pipeline/credentials", label: "Credentials" }]}
-    />
+    <div className="flex flex-col lg:flex-row gap-6">
+      <PipelineSidebar activeProjectId={activeProjectId} />
+      <div className="flex-1 min-w-0">
+        <Outlet />
+      </div>
+    </div>
   );
 }

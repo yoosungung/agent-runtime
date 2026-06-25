@@ -1,10 +1,8 @@
 import { useParams } from "react-router-dom";
-import { PageHeader } from "../../components/PageHeader";
-import { usePipelineProject, usePipelineRuns } from "../hooks/usePipeline";
+import { usePipelineRuns } from "../hooks/usePipeline";
 
 export function PipelineRunsPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { data: project } = usePipelineProject(projectId);
   const runsQuery = usePipelineRuns(projectId);
   const runs = runsQuery.data?.runs ?? [];
   const recentDocs = runsQuery.data?.recent_documents ?? [];
@@ -15,8 +13,6 @@ export function PipelineRunsPage() {
 
   return (
     <div>
-      <PageHeader title={project ? `${project.name} — Runs` : "Pipeline Runs"} />
-
       <div className="space-y-6">
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <table className="min-w-full text-sm">

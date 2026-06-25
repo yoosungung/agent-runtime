@@ -67,7 +67,7 @@ function renderPage() {
 describe("PipelineSourcesListPage", () => {
   it("renders source list under project", () => {
     renderPage();
-    expect(screen.getByText(/Sources/)).toBeInTheDocument();
+    expect(screen.getByText("+ New Source")).toBeInTheDocument();
     expect(screen.getByText("kms")).toBeInTheDocument();
     expect(screen.getByText("sharepoint")).toBeInTheDocument();
   });

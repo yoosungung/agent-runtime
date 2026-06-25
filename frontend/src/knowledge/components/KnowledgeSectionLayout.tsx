@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { ProjectSwitcher } from "./ProjectSwitcher";
+import { useKnowledgeProjectContext } from "../context/KnowledgeProjectContext";
 
 type NavItem = { to: string; label: string; end?: boolean };
 
@@ -25,6 +26,8 @@ export function KnowledgeSectionLayout({
   navItems,
   footerNav = [],
 }: Props) {
+  const { setSelectedProjectId } = useKnowledgeProjectContext();
+
   return (
     <div className="flex flex-col lg:flex-row gap-6">
       <aside className="w-full lg:w-56 shrink-0">
@@ -66,6 +69,17 @@ export function KnowledgeSectionLayout({
             </Link>
           </p>
         )}
+        {projectId && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <Link
+              to="/pipeline"
+              onClick={() => setSelectedProjectId("")}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+            >
+              ← Back to Projects
+            </Link>
+          </div>
+        )}
       </aside>
       <div className="flex-1 min-w-0">
         <Outlet />
@@ -73,3 +87,4 @@ export function KnowledgeSectionLayout({
     </div>
   );
 }
+

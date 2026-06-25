@@ -396,6 +396,8 @@ async def create_project(
         profile = await asyncio.to_thread(store.create_project, tenant, create)
     except psycopg.errors.UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="Project slug already exists") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return ProjectResponse.from_profile(profile)
 
 
