@@ -43,6 +43,7 @@ def test_base_ingress_blocks_public_bundles_and_debug_paths() -> None:
     for required in REQUIRED_INGRESS_PATHS:
         assert required in manifest, required
     assert "server-snippet" not in manifest
+    assert "proxy-body-size: 256m" in manifest
 
 
 def test_dev_overlay_inherits_hardened_ingress() -> None:
