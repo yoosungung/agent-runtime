@@ -129,17 +129,34 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 | Method | Path | 동작 |
 |--------|------|------|
-| `GET` | `/api/pipeline/sources` | tenant 스코프 sources 목록 |
-| `POST` | `/api/pipeline/sources` | source 생성 |
+| `GET` | `/api/pipeline/projects` | project 목록 |
+| `POST` | `/api/pipeline/projects` | project 생성 |
+| `GET` | `/api/pipeline/projects/{id}` | project 상세 |
+| `GET` | `/api/pipeline/projects/{id}/binding` | `resolve_knowledge_binding` (RAG/graph/wiki) |
+| `GET` | `/api/pipeline/projects/{id}/documents` | project 문서 목록 (`?ingest_state=` `?source_id=`) |
+| `GET` | `/api/pipeline/projects/{id}/tombstones` | tombstone 목록 |
+| `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |
+| `POST` | `/api/pipeline/projects/{id}/cleanup` | artifact cleanup (`{dry_run}`) |
+| `POST` | `/api/pipeline/projects/{id}/purge` | project purge (`{reason?}`) |
+| `GET` | `/api/pipeline/sources` | sources (`?project_id=` 필터) |
+| `POST` | `/api/pipeline/sources` | source 생성 (`project_id` 필수) |
 | `GET` | `/api/pipeline/sources/{id}` | 상세 |
-| `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron`/`credential_id` 수정 — cron 변경 시 Argo CronWorkflow reconcile |
+| `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron`/`credential_id` |
 | `DELETE` | `/api/pipeline/sources/{id}` | 삭제 |
-| `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run (`file_count`, `sample_names`) |
-| `POST` | `/api/pipeline/sources/{id}/run` | **202** — Argo `pipeline-collect-ingest-rag` submit (async collect+ingest) |
-| `GET` | `/api/pipeline/runs` | `pipeline_runs` + 최근 `documents` 요약 |
-| `GET` | `/api/pipeline/dead-letters` | `ingest_state=dead_letter` documents |
+| `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run |
+| `POST` | `/api/pipeline/sources/{id}/run` | **202** — collect+ingest WF |
+| `POST` | `/api/pipeline/sources/{id}/purge` | source purge |
+| `POST` | `/api/pipeline/sources/{id}/upload` | manual raw upload |
+| `POST` | `/api/pipeline/sources/{id}/ingest` | manual ingest WF |
+| `GET` | `/api/pipeline/sources/{id}/documents` | source 문서 목록 |
+| `GET` | `/api/pipeline/documents/{id}` | document 상세 + DLQ error |
+| `POST` | `/api/pipeline/documents/{id}/purge` | `{reason?, hard_raw?}` |
+| `POST` | `/api/pipeline/documents/{id}/restore` | tombstone 해제 → pending |
+| `POST` | `/api/pipeline/documents/{id}/reingest` | compensation → pending |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs` + recent documents (`?project_id=`) |
+| `GET` | `/api/pipeline/dead-letters` | dead_letter documents (`?project_id=`) |
 
-도메인: editable dep `path-graph` (`path_graph.admin.*`). Argo: `pipeline_argo.py` (`PATH_GRAPH_COLLECT_WF_TEMPLATE`, `PATH_GRAPH_INGEST_WF_TEMPLATE`). ingest WF는 `batch_manifest_key`(S3) 우선. 로컬 dev Argo 미연결 시 run → 503.
+도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3) 우선. 로컬 dev Argo 미연결 시 run → 503.
 
 **Bundle 모드 vs General vs Image 모드 분류**:
 - `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)

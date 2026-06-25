@@ -3,9 +3,18 @@ import { apiFetch, apiJson, formatApiErrorDetail } from "../../lib/api";
 
 export type SourceDriver = "sharepoint" | "gdrive" | "onedrive" | "manual";
 
+export interface PipelineProject {
+  tenant: string;
+  id: string;
+  slug: string;
+  name: string;
+  created_at: string | null;
+}
+
 export interface PipelineSource {
   tenant: string;
   id: string;
+  project_id: string;
   name: string;
   driver: SourceDriver;
   source_id: string;
@@ -51,6 +60,7 @@ export interface UploadFileResult {
 }
 
 export interface CreateSourceInput {
+  project_id: string;
   name: string;
   driver: SourceDriver;
   source_id: string;
@@ -67,11 +77,67 @@ export interface UpdateSourceInput {
   schedule_cron?: string | null;
 }
 
-export function usePipelineSources() {
+export interface CreateProjectInput {
+  name: string;
+  slug?: string | null;
+}
+
+export function usePipelineProjects() {
   return useQuery({
-    queryKey: ["pipeline", "sources"],
+    queryKey: ["pipeline", "projects"],
     queryFn: () =>
-      apiJson<{ items: PipelineSource[] }>("/api/pipeline/sources"),
+      apiJson<{ items: PipelineProject[] }>("/api/pipeline/projects"),
+  });
+}
+
+export function usePipelineProject(id: string | undefined) {
+  return useQuery({
+    queryKey: ["pipeline", "projects", id],
+    queryFn: () => apiJson<PipelineProject>(`/api/pipeline/projects/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export interface KnowledgeBinding {
+  tenant: string;
+  project_id: string;
+  project_slug: string;
+  rag: { qdrant_collection: string; filter: Record<string, string> };
+  graph: { nebula_space: string };
+  wiki: { s3_prefix: string; vfs_mount: string };
+}
+
+export function usePipelineProjectBinding(id: string | undefined) {
+  return useQuery({
+    queryKey: ["pipeline", "projects", id, "binding"],
+    queryFn: () =>
+      apiJson<KnowledgeBinding>(`/api/pipeline/projects/${id}/binding`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreatePipelineProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProjectInput) =>
+      apiJson<PipelineProject>("/api/pipeline/projects", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline", "projects"] });
+    },
+  });
+}
+
+export function usePipelineSources(projectId?: string) {
+  const qs = projectId
+    ? `?project_id=${encodeURIComponent(projectId)}`
+    : "";
+  return useQuery({
+    queryKey: ["pipeline", "sources", projectId ?? "all"],
+    queryFn: () =>
+      apiJson<{ items: PipelineSource[] }>(`/api/pipeline/sources${qs}`),
   });
 }
 
@@ -91,8 +157,11 @@ export function useCreatePipelineSource() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, body) => {
       qc.invalidateQueries({ queryKey: ["pipeline", "sources"] });
+      qc.invalidateQueries({
+        queryKey: ["pipeline", "sources", body.project_id],
+      });
     },
   });
 }
@@ -151,24 +220,17 @@ export function useRunPipelineSource(id: string) {
   });
 }
 
-export function usePipelineRuns() {
+export function usePipelineRuns(projectId?: string) {
+  const qs = projectId
+    ? `?project_id=${encodeURIComponent(projectId)}`
+    : "";
   return useQuery({
-    queryKey: ["pipeline", "runs"],
+    queryKey: ["pipeline", "runs", projectId ?? "all"],
     queryFn: () =>
       apiJson<{
         runs: PipelineRun[];
         recent_documents: PipelineDocumentSummary[];
-      }>("/api/pipeline/runs"),
-  });
-}
-
-export function usePipelineDeadLetters() {
-  return useQuery({
-    queryKey: ["pipeline", "dead-letters"],
-    queryFn: () =>
-      apiJson<{ items: PipelineDocumentSummary[] }>(
-        "/api/pipeline/dead-letters",
-      ),
+      }>(`/api/pipeline/runs${qs}`),
   });
 }
 

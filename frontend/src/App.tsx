@@ -12,6 +12,8 @@ import { RequireRole } from "./components/RequireRole";
 import { HomeRedirect } from "./components/HomeRedirect";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { pipelineRoutes } from "./pipeline/routes";
+import { filesRoutes } from "./files/routes";
+import { KnowledgeProjectProvider } from "./knowledge/context/KnowledgeProjectContext";
 
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
@@ -104,6 +106,7 @@ function PageFallback() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <KnowledgeProjectProvider>
       <ErrorBoundary>
         <BrowserRouter>
           <Suspense fallback={<PageFallback />}>
@@ -242,6 +245,7 @@ export function App() {
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings/infra" element={<InfraMetaPage />} />
                     {pipelineRoutes}
+                    {filesRoutes}
                   </Route>
                 </Route>
               </Route>
@@ -249,6 +253,7 @@ export function App() {
           </Suspense>
         </BrowserRouter>
       </ErrorBoundary>
+      </KnowledgeProjectProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );

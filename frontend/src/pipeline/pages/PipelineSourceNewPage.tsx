@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import {
   type CreateSourceInput,
   type SourceDriver,
+  useCreatePipelineProject,
   useCreatePipelineSource,
+  usePipelineProjects,
 } from "../hooks/usePipeline";
 import { usePipelineCredentials } from "../hooks/usePipelineCredentials";
 import { parseGDriveFolderId } from "../lib/gdriveConfig";
@@ -38,8 +40,13 @@ function defaultSourceId(name: string, driver: SourceDriver): string {
 
 export function PipelineSourceNewPage() {
   const navigate = useNavigate();
+  const { projectId: routeProjectId } = useParams<{ projectId: string }>();
   const createMut = useCreatePipelineSource();
+  const createProjectMut = useCreatePipelineProject();
+  const { data: projectData, isLoading: projectsLoading } = usePipelineProjects();
   const { data: credData } = usePipelineCredentials();
+  const projects = projectData?.items ?? [];
+  const [projectId, setProjectId] = useState("");
   const [driver, setDriver] = useState<SourceDriver>("sharepoint");
   const [credentialId, setCredentialId] = useState("");
   const [name, setName] = useState("");
@@ -51,6 +58,8 @@ export function PipelineSourceNewPage() {
   );
   const [scheduleCron, setScheduleCron] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const effectiveProjectId = routeProjectId || projectId || projects[0]?.id || "";
 
   function handleDriverChange(next: SourceDriver) {
     setDriver(next);
@@ -94,6 +103,7 @@ export function PipelineSourceNewPage() {
             }
           : { ...config };
     const body: CreateSourceInput = {
+      project_id: effectiveProjectId,
       name: name.trim(),
       driver,
       source_id: sourceId.trim(),
@@ -103,14 +113,30 @@ export function PipelineSourceNewPage() {
     };
     try {
       const created = await createMut.mutateAsync(body);
-      navigate(`/pipeline/sources/${created.id}`);
+      const pid = routeProjectId ?? effectiveProjectId;
+      navigate(`/pipeline/projects/${pid}/sources/${created.id}`);
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status;
       if (status === 409) {
         setError("Source name already exists for this tenant.");
+      } else if (status === 404) {
+        setError("Selected project was not found. Refresh and try again.");
       } else {
         setError(err instanceof Error ? err.message : "Failed to create source");
       }
+    }
+  }
+
+  async function onCreateDefaultProject() {
+    setError(null);
+    try {
+      const created = await createProjectMut.mutateAsync({
+        name: "Default",
+        slug: "default",
+      });
+      setProjectId(created.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
     }
   }
 
@@ -142,6 +168,51 @@ export function PipelineSourceNewPage() {
         )}
 
         <form onSubmit={onSubmit} className="space-y-4">
+          {!routeProjectId && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Project <span className="text-red-500">*</span>
+            </label>
+            {projectsLoading ? (
+              <p className="text-sm text-gray-500">Loading projects…</p>
+            ) : projects.length === 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">
+                  Project가 없습니다. Default project를 만든 뒤 Source를 등록하세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={onCreateDefaultProject}
+                  disabled={createProjectMut.isPending}
+                  className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded disabled:opacity-50"
+                >
+                  {createProjectMut.isPending ? "Creating…" : "Create default project"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <select
+                  value={effectiveProjectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-2 w-full"
+                  required
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.slug})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  <a href="/pipeline" className="text-blue-600 hover:underline">
+                    Manage projects
+                  </a>
+                </p>
+              </>
+            )}
+          </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input
@@ -340,14 +411,20 @@ export function PipelineSourceNewPage() {
           <div className="flex gap-2 pt-2">
             <button
               type="submit"
-              disabled={createMut.isPending}
+              disabled={createMut.isPending || !effectiveProjectId}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
             >
               {createMut.isPending ? "Creating…" : "Create"}
             </button>
             <button
               type="button"
-              onClick={() => navigate("/pipeline/sources")}
+              onClick={() =>
+                navigate(
+                  routeProjectId
+                    ? `/pipeline/projects/${routeProjectId}/sources`
+                    : "/pipeline",
+                )
+              }
               className="text-sm text-gray-600 hover:underline px-2"
             >
               Cancel

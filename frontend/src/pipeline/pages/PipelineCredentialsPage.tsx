@@ -112,7 +112,7 @@ export function PipelineCredentialsPage() {
       </div>
 
       <p className="mb-2 text-sm">
-        <Link to="/pipeline/sources" className="text-blue-600 hover:underline">
+        <Link to="/pipeline" className="text-blue-600 hover:underline">
           ← Sources
         </Link>
       </p>

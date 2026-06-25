@@ -1,6 +1,17 @@
 import { lazy } from "react";
 import { Route } from "react-router-dom";
+import { PipelineLayout } from "./PipelineLayout";
 
+const PipelineProjectsPage = lazy(() =>
+  import("./pages/PipelineProjectsPage").then((m) => ({
+    default: m.PipelineProjectsPage,
+  })),
+);
+const PipelineProjectOverviewPage = lazy(() =>
+  import("./pages/PipelineProjectOverviewPage").then((m) => ({
+    default: m.PipelineProjectOverviewPage,
+  })),
+);
 const PipelineSourcesListPage = lazy(() =>
   import("./pages/PipelineSourcesListPage").then((m) => ({
     default: m.PipelineSourcesListPage,
@@ -28,11 +39,16 @@ const PipelineCredentialsPage = lazy(() =>
 );
 
 export const pipelineRoutes = (
-  <>
-    <Route path="/pipeline/credentials" element={<PipelineCredentialsPage />} />
-    <Route path="/pipeline/sources" element={<PipelineSourcesListPage />} />
-    <Route path="/pipeline/sources/new" element={<PipelineSourceNewPage />} />
-    <Route path="/pipeline/sources/:id" element={<PipelineSourceDetailPage />} />
-    <Route path="/pipeline/runs" element={<PipelineRunsPage />} />
-  </>
+  <Route path="/pipeline" element={<PipelineLayout />}>
+    <Route index element={<PipelineProjectsPage />} />
+    <Route path="projects/:projectId" element={<PipelineProjectOverviewPage />} />
+    <Route path="projects/:projectId/sources" element={<PipelineSourcesListPage />} />
+    <Route path="projects/:projectId/sources/new" element={<PipelineSourceNewPage />} />
+    <Route
+      path="projects/:projectId/sources/:sourceId"
+      element={<PipelineSourceDetailPage />}
+    />
+    <Route path="projects/:projectId/runs" element={<PipelineRunsPage />} />
+    <Route path="credentials" element={<PipelineCredentialsPage />} />
+  </Route>
 );

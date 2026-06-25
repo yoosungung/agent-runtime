@@ -26,6 +26,7 @@ _NO_TENANT_PRINCIPAL = {**_ADMIN_PRINCIPAL, "tenant": None}
 _SAMPLE_PROFILE = {
     "tenant": "dev",
     "id": "11111111-1111-4111-8111-111111111111",
+    "project_id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "kms",
     "driver": "sharepoint",
     "source_id": "sharepoint:kms",
@@ -68,10 +69,22 @@ def _profile_obj():
     return SourceProfile(
         tenant="dev",
         id="11111111-1111-4111-8111-111111111111",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
         name="kms",
         driver=SourceDriver.SHAREPOINT,
         source_id="sharepoint:kms",
         config={"folder": "회사규정"},
+    )
+
+
+def _project_obj():
+    from path_graph.contracts.project import ProjectProfile
+
+    return ProjectProfile(
+        tenant="dev",
+        id="550e8400-e29b-41d4-a716-446655440000",
+        slug="default",
+        name="Default",
     )
 
 
@@ -125,21 +138,27 @@ async def pipeline_client(tmp_path, monkeypatch):
     mock_store.list_pipeline_runs.return_value = []
     mock_store.list_documents_summary.return_value = []
 
-    with patch("backend.routers.pipeline.SourceStore", return_value=mock_store):
-        with patch(
-            "backend.routers.pipeline.pg_settings_for_source",
-            new_callable=AsyncMock,
-        ) as mock_pg:
-            from path_graph.config import Settings as PgSettings
+    mock_project_store = MagicMock()
+    mock_project_store.list_projects.return_value = [_project_obj()]
+    mock_project_store.get_project.return_value = _project_obj()
+    mock_project_store.create_project.return_value = _project_obj()
 
-            mock_pg.return_value = PgSettings()
-            transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport,
-            base_url="http://test",
-            cookies={"access_token": "valid-token", "csrf_token": _CSRF},
-        ) as ac:
-            yield ac, mock_store
+    with patch("backend.routers.pipeline.SourceStore", return_value=mock_store):
+        with patch("backend.routers.pipeline.ProjectStore", return_value=mock_project_store):
+            with patch(
+                "backend.routers.pipeline.pg_settings_for_source",
+                new_callable=AsyncMock,
+            ) as mock_pg:
+                from path_graph.config import Settings as PgSettings
+
+                mock_pg.return_value = PgSettings()
+                transport = ASGITransport(app=app)
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://test",
+                cookies={"access_token": "valid-token", "csrf_token": _CSRF},
+            ) as ac:
+                yield ac, mock_store, mock_project_store
 
     app.dependency_overrides.pop(_deps_mod.get_settings, None)
     await engine.dispose()
@@ -147,21 +166,47 @@ async def pipeline_client(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_sources(pipeline_client):
-    client, _mock_store = pipeline_client
+    client, _mock_store, _mock_project_store = pipeline_client
     resp = await client.get("/api/pipeline/sources")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["items"]) == 1
     assert data["items"][0]["name"] == "kms"
+    assert data["items"][0]["project_id"] == "550e8400-e29b-41d4-a716-446655440000"
+
+
+@pytest.mark.asyncio
+async def test_list_projects(pipeline_client):
+    client, _mock_store, mock_project_store = pipeline_client
+    resp = await client.get("/api/pipeline/projects")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["slug"] == "default"
+    mock_project_store.list_projects.assert_called_once_with("dev")
+
+
+@pytest.mark.asyncio
+async def test_create_project(pipeline_client):
+    client, _mock_store, mock_project_store = pipeline_client
+    resp = await client.post(
+        "/api/pipeline/projects",
+        headers=_csrf_headers(),
+        json={"name": "Product Docs", "slug": "product-docs"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["slug"] == "default"
+    mock_project_store.create_project.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_create_source(pipeline_client):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     resp = await client.post(
         "/api/pipeline/sources",
         headers=_csrf_headers(),
         json={
+            "project_id": "550e8400-e29b-41d4-a716-446655440000",
             "name": "kms",
             "driver": "sharepoint",
             "source_id": "sharepoint:kms",
@@ -211,14 +256,14 @@ async def test_missing_tenant_forbidden(pipeline_client):
     app.state.auth_client.verify = AsyncMock(
         return_value=Principal.model_validate(_NO_TENANT_PRINCIPAL)
     )
-    client, _ = pipeline_client
+    client, _, _ = pipeline_client
     resp = await client.get("/api/pipeline/sources")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_test_source(pipeline_client, monkeypatch):
-    client, _mock_store = pipeline_client
+    client, _mock_store, _mock_project_store = pipeline_client
     monkeypatch.setattr(
         "backend.routers.pipeline.probe_source",
         lambda profile, settings=None: {"file_count": 3, "sample_names": ["a.pdf"]},
@@ -233,7 +278,7 @@ async def test_test_source(pipeline_client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_source(pipeline_client, monkeypatch):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     monkeypatch.setattr(
         "backend.routers.pipeline.submit_collect_ingest_rag",
         AsyncMock(return_value={"workflow_name": "collect-kms-abc", "argo_uid": "uid-1"}),
@@ -253,7 +298,7 @@ async def test_run_source(pipeline_client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_source_not_found(pipeline_client):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     mock_store.get_source.return_value = None
     resp = await client.get("/api/pipeline/sources/00000000-0000-4000-8000-000000000001")
     assert resp.status_code == 404
@@ -267,12 +312,13 @@ def test_source_driver_includes_manual():
 
 @pytest.mark.asyncio
 async def test_create_manual_source(pipeline_client, monkeypatch):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     from path_graph.contracts.source import SourceDriver, SourceProfile
 
     manual = SourceProfile(
         tenant="dev",
         id="22222222-2222-4222-8222-222222222222",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
         name="manual-docs",
         driver=SourceDriver.MANUAL,
         source_id="manual:docs",
@@ -283,6 +329,7 @@ async def test_create_manual_source(pipeline_client, monkeypatch):
         "/api/pipeline/sources",
         headers=_csrf_headers(),
         json={
+            "project_id": "550e8400-e29b-41d4-a716-446655440000",
             "name": "manual-docs",
             "driver": "manual",
             "source_id": "manual:docs",
@@ -299,6 +346,7 @@ def _manual_profile(**overrides):
     defaults = {
         "tenant": "dev",
         "id": "22222222-2222-4222-8222-222222222222",
+        "project_id": "550e8400-e29b-41d4-a716-446655440000",
         "name": "manual-docs",
         "driver": SourceDriver.MANUAL,
         "source_id": "manual:docs",
@@ -313,7 +361,7 @@ def _manual_profile(**overrides):
 
 @pytest.mark.asyncio
 async def test_ingest_rejects_when_workflow_running(pipeline_client, monkeypatch):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     mock_store.get_source.return_value = _manual_profile()
     mock_store.get_pipeline_run_by_batch.return_value = {
         "id": "run-1",
@@ -341,8 +389,42 @@ async def test_ingest_rejects_when_workflow_running(pipeline_client, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_create_source_requires_project(pipeline_client):
+    client, _mock_store, _mock_project_store = pipeline_client
+    resp = await client.post(
+        "/api/pipeline/sources",
+        headers=_csrf_headers(),
+        json={
+            "name": "kms",
+            "driver": "sharepoint",
+            "source_id": "sharepoint:kms",
+            "config": {},
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_source_unknown_project(pipeline_client):
+    client, _mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = None
+    resp = await client.post(
+        "/api/pipeline/sources",
+        headers=_csrf_headers(),
+        json={
+            "project_id": "00000000-0000-4000-8000-000000000001",
+            "name": "kms",
+            "driver": "sharepoint",
+            "source_id": "sharepoint:kms",
+            "config": {},
+        },
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_ingest_allows_when_workflow_finished(pipeline_client, monkeypatch):
-    client, mock_store = pipeline_client
+    client, mock_store, _mock_project_store = pipeline_client
     mock_store.get_source.return_value = _manual_profile()
     mock_store.get_pipeline_run_by_batch.return_value = {
         "id": "run-1",
@@ -375,3 +457,98 @@ async def test_ingest_allows_when_workflow_finished(pipeline_client, monkeypatch
     )
     assert resp.status_code == 202
     assert resp.json()["batch_id"] == "batch-new"
+
+
+@pytest.mark.asyncio
+async def test_get_project(pipeline_client):
+    client, _mock_store, mock_project_store = pipeline_client
+    resp = await client.get(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000",
+    )
+    assert resp.status_code == 200
+    assert resp.json()["slug"] == "default"
+    mock_project_store.get_project.assert_called_with(
+        "dev", "550e8400-e29b-41d4-a716-446655440000"
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_sources_filtered_by_project(pipeline_client):
+    client, mock_store, _mock_project_store = pipeline_client
+    resp = await client.get(
+        "/api/pipeline/sources",
+        params={"project_id": "550e8400-e29b-41d4-a716-446655440000"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_project_documents(pipeline_client, monkeypatch):
+    client, _mock_store, mock_project_store = pipeline_client
+    monkeypatch.setattr(
+        "backend.routers.pipeline.list_documents_for_project",
+        lambda tenant, project_id, **kwargs: [
+            {
+                "document_id": "doc-1",
+                "source_id": "manual:docs",
+                "project_id": project_id,
+                "content_hash": "sha256:abc",
+                "ingest_state": "pending",
+                "s3_raw_uri": "s3://b/raw/dev/p/manual/docs/sha256:abc/file.pdf",
+                "filename": "file.pdf",
+            }
+        ],
+    )
+    resp = await client.get(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/documents",
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["filename"] == "file.pdf"
+
+
+@pytest.mark.asyncio
+async def test_purge_document(pipeline_client, monkeypatch):
+    client, _mock_store, _mock_project_store = pipeline_client
+    monkeypatch.setattr(
+        "backend.routers.pipeline.api_purge_document",
+        lambda tenant, doc_id, **kwargs: {"status": "purged", "document_id": doc_id},
+    )
+    resp = await client.post(
+        "/api/pipeline/documents/doc-1/purge",
+        headers=_csrf_headers(),
+        json={"reason": "test", "hard_raw": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "purged"
+
+
+@pytest.mark.asyncio
+async def test_list_tombstones(pipeline_client, monkeypatch):
+    client, _mock_store, _mock_project_store = pipeline_client
+    monkeypatch.setattr(
+        "backend.routers.pipeline.api_list_tombstones",
+        lambda tenant, project_id=None: [{"content_hash": "sha256:abc"}],
+    )
+    resp = await client.get(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/tombstones",
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_project(pipeline_client, monkeypatch):
+    client, _mock_store, _mock_project_store = pipeline_client
+    monkeypatch.setattr(
+        "backend.routers.pipeline.api_reconcile_project",
+        lambda tenant, project_id: {"orphans_removed": 2},
+    )
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/reconcile",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["orphans_removed"] == 2

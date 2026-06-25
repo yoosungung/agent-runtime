@@ -20,15 +20,8 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-function ingestStateBadge(state: string): string {
-  if (state === "pending") return "bg-yellow-100 text-yellow-800";
-  if (state === "indexed_rag") return "bg-green-100 text-green-800";
-  if (state === "dead_letter") return "bg-red-100 text-red-800";
-  return "bg-gray-100 text-gray-700";
-}
-
 export function PipelineSourceDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { projectId, sourceId: id } = useParams<{ projectId: string; sourceId: string }>();
   const navigate = useNavigate();
   const { data: source, isLoading, isError } = usePipelineSource(id);
   const { data: documentsData, refetch: refetchDocuments } = usePipelineSourceDocuments(id);
@@ -167,7 +160,7 @@ export function PipelineSourceDetailPage() {
     setActionError(null);
     try {
       await deleteMut.mutateAsync(id);
-      navigate("/pipeline/sources");
+      navigate(`/pipeline/projects/${projectId ?? source!.project_id}/sources`);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Delete failed");
     }
@@ -183,10 +176,15 @@ export function PipelineSourceDetailPage() {
       ? source.config.max_file_mb
       : Number(source.config.max_file_mb ?? 100);
 
+  const pid = projectId ?? source.project_id;
+
   return (
     <div>
       <div className="mb-4 text-sm">
-        <Link to="/pipeline/sources" className="text-blue-600 hover:underline">
+        <Link
+          to={`/pipeline/projects/${pid}/sources`}
+          className="text-blue-600 hover:underline"
+        >
           Sources
         </Link>
         <span className="text-gray-400 mx-2">/</span>
@@ -297,44 +295,19 @@ export function PipelineSourceDetailPage() {
         </div>
       )}
 
-      {isManual && (
-        <div className="bg-white shadow rounded-lg p-6 mb-4 max-w-3xl overflow-x-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-gray-900">Documents</h3>
-            <span className="text-xs text-gray-500">{pendingCount} pending</span>
-          </div>
-          {documents.length === 0 ? (
-            <p className="text-sm text-gray-500">No documents yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b">
-                  <th className="py-2 pr-4">Filename</th>
-                  <th className="py-2 pr-4">Hash</th>
-                  <th className="py-2 pr-4">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc) => (
-                  <tr key={doc.document_id} className="border-b border-gray-100">
-                    <td className="py-2 pr-4 font-mono text-xs">{doc.filename}</td>
-                    <td className="py-2 pr-4 font-mono text-xs text-gray-600">
-                      {doc.content_hash.slice(0, 8)}…
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs ${ingestStateBadge(doc.ingest_state)}`}
-                      >
-                        {doc.ingest_state}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+      <div className="bg-white shadow rounded-lg p-4 mb-4 max-w-xl">
+        <h3 className="text-sm font-medium text-gray-900 mb-2">Documents</h3>
+        <p className="text-sm text-gray-600">
+          {documents.length} document(s)
+          {pendingCount > 0 ? ` · ${pendingCount} pending ingest` : ""}
+        </p>
+        <Link
+          to={`/files/projects/${pid}/documents?source_id=${encodeURIComponent(source.source_id)}`}
+          className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+        >
+          파일관리에서 보기
+        </Link>
+      </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
         {!isManual && (

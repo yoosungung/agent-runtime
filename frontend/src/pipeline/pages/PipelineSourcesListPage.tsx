@@ -1,6 +1,6 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
-import { usePipelineSources } from "../hooks/usePipeline";
+import { usePipelineProject, usePipelineSources } from "../hooks/usePipeline";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -8,16 +8,22 @@ function formatDate(iso: string | null): string {
 }
 
 export function PipelineSourcesListPage() {
+  const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { data, isLoading, isError } = usePipelineSources();
+  const { data: project } = usePipelineProject(projectId);
+  const { data, isLoading, isError } = usePipelineSources(projectId);
   const items = data?.items ?? [];
+
+  if (!projectId) {
+    return <p className="text-sm text-red-600">Missing project id.</p>;
+  }
 
   return (
     <div>
-      <PageHeader title="Pipeline Sources">
+      <PageHeader title={project ? `${project.name} — Sources` : "Sources"}>
         <button
           type="button"
-          onClick={() => navigate("/pipeline/sources/new")}
+          onClick={() => navigate(`/pipeline/projects/${projectId}/sources/new`)}
           className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded"
         >
           New source
@@ -25,10 +31,10 @@ export function PipelineSourcesListPage() {
       </PageHeader>
 
       <p className="mb-4 text-sm text-gray-600">
-        문서 수집 출처를 등록합니다. OAuth 계정은{" "}
-        <a href="/pipeline/credentials" className="text-blue-600 hover:underline">
+        OAuth 계정은{" "}
+        <Link to="/pipeline/credentials" className="text-blue-600 hover:underline">
           Credentials
-        </a>
+        </Link>
         에서 먼저 연결하세요.
       </p>
 
@@ -55,7 +61,10 @@ export function PipelineSourcesListPage() {
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
                     No sources yet.{" "}
-                    <Link to="/pipeline/sources/new" className="text-blue-600 hover:underline">
+                    <Link
+                      to={`/pipeline/projects/${projectId}/sources/new`}
+                      className="text-blue-600 hover:underline"
+                    >
                       Create one
                     </Link>
                   </td>
@@ -65,7 +74,9 @@ export function PipelineSourcesListPage() {
                   <tr
                     key={src.id}
                     className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => navigate(`/pipeline/sources/${src.id}`)}
+                    onClick={() =>
+                      navigate(`/pipeline/projects/${projectId}/sources/${src.id}`)
+                    }
                   >
                     <td className="px-4 py-2 font-medium text-gray-900">{src.name}</td>
                     <td className="px-4 py-2 text-gray-700">{src.driver}</td>
@@ -86,12 +97,6 @@ export function PipelineSourcesListPage() {
           </table>
         </div>
       )}
-
-      <div className="mt-4">
-        <Link to="/pipeline/runs" className="text-sm text-blue-600 hover:underline">
-          View runs &amp; dead letters →
-        </Link>
-      </div>
     </div>
   );
 }

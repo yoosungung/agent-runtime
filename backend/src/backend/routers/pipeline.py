@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -26,16 +27,34 @@ from backend.pipeline_cron import (
 )
 from backend.settings import Settings
 from path_graph.admin.credentials import CredentialStore
+from path_graph.admin.lifecycle import (
+    api_cleanup_project,
+    api_get_binding,
+    api_list_tombstones,
+    api_purge_document,
+    api_purge_project,
+    api_purge_source,
+    api_reconcile_project,
+    api_reingest_document,
+    api_restore_document,
+)
+from path_graph.admin.projects import ProjectStore
 from path_graph.admin.runner import manifest_lines_to_json, probe_source
 from path_graph.admin.sources import SourceStore
 from path_graph.admin.uploads import (
     UploadValidationError,
     build_ingest_manifest,
+    filename_from_raw_uri,
+    list_documents_for_project,
     list_documents_for_source,
     upload_raw_files,
 )
 from path_graph.config import Settings as PgSettings
+from path_graph.contracts.project import ProjectCreate, ProjectProfile
+from path_graph.contracts.s3_keys import s3_key_dead_letter
 from path_graph.contracts.source import SourceCreate, SourceDriver, SourceProfile, SourceUpdate
+from path_graph.meta.pg import PgMetaStore
+from path_graph.storage.blob import make_blob_store
 from runtime_common.schemas import Principal
 
 logger = logging.getLogger(__name__)
@@ -47,7 +66,35 @@ router = APIRouter(
 )
 
 
+class ProjectCreateRequest(BaseModel):
+    name: str
+    slug: str | None = None
+
+
+class ProjectResponse(BaseModel):
+    tenant: str
+    id: str
+    slug: str
+    name: str
+    created_at: str | None = None
+
+    @classmethod
+    def from_profile(cls, profile: ProjectProfile) -> ProjectResponse:
+        return cls(
+            tenant=profile.tenant,
+            id=profile.id,
+            slug=profile.slug,
+            name=profile.name,
+            created_at=profile.created_at.isoformat() if profile.created_at else None,
+        )
+
+
+class ProjectsListResponse(BaseModel):
+    items: list[ProjectResponse]
+
+
 class SourceCreateRequest(BaseModel):
+    project_id: str
     name: str
     driver: SourceDriver
     source_id: str
@@ -68,6 +115,7 @@ class SourceUpdateRequest(BaseModel):
 class SourceResponse(BaseModel):
     tenant: str
     id: str
+    project_id: str
     name: str
     driver: SourceDriver
     source_id: str
@@ -86,6 +134,7 @@ class SourceResponse(BaseModel):
         return cls(
             tenant=profile.tenant,
             id=profile.id,
+            project_id=profile.project_id,
             name=profile.name,
             driver=profile.driver,
             source_id=profile.source_id,
@@ -137,18 +186,62 @@ class UploadFilesResponse(BaseModel):
 class DocumentResponse(BaseModel):
     document_id: str
     source_id: str
+    project_id: str | None = None
     content_hash: str
     ingest_state: str
     s3_raw_uri: str
     filename: str
 
 
+class DocumentDetailResponse(DocumentResponse):
+    dead_letter_error: dict[str, Any] | None = None
+
+
 class DocumentsListResponse(BaseModel):
     items: list[DocumentResponse]
 
 
+class TombstonesListResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class PurgeDocumentRequest(BaseModel):
+    reason: str | None = None
+    hard_raw: bool = False
+
+
+class PurgeReasonRequest(BaseModel):
+    reason: str | None = None
+
+
+class CleanupRequest(BaseModel):
+    dry_run: bool = True
+
+
 class IngestSourceRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list)
+
+
+def _read_dead_letter_error(
+    tenant: str, content_hash: str, pg_settings: PgSettings
+) -> dict[str, Any] | None:
+    key = s3_key_dead_letter(tenant, content_hash)
+    blob = make_blob_store(pg_settings)
+    if not blob.exists(key):
+        return None
+    try:
+        return json.loads(blob.get_bytes(key).decode())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+async def _require_project(
+    tenant: str, project_id: str, store: ProjectStore
+) -> ProjectProfile:
+    profile = await asyncio.to_thread(store.get_project, tenant, project_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return profile
 
 
 def _require_manual_source(profile: SourceProfile) -> None:
@@ -234,6 +327,10 @@ def _store(settings: Settings = Depends(get_settings)) -> SourceStore:  # noqa: 
     return SourceStore(_path_graph_dsn(settings))
 
 
+def _project_store(settings: Settings = Depends(get_settings)) -> ProjectStore:  # noqa: B008
+    return ProjectStore(_path_graph_dsn(settings))
+
+
 def _require_tenant(principal: Principal) -> str:
     tenant = (principal.tenant or "").strip()
     if not tenant:
@@ -277,13 +374,137 @@ async def _sync_source_cron(
     )
 
 
+@router.get("/projects", dependencies=[Depends(require_admin)])
+async def list_projects(
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> ProjectsListResponse:
+    tenant = _require_tenant(principal)
+    profiles = await asyncio.to_thread(store.list_projects, tenant)
+    return ProjectsListResponse(items=[ProjectResponse.from_profile(p) for p in profiles])
+
+
+@router.post("/projects", status_code=201)
+async def create_project(
+    body: ProjectCreateRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> ProjectResponse:
+    tenant = _require_tenant(principal)
+    create = ProjectCreate(name=body.name, slug=body.slug)
+    try:
+        profile = await asyncio.to_thread(store.create_project, tenant, create)
+    except psycopg.errors.UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="Project slug already exists") from exc
+    return ProjectResponse.from_profile(profile)
+
+
+@router.get("/projects/{project_id}", dependencies=[Depends(require_admin)])
+async def get_project(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> ProjectResponse:
+    tenant = _require_tenant(principal)
+    profile = await _require_project(tenant, project_id, store)
+    return ProjectResponse.from_profile(profile)
+
+
+@router.get("/projects/{project_id}/binding", dependencies=[Depends(require_admin)])
+async def get_project_binding(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    try:
+        return await asyncio.to_thread(api_get_binding, tenant, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/documents", dependencies=[Depends(require_admin)])
+async def list_project_documents(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    source_id: str | None = None,
+    ingest_state: str | None = None,
+) -> DocumentsListResponse:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    docs = await asyncio.to_thread(
+        list_documents_for_project,
+        tenant,
+        project_id,
+        source_id=source_id,
+        ingest_state=ingest_state,
+        dsn=_path_graph_dsn(settings),
+    )
+    return DocumentsListResponse(items=[DocumentResponse(**d) for d in docs])
+
+
+@router.get("/projects/{project_id}/tombstones", dependencies=[Depends(require_admin)])
+async def list_project_tombstones(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> TombstonesListResponse:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    items = await asyncio.to_thread(api_list_tombstones, tenant, project_id=project_id)
+    return TombstonesListResponse(items=items)
+
+
+@router.post("/projects/{project_id}/reconcile")
+async def reconcile_project(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    return await asyncio.to_thread(api_reconcile_project, tenant, project_id)
+
+
+@router.post("/projects/{project_id}/cleanup")
+async def cleanup_project(
+    project_id: str,
+    body: CleanupRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    return await asyncio.to_thread(
+        api_cleanup_project, tenant, project_id, dry_run=body.dry_run
+    )
+
+
+@router.post("/projects/{project_id}/purge")
+async def purge_project_endpoint(
+    project_id: str,
+    body: PurgeReasonRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    return await asyncio.to_thread(api_purge_project, tenant, project_id, reason=body.reason)
+
+
 @router.get("/sources", dependencies=[Depends(require_admin)])
 async def list_sources(
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
+    project_id: str | None = None,
 ) -> SourcesListResponse:
     tenant = _require_tenant(principal)
     profiles = await asyncio.to_thread(store.list_sources, tenant)
+    if project_id:
+        profiles = [p for p in profiles if p.project_id == project_id]
     return SourcesListResponse(items=[SourceResponse.from_profile(p) for p in profiles])
 
 
@@ -293,11 +514,18 @@ async def create_source(
     request: Request,
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
+    project_store: ProjectStore = Depends(_project_store),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> SourceResponse:
     tenant = _require_tenant(principal)
     _validate_schedule_cron(body.schedule_cron)
+    project = await asyncio.to_thread(
+        project_store.get_project, tenant, body.project_id.strip()
+    )
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     create = SourceCreate(
+        project_id=project.id,
         name=body.name,
         driver=body.driver,
         source_id=body.source_id,
@@ -540,6 +768,90 @@ async def list_source_documents(
     return DocumentsListResponse(items=[DocumentResponse(**d) for d in docs])
 
 
+@router.get("/documents/{document_id}", dependencies=[Depends(require_admin)])
+async def get_document(
+    document_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> DocumentDetailResponse:
+    tenant = _require_tenant(principal)
+    dsn = _path_graph_dsn(settings)
+    doc = await asyncio.to_thread(PgMetaStore(dsn).get_document, tenant, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    uri = doc.get("s3_raw_uri") or ""
+    filename = filename_from_raw_uri(uri)
+    dead_letter_error = None
+    if doc.get("ingest_state") == "dead_letter":
+        pg_settings = pipeline_blob_settings(settings, dsn)
+        dead_letter_error = await asyncio.to_thread(
+            _read_dead_letter_error,
+            tenant,
+            doc["content_hash"],
+            pg_settings,
+        )
+    return DocumentDetailResponse(
+        document_id=document_id,
+        source_id=doc["source_id"],
+        project_id=doc.get("project_id"),
+        content_hash=doc["content_hash"],
+        ingest_state=doc["ingest_state"],
+        s3_raw_uri=uri,
+        filename=filename,
+        dead_letter_error=dead_letter_error,
+    )
+
+
+@router.post("/documents/{document_id}/purge")
+async def purge_document_endpoint(
+    document_id: str,
+    body: PurgeDocumentRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    return await asyncio.to_thread(
+        api_purge_document,
+        tenant,
+        document_id,
+        reason=body.reason,
+        hard_raw=body.hard_raw,
+    )
+
+
+@router.post("/documents/{document_id}/restore")
+async def restore_document_endpoint(
+    document_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    return await asyncio.to_thread(api_restore_document, tenant, document_id)
+
+
+@router.post("/documents/{document_id}/reingest")
+async def reingest_document_endpoint(
+    document_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    return await asyncio.to_thread(api_reingest_document, tenant, document_id)
+
+
+@router.post("/sources/{source_id}/purge")
+async def purge_source_endpoint(
+    source_id: str,
+    body: PurgeReasonRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: SourceStore = Depends(_store),  # noqa: B008
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    profile = await asyncio.to_thread(store.get_source, tenant, source_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return await asyncio.to_thread(
+        api_purge_source, tenant, source_id, reason=body.reason
+    )
+
+
 @router.post("/sources/{source_id}/ingest", status_code=202)
 async def ingest_source_documents(
     source_id: str,
@@ -593,11 +905,22 @@ async def ingest_source_documents(
 async def list_runs(
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    project_id: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
     tenant = _require_tenant(principal)
     runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit)
-    docs = await asyncio.to_thread(store.list_documents_summary, tenant, limit=20)
+    if project_id:
+        docs = await asyncio.to_thread(
+            list_documents_for_project,
+            tenant,
+            project_id,
+            dsn=_path_graph_dsn(settings),
+        )
+        docs = docs[:20]
+    else:
+        docs = await asyncio.to_thread(store.list_documents_summary, tenant, limit=20)
     return {"runs": runs, "recent_documents": docs}
 
 
@@ -605,13 +928,25 @@ async def list_runs(
 async def list_dead_letters(
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    project_id: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
     tenant = _require_tenant(principal)
-    items = await asyncio.to_thread(
-        store.list_documents_summary,
-        tenant,
-        ingest_state="dead_letter",
-        limit=limit,
-    )
+    if project_id:
+        items = await asyncio.to_thread(
+            list_documents_for_project,
+            tenant,
+            project_id,
+            ingest_state="dead_letter",
+            dsn=_path_graph_dsn(settings),
+        )
+        items = items[:limit]
+    else:
+        items = await asyncio.to_thread(
+            store.list_documents_summary,
+            tenant,
+            ingest_state="dead_letter",
+            limit=limit,
+        )
     return {"items": items}
