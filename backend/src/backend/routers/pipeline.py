@@ -11,15 +11,18 @@ import psycopg
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from path_graph.admin.lifecycle import (
+    LIFECYCLE_BATCH_ID,
+    ProjectLifecycleBusyError,
     api_cleanup_project,
     api_get_binding,
     api_list_tombstones,
     api_purge_document,
-    api_purge_project,
     api_purge_source,
     api_reconcile_project,
     api_reingest_document,
     api_restore_document,
+    assert_project_lifecycle_idle,
+    mark_project_lifecycle_started,
 )
 from path_graph.admin.downstream import (
     DownstreamBusyError,
@@ -49,7 +52,13 @@ from path_graph.storage.blob import make_blob_store
 from pydantic import BaseModel, Field
 
 from backend.deps import check_csrf, get_settings, require_admin
-from backend.pipeline_argo import submit_collect_ingest_rag, submit_graphrag, submit_ingest_rag
+from backend.pipeline_argo import (
+    submit_collect_ingest_rag,
+    submit_delete_project,
+    submit_graphrag,
+    submit_ingest_rag,
+    submit_purge_project,
+)
 from backend.pipeline_cron import (
     delete_source_cron,
     reconcile_source_cron,
@@ -257,6 +266,13 @@ class GraphragSubmitResponse(BaseModel):
     argo_uid: str
 
 
+class ProjectLifecycleSubmitResponse(BaseModel):
+    workflow_name: str
+    workflow_template: str
+    argo_uid: str
+    run_kind: str
+
+
 class PurgeReasonRequest(BaseModel):
     reason: str | None = None
 
@@ -289,6 +305,68 @@ async def _require_project(
     if profile is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return profile
+
+
+async def _submit_project_lifecycle(
+    *,
+    operation: str,
+    tenant: str,
+    project: ProjectProfile,
+    reason: str | None,
+    settings: Settings,
+    source_store: SourceStore,
+    project_store: ProjectStore,
+) -> ProjectLifecycleSubmitResponse:
+    try:
+        await asyncio.to_thread(
+            assert_project_lifecycle_idle,
+            project_store,
+            source_store,
+            tenant,
+            project.id,
+            operation=operation,
+        )
+    except ProjectLifecycleBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await asyncio.to_thread(
+        mark_project_lifecycle_started,
+        project_store,
+        tenant,
+        project.id,
+        operation=operation,
+    )
+    submit = submit_purge_project if operation == "purge" else submit_delete_project
+    template = (
+        settings.PATH_GRAPH_PURGE_PROJECT_WF_TEMPLATE
+        if operation == "purge"
+        else settings.PATH_GRAPH_DELETE_PROJECT_WF_TEMPLATE
+    )
+    argo = await submit(
+        settings=settings,
+        tenant=tenant,
+        project_id=project.id,
+        project_slug=project.slug,
+        reason=reason or "",
+    )
+    run_id = str(uuid4())
+    await asyncio.to_thread(
+        source_store.insert_pipeline_run,
+        tenant,
+        run_id,
+        argo["workflow_name"],
+        LIFECYCLE_BATCH_ID[operation],
+        "submitted",
+        argo.get("argo_uid"),
+        project_id=project.id,
+        run_kind=operation,
+    )
+    return ProjectLifecycleSubmitResponse(
+        workflow_name=argo["workflow_name"],
+        workflow_template=template,
+        argo_uid=argo["argo_uid"],
+        run_kind=operation,
+    )
 
 
 def _require_manual_source(profile: SourceProfile) -> None:
@@ -551,16 +629,48 @@ async def cleanup_project(
     )
 
 
-@router.post("/projects/{project_id}/purge")
+@router.post("/projects/{project_id}/purge", status_code=202)
 async def purge_project_endpoint(
     project_id: str,
     body: PurgeReasonRequest,
     principal: Principal = Depends(require_admin),  # noqa: B008
-    store: ProjectStore = Depends(_project_store),  # noqa: B008
-) -> dict[str, Any]:
+    project_store: ProjectStore = Depends(_project_store),  # noqa: B008
+    source_store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> ProjectLifecycleSubmitResponse:
     tenant = _require_tenant(principal)
-    await _require_project(tenant, project_id, store)
-    return await asyncio.to_thread(api_purge_project, tenant, project_id, reason=body.reason)
+    project = await _require_project(tenant, project_id, project_store)
+    return await _submit_project_lifecycle(
+        operation="purge",
+        tenant=tenant,
+        project=project,
+        reason=body.reason,
+        settings=settings,
+        source_store=source_store,
+        project_store=project_store,
+    )
+
+
+@router.post("/projects/{project_id}/delete", status_code=202)
+async def delete_project_endpoint(
+    project_id: str,
+    body: PurgeReasonRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    project_store: ProjectStore = Depends(_project_store),  # noqa: B008
+    source_store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> ProjectLifecycleSubmitResponse:
+    tenant = _require_tenant(principal)
+    project = await _require_project(tenant, project_id, project_store)
+    return await _submit_project_lifecycle(
+        operation="delete",
+        tenant=tenant,
+        project=project,
+        reason=body.reason,
+        settings=settings,
+        source_store=source_store,
+        project_store=project_store,
+    )
 
 
 @router.post("/projects/{project_id}/graphrag", status_code=202)

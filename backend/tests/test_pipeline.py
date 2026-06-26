@@ -646,6 +646,76 @@ async def test_list_project_documents(pipeline_client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_submit_project_purge_success(pipeline_client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    client, mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = _project_obj()
+
+    monkeypatch.setattr(
+        "backend.routers.pipeline.assert_project_lifecycle_idle",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.mark_project_lifecycle_started",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.submit_purge_project",
+        AsyncMock(
+            return_value={"workflow_name": "purge-default-abc", "argo_uid": "uid-purge"}
+        ),
+    )
+
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/purge",
+        headers=_csrf_headers(),
+        json={"reason": "test"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["workflow_name"] == "purge-default-abc"
+    assert data["run_kind"] == "purge"
+    mock_store.insert_pipeline_run.assert_called_once()
+    assert mock_store.insert_pipeline_run.call_args.kwargs.get("run_kind") == "purge"
+
+
+@pytest.mark.asyncio
+async def test_submit_project_delete_success(pipeline_client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    client, mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = _project_obj()
+
+    monkeypatch.setattr(
+        "backend.routers.pipeline.assert_project_lifecycle_idle",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.mark_project_lifecycle_started",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.submit_delete_project",
+        AsyncMock(
+            return_value={"workflow_name": "delete-default-abc", "argo_uid": "uid-del"}
+        ),
+    )
+
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/delete",
+        headers=_csrf_headers(),
+        json={"reason": "test"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["workflow_name"] == "delete-default-abc"
+    assert data["run_kind"] == "delete"
+    mock_store.insert_pipeline_run.assert_called_once()
+    assert mock_store.insert_pipeline_run.call_args.kwargs.get("run_kind") == "delete"
+
+
+@pytest.mark.asyncio
 async def test_purge_document(pipeline_client, monkeypatch):
     client, _mock_store, _mock_project_store = pipeline_client
     monkeypatch.setattr(

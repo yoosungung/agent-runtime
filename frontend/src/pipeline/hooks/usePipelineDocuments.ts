@@ -151,16 +151,41 @@ export function useCleanupProject(projectId: string) {
   });
 }
 
+export interface ProjectLifecycleSubmitResponse {
+  workflow_name: string;
+  workflow_template: string;
+  argo_uid: string;
+  run_kind: string;
+}
+
 export function usePurgeProject(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reason?: string) =>
-      apiJson<Record<string, unknown>>(
+      apiJson<ProjectLifecycleSubmitResponse>(
         `/api/pipeline/projects/${projectId}/purge`,
         { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pipeline", "projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs", projectId] });
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs"] });
+    },
+  });
+}
+
+export function useDeleteProject(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason?: string) =>
+      apiJson<ProjectLifecycleSubmitResponse>(
+        `/api/pipeline/projects/${projectId}/delete`,
+        { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline", "projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs", projectId] });
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs"] });
     },
   });
 }

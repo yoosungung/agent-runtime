@@ -4,6 +4,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { usePipelineSources } from "../hooks/usePipeline";
 import {
   useCleanupProject,
+  useDeleteProject,
   useProjectDeadLetters,
   useProjectTombstones,
   usePurgeProject,
@@ -19,11 +20,13 @@ export function PipelineMaintenancePage() {
   const reconcileMut = useReconcileProject(projectId ?? "");
   const cleanupMut = useCleanupProject(projectId ?? "");
   const purgeProjectMut = usePurgeProject(projectId ?? "");
+  const deleteProjectMut = useDeleteProject(projectId ?? "");
   const [purgeSourceId, setPurgeSourceId] = useState("");
   const purgeSourceMut = usePurgeSource();
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmPurgeProject, setConfirmPurgeProject] = useState(false);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
   const [confirmPurgeSource, setConfirmPurgeSource] = useState(false);
   const [showTombstones, setShowTombstones] = useState(false);
 
@@ -58,11 +61,45 @@ export function PipelineMaintenancePage() {
     setError(null);
     try {
       const res = await purgeProjectMut.mutateAsync("admin console");
-      setReport(JSON.stringify(res, null, 2));
+      setReport(
+        JSON.stringify(
+          {
+            status: "submitted",
+            run_kind: res.run_kind,
+            workflow_name: res.workflow_name,
+            workflow_template: res.workflow_template,
+          },
+          null,
+          2,
+        ),
+      );
       setConfirmPurgeProject(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purge failed");
       setConfirmPurgeProject(false);
+    }
+  }
+
+  async function runDeleteProject() {
+    setError(null);
+    try {
+      const res = await deleteProjectMut.mutateAsync("admin console");
+      setReport(
+        JSON.stringify(
+          {
+            status: "submitted",
+            run_kind: res.run_kind,
+            workflow_name: res.workflow_name,
+            workflow_template: res.workflow_template,
+          },
+          null,
+          2,
+        ),
+      );
+      setConfirmDeleteProject(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      setConfirmDeleteProject(false);
     }
   }
 
@@ -95,9 +132,21 @@ export function PipelineMaintenancePage() {
         </div>
       )}
       {report && (
-        <pre className="mb-4 bg-gray-50 border rounded p-4 text-xs overflow-x-auto max-w-3xl">
-          {report}
-        </pre>
+        <div className="mb-4">
+          <pre className="bg-gray-50 border rounded p-4 text-xs overflow-x-auto max-w-3xl">
+            {report}
+          </pre>
+          <p className="mt-2 text-sm text-gray-600">
+            Argo workflow가 제출되었습니다. 진행 상황은{" "}
+            <Link
+              to={`/pipeline/projects/${projectId}/runs`}
+              className="text-blue-600 hover:underline"
+            >
+              Runs
+            </Link>
+            탭에서 확인하세요.
+          </p>
+        </div>
       )}
 
       <div className="mb-6">
@@ -231,14 +280,32 @@ export function PipelineMaintenancePage() {
             >
               Purge entire project
             </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteProject(true)}
+              disabled={deleteProjectMut.isPending}
+              className="text-sm text-white bg-red-700 border border-red-800 rounded px-3 py-1.5 hover:bg-red-800 disabled:opacity-50"
+            >
+              Delete project
+            </button>
           </div>
         </section>
       </div>
 
       <ConfirmDialog
+        open={confirmDeleteProject}
+        title="Delete project?"
+        description="Purge entire project와 동일한 blob·인덱스 정리 후 PG 행까지 Argo workflow로 영구 삭제합니다. 완료 후 프로젝트 목록에서 사라집니다."
+        confirmLabel="Delete project"
+        destructive
+        onConfirm={runDeleteProject}
+        onCancel={() => setConfirmDeleteProject(false)}
+      />
+
+      <ConfirmDialog
         open={confirmPurgeProject}
         title="Purge project?"
-        description="프로젝트 내 모든 문서·인덱스가 삭제됩니다. 되돌릴 수 없습니다."
+        description="프로젝트 내 문서·인덱스·raw를 Argo workflow로 삭제합니다. 완료까지 시간이 걸릴 수 있으며 Runs에서 진행을 확인합니다."
         confirmLabel="Purge project"
         destructive
         onConfirm={runPurgeProject}

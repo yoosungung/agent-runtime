@@ -19,7 +19,10 @@ function formatDate(iso: string | null): string {
 }
 
 function runKindLabel(run: PipelineRun): string {
-  return run.run_kind === "graphrag" ? "graphrag" : "ingest";
+  if (run.run_kind === "graphrag") return "graphrag";
+  if (run.run_kind === "purge") return "purge";
+  if (run.run_kind === "delete") return "delete";
+  return "ingest";
 }
 
 function buildActiveGraphragByBatch(runs: PipelineRun[]): Map<string, boolean> {

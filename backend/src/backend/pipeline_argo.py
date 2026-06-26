@@ -281,6 +281,70 @@ def graphrag_parameters(
     ]
 
 
+def _lifecycle_generate_prefix(project_slug: str, operation: str) -> str:
+    slug = re.sub(r"[^a-z0-9-]+", "-", project_slug.lower()).strip("-")
+    if not slug:
+        slug = "project"
+    return f"{operation}-{slug}-"
+
+
+def project_lifecycle_parameters(
+    *,
+    tenant: str,
+    project_id: str,
+    reason: str = "",
+) -> list[dict[str, str]]:
+    return [
+        {"name": "tenant", "value": tenant},
+        {"name": "project_id", "value": project_id},
+        {"name": "reason", "value": reason},
+    ]
+
+
+async def submit_purge_project(
+    *,
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+    project_slug: str,
+    reason: str = "",
+) -> dict[str, str]:
+    parameters = project_lifecycle_parameters(
+        tenant=tenant, project_id=project_id, reason=reason
+    )
+    body = _workflow_body(
+        settings=settings,
+        tenant=tenant,
+        template_name=settings.PATH_GRAPH_PURGE_PROJECT_WF_TEMPLATE,
+        source_name=project_slug,
+        parameters=parameters,
+        generate_prefix=_lifecycle_generate_prefix(project_slug, "purge"),
+    )
+    return await _submit_workflow(settings=settings, body=body)
+
+
+async def submit_delete_project(
+    *,
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+    project_slug: str,
+    reason: str = "",
+) -> dict[str, str]:
+    parameters = project_lifecycle_parameters(
+        tenant=tenant, project_id=project_id, reason=reason
+    )
+    body = _workflow_body(
+        settings=settings,
+        tenant=tenant,
+        template_name=settings.PATH_GRAPH_DELETE_PROJECT_WF_TEMPLATE,
+        source_name=project_slug,
+        parameters=parameters,
+        generate_prefix=_lifecycle_generate_prefix(project_slug, "delete"),
+    )
+    return await _submit_workflow(settings=settings, body=body)
+
+
 async def submit_graphrag(
     *,
     settings: Settings,

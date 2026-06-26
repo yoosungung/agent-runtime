@@ -19,6 +19,8 @@ from backend.settings import Settings
 from path_graph.admin.credential_settings import merge_credential_into_settings
 from path_graph.admin.credentials import CredentialStore
 from path_graph.admin.downstream import apply_graphrag_success
+from path_graph.admin.lifecycle import clear_project_lifecycle_on_failure
+from path_graph.admin.projects import ProjectStore
 from path_graph.admin.runner import resolve_source_settings
 from path_graph.admin.sources import SourceStore
 from path_graph.config import Settings as PgSettings, get_settings as get_pg_settings
@@ -163,6 +165,32 @@ async def apply_graphrag_after_terminal(
     )
 
 
+async def apply_lifecycle_after_terminal(
+    *,
+    settings: Settings,
+    run: dict[str, Any],
+    phase: str,
+) -> None:
+    run_kind = str(run.get("run_kind") or "").strip()
+    if run_kind not in ("purge", "delete"):
+        return
+    if phase in _TERMINAL_WORKFLOW_PHASES and phase != "Succeeded":
+        tenant = str(run.get("tenant") or "").strip()
+        project_id = str(run.get("project_id") or "").strip()
+        if not (tenant and project_id):
+            return
+        dsn = settings.PATH_GRAPH_DSN or settings.POSTGRES_DSN
+        if not dsn:
+            return
+        dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
+        await asyncio.to_thread(
+            clear_project_lifecycle_on_failure,
+            ProjectStore(dsn),
+            tenant,
+            project_id,
+        )
+
+
 async def enrich_pipeline_runs_with_argo(
     *,
     settings: Settings,
@@ -213,6 +241,11 @@ async def enrich_pipeline_runs_with_argo(
             )
             phase = str(wf_status.get("phase") or "").strip()
             await apply_graphrag_after_terminal(
+                settings=settings,
+                run={**run, "tenant": tenant},
+                phase=phase,
+            )
+            await apply_lifecycle_after_terminal(
                 settings=settings,
                 run={**run, "tenant": tenant},
                 phase=phase,

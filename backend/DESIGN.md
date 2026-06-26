@@ -137,7 +137,8 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `GET` | `/api/pipeline/projects/{id}/tombstones` | tombstone 목록 |
 | `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |
 | `POST` | `/api/pipeline/projects/{id}/cleanup` | artifact cleanup (`{dry_run}`) |
-| `POST` | `/api/pipeline/projects/{id}/purge` | project purge (`{reason?}`) |
+| `POST` | `/api/pipeline/projects/{id}/purge` | Argo `pipeline-purge-project` 제출 (`202`, `{reason?}`) |
+| `POST` | `/api/pipeline/projects/{id}/delete` | Argo `pipeline-delete-project` 제출 (`202`, purge+PG hard delete) |
 | `POST` | `/api/pipeline/projects/{id}/graphrag` | **202** — GraphRAG WF (`{batch_id}`). ingest batch 재사용; active graphrag 시 409 |
 | `GET` | `/api/pipeline/sources` | sources (`?project_id=` 필터, 표준 페이지네이션) |
 | `POST` | `/api/pipeline/sources` | source 생성 (`project_id` 필수) |
@@ -167,6 +168,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `pipeline.project.reconcile` | `POST …/projects/{id}/reconcile` |
 | `pipeline.project.cleanup` | `POST …/projects/{id}/cleanup` |
 | `pipeline.project.purge` | `POST …/projects/{id}/purge` |
+| `pipeline.project.delete` | `POST …/projects/{id}/delete` |
 | `pipeline.project.graphrag` | `POST …/projects/{id}/graphrag` |
 | `pipeline.source.create` | `POST /api/pipeline/sources` |
 | `pipeline.source.update` | `PATCH …/sources/{id}` |

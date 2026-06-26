@@ -8,7 +8,7 @@ import logging
 from path_graph.admin.sources import SourceStore
 
 from backend.pipeline_argo import _TERMINAL_WORKFLOW_PHASES, get_workflow_status
-from backend.pipeline_helpers import _persist_terminal_run, apply_graphrag_after_terminal
+from backend.pipeline_helpers import _persist_terminal_run, apply_graphrag_after_terminal, apply_lifecycle_after_terminal
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,11 @@ async def reconcile_pipeline_runs_once(app) -> None:  # type: ignore[type-arg]
             wf_status=wf_status,
         )
         await apply_graphrag_after_terminal(
+            settings=settings,
+            run=run,
+            phase=phase,
+        )
+        await apply_lifecycle_after_terminal(
             settings=settings,
             run=run,
             phase=phase,

@@ -11,6 +11,7 @@ _MUTATION_ACTIONS: dict[tuple[str, str], str] = {
     ("POST", "/projects/{project_id}/reconcile"): "pipeline.project.reconcile",
     ("POST", "/projects/{project_id}/cleanup"): "pipeline.project.cleanup",
     ("POST", "/projects/{project_id}/purge"): "pipeline.project.purge",
+    ("POST", "/projects/{project_id}/delete"): "pipeline.project.delete",
     ("POST", "/projects/{project_id}/graphrag"): "pipeline.project.graphrag",
     ("POST", "/sources"): "pipeline.source.create",
     ("PATCH", "/sources/{source_id}"): "pipeline.source.update",
