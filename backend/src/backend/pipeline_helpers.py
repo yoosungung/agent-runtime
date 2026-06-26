@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import re
+from typing import Any
 
 from fastapi import HTTPException, Request
 
-from backend.pipeline_argo import _ACTIVE_WORKFLOW_PHASES, get_workflow_phase
+from backend.pipeline_argo import _ACTIVE_WORKFLOW_PHASES, get_workflow_phase, get_workflow_status
 from backend.pipeline_credential_secrets import make_credential_secret_store
 from backend.settings import Settings
 from path_graph.admin.credential_settings import merge_credential_into_settings
@@ -16,6 +19,143 @@ from path_graph.config import Settings as PgSettings, get_settings as get_pg_set
 from path_graph.contracts.source import SourceProfile
 
 _INGEST_IN_PROGRESS_MSG = "이 source의 ingest가 이미 수행 중입니다."
+_WORKFLOW_IN_PROGRESS_MSG = "이 source의 workflow가 이미 수행 중입니다."
+
+logger = logging.getLogger(__name__)
+
+
+def _active_from_db_status(profile: SourceProfile) -> bool:
+    return profile.last_run_status == "submitted"
+
+
+_BATCH_ID_TS_RE = re.compile(r"^(\d{8})-(\d{6})$")
+
+
+def started_at_from_batch_id(batch_id: str | None) -> str | None:
+    """Parse UTC batch id ``YYYYMMDD-HHMMSS`` into an ISO timestamp."""
+    if not batch_id:
+        return None
+    match = _BATCH_ID_TS_RE.fullmatch(batch_id.strip())
+    if not match:
+        return None
+    day, clock = match.group(1), match.group(2)
+    return f"{day[:4]}-{day[4:6]}-{day[6:8]}T{clock[:2]}:{clock[2:4]}:{clock[4:6]}Z"
+
+
+def _apply_batch_started_fallback(run: dict[str, Any]) -> dict[str, Any]:
+    if run.get("started_at"):
+        return run
+    parsed = started_at_from_batch_id(str(run.get("batch_id") or ""))
+    if parsed:
+        run["started_at"] = parsed
+    return run
+
+
+async def get_source_workflow_status(
+    *,
+    settings: Settings,
+    store: SourceStore,
+    tenant: str,
+    profile: SourceProfile,
+) -> dict[str, Any]:
+    """Return whether the source's latest workflow is still active in Argo."""
+    result: dict[str, Any] = {
+        "active": False,
+        "workflow_name": None,
+        "phase": None,
+        "batch_id": profile.last_batch_id,
+        "last_run_status": profile.last_run_status,
+        "argo_available": True,
+    }
+    if not profile.last_batch_id:
+        if _active_from_db_status(profile):
+            result["active"] = True
+        return result
+
+    run = await asyncio.to_thread(
+        store.get_pipeline_run_by_batch, tenant, profile.last_batch_id
+    )
+    workflow_name = (run or {}).get("workflow_name") or ""
+    if workflow_name:
+        result["workflow_name"] = workflow_name
+        try:
+            phase = await get_workflow_phase(settings=settings, workflow_name=workflow_name)
+        except HTTPException as exc:
+            logger.warning(
+                "argo phase lookup failed for %s: %s",
+                workflow_name,
+                exc.detail,
+            )
+            result["argo_available"] = False
+            if _active_from_db_status(profile):
+                result["active"] = True
+            return result
+        result["phase"] = phase
+        if phase and phase in _ACTIVE_WORKFLOW_PHASES:
+            result["active"] = True
+        return result
+
+    if _active_from_db_status(profile):
+        result["active"] = True
+    return result
+
+
+async def enrich_pipeline_runs_with_argo(
+    *,
+    settings: Settings,
+    runs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Merge Argo Workflow phase/timestamps into PG pipeline run rows."""
+    if not runs:
+        return runs, True
+
+    argo_available = True
+
+    async def enrich_one(run: dict[str, Any]) -> dict[str, Any]:
+        nonlocal argo_available
+        enriched = {
+            **run,
+            "started_at": None,
+            "ended_at": None,
+        }
+        workflow_name = str(run.get("workflow_name") or "").strip()
+        if not workflow_name:
+            return _apply_batch_started_fallback(enriched)
+        try:
+            wf_status = await get_workflow_status(
+                settings=settings,
+                workflow_name=workflow_name,
+            )
+        except HTTPException:
+            argo_available = False
+            return _apply_batch_started_fallback(enriched)
+        if wf_status is None:
+            return _apply_batch_started_fallback(enriched)
+        enriched["status"] = wf_status["phase"] or run.get("status")
+        enriched["started_at"] = wf_status["started_at"]
+        enriched["ended_at"] = wf_status["ended_at"]
+        return _apply_batch_started_fallback(enriched)
+
+    enriched_runs = await asyncio.gather(*(enrich_one(run) for run in runs))
+    return list(enriched_runs), argo_available
+
+
+async def assert_source_workflow_idle(
+    *,
+    settings: Settings,
+    store: SourceStore,
+    tenant: str,
+    profile: SourceProfile,
+) -> None:
+    """Reject a new workflow when the source's latest run is still active."""
+    status = await get_source_workflow_status(
+        settings=settings,
+        store=store,
+        tenant=tenant,
+        profile=profile,
+    )
+    if status["active"]:
+        raise HTTPException(status_code=409, detail=_WORKFLOW_IN_PROGRESS_MSG)
 
 
 async def assert_source_ingest_idle(
@@ -26,20 +166,13 @@ async def assert_source_ingest_idle(
     profile: SourceProfile,
 ) -> None:
     """Reject a new ingest when the source's latest workflow is still active."""
-    if not profile.last_batch_id:
-        return
-
-    run = await asyncio.to_thread(
-        store.get_pipeline_run_by_batch, tenant, profile.last_batch_id
+    status = await get_source_workflow_status(
+        settings=settings,
+        store=store,
+        tenant=tenant,
+        profile=profile,
     )
-    workflow_name = (run or {}).get("workflow_name") or ""
-    if workflow_name:
-        phase = await get_workflow_phase(settings=settings, workflow_name=workflow_name)
-        if phase and phase in _ACTIVE_WORKFLOW_PHASES:
-            raise HTTPException(status_code=409, detail=_INGEST_IN_PROGRESS_MSG)
-        return
-
-    if profile.last_run_status == "submitted":
+    if status["active"]:
         raise HTTPException(status_code=409, detail=_INGEST_IN_PROGRESS_MSG)
 
 

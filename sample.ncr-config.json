@@ -1,9 +1,0 @@
-{
-    "auths": {
-        "ax1-images.kr.ncr.ntruss.com": {
-            "username": "YOUR_USERNAME",
-            "password": "YOUR_PASSWORD",
-            "auth": "YOUR_AUTH_STRING"
-        }
-    }
-}

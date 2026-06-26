@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 
 from backend.pipeline_helpers import (
     assert_source_ingest_idle,
+    assert_source_workflow_idle,
+    enrich_pipeline_runs_with_argo,
+    get_source_workflow_status,
     pg_settings_for_source,
     pipeline_blob_settings,
     resolve_credential_secret,
@@ -39,7 +42,7 @@ from path_graph.admin.lifecycle import (
     api_restore_document,
 )
 from path_graph.admin.projects import ProjectStore
-from path_graph.admin.runner import manifest_lines_to_json, probe_source
+from path_graph.admin.runner import probe_source
 from path_graph.admin.sources import SourceStore
 from path_graph.admin.uploads import (
     UploadValidationError,
@@ -167,6 +170,15 @@ class RunSourceResponse(BaseModel):
     argo_uid: str
 
 
+class SourceWorkflowStatusResponse(BaseModel):
+    active: bool
+    workflow_name: str | None = None
+    phase: str | None = None
+    batch_id: str | None = None
+    last_run_status: str | None = None
+    argo_available: bool = True
+
+
 class UploadItemResponse(BaseModel):
     filename: str
     status: str
@@ -255,7 +267,6 @@ def _require_manual_source(profile: SourceProfile) -> None:
 async def _submit_ingest_for_manifest(
     *,
     settings: Settings,
-    pg_settings: PgSettings,
     store: SourceStore,
     tenant: str,
     source_uuid: str,
@@ -280,13 +291,9 @@ async def _submit_ingest_for_manifest(
             argo_uid="",
         )
 
-    manifest_json = await asyncio.to_thread(
-        manifest_lines_to_json, manifest_key, settings=pg_settings
-    )
     argo = await submit_ingest_rag(
         settings=settings,
         tenant=tenant,
-        batch_manifest_json=manifest_json,
         batch_manifest_key=manifest_key,
         source_name=profile.name,
     )
@@ -623,6 +630,26 @@ async def test_source_endpoint(
     return TestSourceResponse(**result)
 
 
+@router.get("/sources/{source_id}/workflow-status")
+async def source_workflow_status(
+    source_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> SourceWorkflowStatusResponse:
+    tenant = _require_tenant(principal)
+    profile = await asyncio.to_thread(store.get_source, tenant, source_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    status = await get_source_workflow_status(
+        settings=settings,
+        store=store,
+        tenant=tenant,
+        profile=profile,
+    )
+    return SourceWorkflowStatusResponse(**status)
+
+
 @router.post("/sources/{source_id}/run", status_code=202)
 async def run_source(
     source_id: str,
@@ -642,6 +669,13 @@ async def run_source(
             status_code=409,
             detail="manual sources use upload and ingest endpoints, not run",
         )
+
+    await assert_source_workflow_idle(
+        settings=settings,
+        store=store,
+        tenant=tenant,
+        profile=profile,
+    )
 
     dsn = _path_graph_dsn(settings)
     credential_secret = await resolve_credential_secret(
@@ -892,7 +926,6 @@ async def ingest_source_documents(
 
     return await _submit_ingest_for_manifest(
         settings=settings,
-        pg_settings=pg_settings,
         store=store,
         tenant=tenant,
         source_uuid=source_id,
@@ -913,6 +946,10 @@ async def list_runs(
 ) -> dict[str, Any]:
     tenant = _require_tenant(principal)
     runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit)
+    runs, argo_available = await enrich_pipeline_runs_with_argo(
+        settings=settings,
+        runs=runs,
+    )
     if project_id:
         docs = await asyncio.to_thread(
             list_documents_for_project,
@@ -923,7 +960,7 @@ async def list_runs(
         docs = docs[:20]
     else:
         docs = await asyncio.to_thread(store.list_documents_summary, tenant, limit=20)
-    return {"runs": runs, "recent_documents": docs}
+    return {"runs": runs, "recent_documents": docs, "argo_available": argo_available}
 
 
 @router.get("/dead-letters", dependencies=[Depends(require_admin)])

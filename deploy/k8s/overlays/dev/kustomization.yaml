@@ -129,6 +129,13 @@ patches:
       name: deploy-api
   - patch: |-
       - op: replace
+        path: /stringData/PATH_GRAPH_DSN
+        value: "postgresql://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
+    target:
+      kind: Secret
+      name: pipeline-infra-secrets
+  - patch: |-
+      - op: replace
         path: /stringData/VFS_DSN
         value: "postgresql://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime?sslmode=disable"
     target:

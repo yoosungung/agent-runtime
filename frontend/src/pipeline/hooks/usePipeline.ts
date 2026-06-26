@@ -35,6 +35,17 @@ export interface PipelineRun {
   argo_uid: string | null;
   batch_id: string;
   status: string;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+export interface SourceWorkflowStatus {
+  active: boolean;
+  workflow_name: string | null;
+  phase: string | null;
+  batch_id: string | null;
+  last_run_status: string | null;
+  argo_available: boolean;
 }
 
 export interface PipelineDocumentSummary {
@@ -149,6 +160,18 @@ export function usePipelineSource(id: string | undefined) {
   });
 }
 
+export function useSourceWorkflowStatus(sourceId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["pipeline", "sources", sourceId, "workflow-status"],
+    queryFn: () =>
+      apiJson<SourceWorkflowStatus>(
+        `/api/pipeline/sources/${sourceId}/workflow-status`,
+      ),
+    enabled: Boolean(sourceId) && enabled,
+    staleTime: 0,
+  });
+}
+
 export function useCreatePipelineSource() {
   const qc = useQueryClient();
   return useMutation({
@@ -230,6 +253,7 @@ export function usePipelineRuns(projectId?: string) {
       apiJson<{
         runs: PipelineRun[];
         recent_documents: PipelineDocumentSummary[];
+        argo_available: boolean;
       }>(`/api/pipeline/runs${qs}`),
   });
 }

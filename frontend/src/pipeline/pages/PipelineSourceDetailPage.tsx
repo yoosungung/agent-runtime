@@ -5,6 +5,11 @@ import { FileDropZone } from "../../components/FileDropZone";
 import { PageHeader } from "../../components/PageHeader";
 import { MANUAL_DEFAULT_ALLOWED_EXTENSIONS } from "../lib/manualSourceDefaults";
 import {
+  WorkflowStartedBanner,
+  type WorkflowStartedInfo,
+} from "../components/WorkflowStartedBanner";
+import { WorkflowStartDialog } from "../components/WorkflowStartDialog";
+import {
   useDeletePipelineSource,
   useIngestPipelineSource,
   usePipelineSource,
@@ -33,13 +38,17 @@ export function PipelineSourceDetailPage() {
   const ingestMut = useIngestPipelineSource(id ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
-  const [runResult, setRunResult] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
-  const [ingestResult, setIngestResult] = useState<string | null>(null);
   const [ingestAfterUpload, setIngestAfterUpload] = useState(false);
   const [scheduleCron, setScheduleCron] = useState("");
   const [scheduleSaved, setScheduleSaved] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<
+    "run" | "ingest" | null
+  >(null);
+  const [workflowStarted, setWorkflowStarted] = useState<WorkflowStartedInfo | null>(
+    null,
+  );
 
   const isManual = source?.driver === "manual";
   const documents = documentsData?.items ?? [];
@@ -97,24 +106,58 @@ export function PipelineSourceDetailPage() {
     }
   }
 
-  async function handleRun() {
+  async function executeRun() {
     setActionError(null);
-    setRunResult(null);
+    setWorkflowStarted(null);
     try {
       const res = await runMut.mutateAsync();
       if (res.file_count === 0) {
-        setRunResult("No files collected — workflow not submitted.");
-      } else {
-        const files =
-          res.file_count == null
-            ? "collect + ingest"
-            : `${res.file_count} file(s)`;
-        setRunResult(
-          `Submitted batch ${res.batch_id} (${files}) → workflow ${res.workflow_name || "—"}`,
-        );
+        setActionError("No files collected — workflow not submitted.");
+        return;
       }
+      setWorkflowStarted({
+        batchId: res.batch_id,
+        workflowName: res.workflow_name || "—",
+        fileCount: res.file_count,
+        actionLabel: "Run now",
+      });
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Run failed");
+      throw e;
+    }
+  }
+
+  async function executeIngest() {
+    setActionError(null);
+    setWorkflowStarted(null);
+    try {
+      const res = await ingestMut.mutateAsync([]);
+      if (!res.file_count) {
+        setActionError("No pending documents — workflow not submitted.");
+        return;
+      }
+      setWorkflowStarted({
+        batchId: res.batch_id,
+        workflowName: res.workflow_name || "—",
+        fileCount: res.file_count,
+        actionLabel: "Index to RAG",
+      });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Ingest failed");
+      throw e;
+    }
+  }
+
+  async function confirmWorkflowStart() {
+    try {
+      if (pendingWorkflowAction === "run") {
+        await executeRun();
+      } else if (pendingWorkflowAction === "ingest") {
+        await executeIngest();
+      }
+      setPendingWorkflowAction(null);
+    } catch {
+      // actionError already set; keep dialog open for retry
     }
   }
 
@@ -131,27 +174,10 @@ export function PipelineSourceDetailPage() {
       );
       await refetchDocuments();
       if (ingestAfterUpload && res.uploaded_count > 0) {
-        await handleIngest();
+        await executeIngest();
       }
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Upload failed");
-    }
-  }
-
-  async function handleIngest() {
-    setActionError(null);
-    setIngestResult(null);
-    try {
-      const res = await ingestMut.mutateAsync([]);
-      if (!res.file_count) {
-        setIngestResult("No pending documents — workflow not submitted.");
-      } else {
-        setIngestResult(
-          `Submitted batch ${res.batch_id} (${res.file_count} files) → workflow ${res.workflow_name || "—"}`,
-        );
-      }
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Ingest failed");
     }
   }
 
@@ -197,6 +223,14 @@ export function PipelineSourceDetailPage() {
         <div className="mb-4 bg-red-50 border border-red-200 rounded px-4 py-3 text-sm text-red-700">
           {actionError}
         </div>
+      )}
+
+      {workflowStarted && (
+        <WorkflowStartedBanner
+          info={workflowStarted}
+          runsHref={`/pipeline/projects/${pid}/runs`}
+          onDismiss={() => setWorkflowStarted(null)}
+        />
       )}
 
       <div className="bg-white shadow rounded-lg p-6 mb-4 max-w-2xl space-y-3 text-sm">
@@ -322,7 +356,7 @@ export function PipelineSourceDetailPage() {
             </button>
             <button
               type="button"
-              onClick={handleRun}
+              onClick={() => setPendingWorkflowAction("run")}
               disabled={runMut.isPending || !source.enabled}
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1.5 disabled:opacity-50"
             >
@@ -342,11 +376,11 @@ export function PipelineSourceDetailPage() {
             </button>
             <button
               type="button"
-              onClick={handleIngest}
+              onClick={() => setPendingWorkflowAction("ingest")}
               disabled={ingestMut.isPending || !source.enabled || pendingCount === 0}
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1.5 disabled:opacity-50"
             >
-              {ingestMut.isPending ? "Submitting…" : "Ingest pending"}
+              {ingestMut.isPending ? "Submitting…" : "Index to RAG"}
             </button>
           </>
         )}
@@ -368,8 +402,27 @@ export function PipelineSourceDetailPage() {
       </div>
 
       {testResult && <p className="text-sm text-green-700 mb-2">{testResult}</p>}
-      {runResult && <p className="text-sm text-green-700 mb-2">{runResult}</p>}
-      {ingestResult && <p className="text-sm text-green-700 mb-2">{ingestResult}</p>}
+
+      <WorkflowStartDialog
+        open={pendingWorkflowAction === "run"}
+        sourceId={id}
+        title="Run collect + ingest?"
+        idleDescription="원격 source에서 파일을 수집하고 RAG ingest workflow를 시작합니다."
+        confirmLabel="Start workflow"
+        isSubmitting={runMut.isPending}
+        onConfirm={confirmWorkflowStart}
+        onCancel={() => setPendingWorkflowAction(null)}
+      />
+      <WorkflowStartDialog
+        open={pendingWorkflowAction === "ingest"}
+        sourceId={id}
+        title="Index pending files to RAG?"
+        idleDescription={`pending 상태 문서 ${pendingCount}개를 RAG ingest workflow로 처리합니다.`}
+        confirmLabel="Start workflow"
+        isSubmitting={ingestMut.isPending}
+        onConfirm={confirmWorkflowStart}
+        onCancel={() => setPendingWorkflowAction(null)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

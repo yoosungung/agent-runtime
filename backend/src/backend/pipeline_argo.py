@@ -59,26 +59,58 @@ def _workflow_body(
 _ACTIVE_WORKFLOW_PHASES = frozenset({"Running", "Pending"})
 
 
-async def get_workflow_phase(
+def ingest_rag_parameters(
+    *,
+    tenant: str,
+    batch_manifest_json: str = "",
+    batch_manifest_key: str = "",
+) -> list[dict[str, str]]:
+    """Build pipeline-ingest-rag WF parameters.
+
+    Argo resolve-manifest prefers inline batch_manifest over batch_manifest_key;
+    when an S3 key is set, omit inline JSON so the pod reads the S3 manifest.
+    """
+    inline = "" if batch_manifest_key.strip() else batch_manifest_json
+    return [
+        {"name": "tenant", "value": tenant},
+        {"name": "batch_manifest", "value": inline},
+        {"name": "batch_manifest_key", "value": batch_manifest_key},
+        {"name": "rag", "value": "true"},
+    ]
+
+
+def workflow_status_from_object(wf: dict[str, Any]) -> dict[str, str | None]:
+    """Extract Argo Workflow phase and timestamps from a Workflow CR object."""
+    status = wf.get("status") or {}
+    phase = str(status.get("phase") or "").strip() or None
+    started_at = status.get("startedAt") or None
+    ended_at = status.get("finishedAt") or None
+    return {
+        "phase": phase,
+        "started_at": str(started_at) if started_at else None,
+        "ended_at": str(ended_at) if ended_at else None,
+    }
+
+
+async def _get_workflow_object(
     *,
     settings: Settings,
     workflow_name: str,
-) -> str | None:
-    """Return Argo Workflow phase, or None if the workflow no longer exists."""
+) -> dict[str, Any] | None:
+    """Fetch Workflow CR; None if deleted (404)."""
     if not workflow_name:
         return None
     api_client = None
     try:
         api_client = await make_api_client(settings)
         custom = k8s_client.CustomObjectsApi(api_client)
-        wf = await custom.get_namespaced_custom_object(
+        return await custom.get_namespaced_custom_object(
             group=_ARGO_GROUP,
             version=_ARGO_VERSION,
             namespace=settings.PATH_GRAPH_ARGO_NAMESPACE,
             plural=_ARGO_PLURAL,
             name=workflow_name,
         )
-        return str((wf.get("status") or {}).get("phase") or "")
     except ApiException as exc:
         if exc.status == 404:
             return None
@@ -99,6 +131,28 @@ async def get_workflow_phase(
     finally:
         if api_client is not None:
             await api_client.close()
+
+
+async def get_workflow_status(
+    *,
+    settings: Settings,
+    workflow_name: str,
+) -> dict[str, str | None] | None:
+    """Return phase/timestamps from Argo, or None if the workflow no longer exists."""
+    wf = await _get_workflow_object(settings=settings, workflow_name=workflow_name)
+    if wf is None:
+        return None
+    return workflow_status_from_object(wf)
+
+
+async def get_workflow_phase(
+    *,
+    settings: Settings,
+    workflow_name: str,
+) -> str | None:
+    """Return Argo Workflow phase, or None if the workflow no longer exists."""
+    status = await get_workflow_status(settings=settings, workflow_name=workflow_name)
+    return status["phase"] if status else None
 
 
 async def _submit_workflow(
@@ -153,12 +207,11 @@ async def submit_ingest_rag(
     source_name: str,
 ) -> dict[str, str]:
     """Submit pipeline-ingest-rag Workflow. Prefer batch_manifest_key over inline JSON."""
-    parameters = [
-        {"name": "tenant", "value": tenant},
-        {"name": "batch_manifest", "value": batch_manifest_json},
-        {"name": "batch_manifest_key", "value": batch_manifest_key},
-        {"name": "rag", "value": "true"},
-    ]
+    parameters = ingest_rag_parameters(
+        tenant=tenant,
+        batch_manifest_json=batch_manifest_json,
+        batch_manifest_key=batch_manifest_key,
+    )
     body = _workflow_body(
         settings=settings,
         tenant=tenant,

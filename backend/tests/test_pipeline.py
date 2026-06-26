@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -310,6 +311,123 @@ async def test_run_source(pipeline_client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_rejects_when_workflow_running(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    from path_graph.contracts.source import SourceDriver, SourceProfile
+
+    mock_store.get_source.return_value = SourceProfile(
+        tenant="dev",
+        id="11111111-1111-4111-8111-111111111111",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+        name="kms",
+        driver=SourceDriver.SHAREPOINT,
+        source_id="sharepoint:kms",
+        config={"folder": "회사규정"},
+        enabled=True,
+        last_batch_id="batch-prev",
+        last_run_status="submitted",
+    )
+    mock_store.get_pipeline_run_by_batch.return_value = {
+        "id": "run-1",
+        "workflow_name": "collect-kms-xyz",
+        "argo_uid": "uid-1",
+        "batch_id": "batch-prev",
+        "status": "submitted",
+    }
+
+    async def _running_phase(**_kwargs):
+        return "Running"
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_phase",
+        _running_phase,
+    )
+
+    resp = await client.post(
+        "/api/pipeline/sources/11111111-1111-4111-8111-111111111111/run",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 409
+    assert "이미 수행 중" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_source_workflow_status_active(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.get_source.return_value = _manual_profile()
+    mock_store.get_pipeline_run_by_batch.return_value = {
+        "id": "run-1",
+        "workflow_name": "ingest-manual-docs-xyz",
+        "argo_uid": "uid-1",
+        "batch_id": "batch-prev",
+        "status": "submitted",
+    }
+
+    async def _running_phase(**_kwargs):
+        return "Running"
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_phase",
+        _running_phase,
+    )
+
+    resp = await client.get(
+        "/api/pipeline/sources/22222222-2222-4222-8222-222222222222/workflow-status",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["active"] is True
+    assert data["workflow_name"] == "ingest-manual-docs-xyz"
+    assert data["phase"] == "Running"
+    assert data["batch_id"] == "batch-prev"
+
+
+@pytest.mark.asyncio
+async def test_source_workflow_status_idle(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.get_source.return_value = _manual_profile(last_batch_id=None, last_run_status=None)
+
+    resp = await client.get(
+        "/api/pipeline/sources/22222222-2222-4222-8222-222222222222/workflow-status",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_source_workflow_status_argo_unavailable(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.get_source.return_value = _manual_profile()
+    mock_store.get_pipeline_run_by_batch.return_value = {
+        "id": "run-1",
+        "workflow_name": "ingest-manual-docs-xyz",
+        "argo_uid": "uid-1",
+        "batch_id": "batch-prev",
+        "status": "submitted",
+    }
+
+    async def _argo_down(**_kwargs):
+        raise HTTPException(status_code=503, detail="Argo Workflows unavailable")
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_phase",
+        _argo_down,
+    )
+
+    resp = await client.get(
+        "/api/pipeline/sources/22222222-2222-4222-8222-222222222222/workflow-status",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["argo_available"] is False
+    assert data["active"] is True
+    assert data["workflow_name"] == "ingest-manual-docs-xyz"
+
+
+@pytest.mark.asyncio
 async def test_source_not_found(pipeline_client):
     client, mock_store, _mock_project_store = pipeline_client
     mock_store.get_source.return_value = None
@@ -565,3 +683,37 @@ async def test_reconcile_project(pipeline_client, monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["orphans_removed"] == 2
+
+
+@pytest.mark.asyncio
+async def test_list_runs_enriched_from_argo(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.list_pipeline_runs.return_value = [
+        {
+            "id": "run-1",
+            "workflow_name": "ingest-manual-docs-xyz",
+            "argo_uid": "uid-1",
+            "batch_id": "20260626-120000",
+            "status": "submitted",
+        }
+    ]
+
+    async def _status(**_kwargs):
+        return {
+            "phase": "Succeeded",
+            "started_at": "2026-06-26T12:00:01Z",
+            "ended_at": "2026-06-26T12:05:00Z",
+        }
+
+    monkeypatch.setattr(
+        "backend.pipeline_helpers.get_workflow_status",
+        _status,
+    )
+
+    resp = await client.get("/api/pipeline/runs", headers=_csrf_headers())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["argo_available"] is True
+    assert data["runs"][0]["status"] == "Succeeded"
+    assert data["runs"][0]["started_at"] == "2026-06-26T12:00:01Z"
+    assert data["runs"][0]["ended_at"] == "2026-06-26T12:05:00Z"

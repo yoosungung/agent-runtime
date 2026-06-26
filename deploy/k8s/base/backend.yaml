@@ -33,6 +33,8 @@ spec:
                 name: postgres-credentials
             - secretRef:
                 name: s3-creds
+            - secretRef:
+                name: pipeline-infra-secrets
           env:
             - name: SERVICE_NAME
               value: backend

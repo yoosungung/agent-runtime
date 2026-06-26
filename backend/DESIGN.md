@@ -153,10 +153,10 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/documents/{id}/purge` | `{reason?, hard_raw?}` |
 | `POST` | `/api/pipeline/documents/{id}/restore` | tombstone 해제 → pending |
 | `POST` | `/api/pipeline/documents/{id}/reingest` | compensation → pending |
-| `GET` | `/api/pipeline/runs` | `pipeline_runs` + recent documents (`?project_id=`) |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo Workflows `status`/`startedAt`/`finishedAt` 병합 + recent documents (`?project_id=`). Argo 미연결 시 PG `status`만, `argo_available: false` |
 | `GET` | `/api/pipeline/dead-letters` | dead_letter documents (`?project_id=`) |
 
-도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3) 우선. 로컬 dev Argo 미연결 시 run → 503.
+도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3)만 전달 — inline `batch_manifest`는 빈 문자열(Argo `resolve-manifest`가 inline을 우선하므로). 로컬 dev Argo 미연결 시 run → 503.
 
 **Bundle 모드 vs General vs Image 모드 분류**:
 - `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)
@@ -252,7 +252,7 @@ RBAC: `backend-k8s-rbac.yaml`에 `configmaps`/`secrets` create/update/get/patch/
 admin backend가 **bundle 파일의 물리적 저장**도 책임진다. deploy-api는 `bundle_uri`만 읽고 파일을 소유하지 않는다.
 
 - **k8s 기본 (Garage)**: `deploy/k8s/garage/`가 in-cluster Garage(S3 API)를 **`runtime` NS**에 배포한다(base kustomization에 포함). backend는 `BUNDLE_STORAGE_BACKEND=s3`, `S3_ENDPOINT_URL=http://garage-s3.runtime.svc.cluster.local:3900` (`s3-creds` secret). **외부 S3**는 동일 env 키로 endpoint·자격증명만 바꾸면 된다 (`make s3-secret`).
-- **로컬 dev (wire-dev / uvicorn)**: `BUNDLE_STORAGE_BACKEND=local`, `BUNDLE_STORAGE_DIR` — k8s Garage 불필요.
+- **로컬 dev (wire-dev / uvicorn)**: `BUNDLE_STORAGE_BACKEND=local`, `BUNDLE_STORAGE_DIR` — k8s Garage 불필요. **Pipeline ingest**(manifest·blob)는 `./scripts/wire-dev.sh up --profile s3`로 `garage-s3:3900` 포워드 + `env`가 `PIPELINE_STORAGE_BACKEND=s3`를 씀 (`.vscode/launch.json` **Wire: dev cluster (s3)** / **Debug: backend**).
 - **S3 호환 (Garage·NCP·MinIO·AWS 등)**: `BUNDLE_STORAGE_BACKEND=s3` 설정 시 admin backend가 업로드를 받아 S3에 stream 저장. `bundle_uri`는 **항상 HTTP URL** (`{BUNDLE_PUBLIC_BASE_URL}/{sha256}.zip`) 형태로 저장 — pool pod의 `BundleLoader`가 `http/https` scheme만 지원하므로 `s3://` URI를 직접 저장하지 않는다. pool pod이 해당 URL을 GET하면 backend가 presigned URL을 생성해 **307 redirect** → pool pod이 S3에서 직접 다운로드. S3 자격증명은 **admin backend 전용**, deploy-api·agent-base·mcp-base에는 불필요.
 - **번들 다운로드 흐름 (S3 모드)**:
   ```
@@ -478,7 +478,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 | `S3_SECRET_ACCESS_KEY` | — | 위와 쌍 |
 | `S3_PRESIGN_EXPIRY_SEC` | `3600` | presigned URL 유효시간(초) |
 | `ENVOY_URL` | `http://envoy.runtime.svc.cluster.local:8080` | Envoy 데이터플레인 URL (chat invoke용) |
-| `K8S_IN_CLUSTER` | `true` | `true`면 ServiceAccount 토큰으로 K8s API 접근. `false`면 `~/.kube/config` (로컬 개발용) |
+| `K8S_IN_CLUSTER` | `true` | `true`면 ServiceAccount 토큰으로 K8s API 접근. `false`면 `~/.kube/config` (로컬 개발용). Settings는 `.env` 다음 `.env.dev.local`도 로드 (`wire-dev.sh env`) |
 | `RUNTIME_NAMESPACE` | `runtime` | image 모드 pool을 배포할 K8s 네임스페이스 |
 | `CLUSTER_DOMAIN` | `cluster.local` | K8s 클러스터 DNS 도메인 |
 | `DEPLOY_API_URL` | `http://deploy-api.runtime.svc.cluster.local:8080` | image 모드 pod가 사용할 deploy-api URL (K8s Deployment env로 주입) |
