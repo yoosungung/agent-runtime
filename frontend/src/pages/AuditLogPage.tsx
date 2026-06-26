@@ -95,13 +95,19 @@ export function AuditLogPage() {
         {!isLoading && !isError && (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <table className="min-w-full table-fixed w-full divide-y divide-gray-200 text-sm">
+                <colgroup>
+                  <col className="w-44" />
+                  <col className="w-48" />
+                  <col className="w-40" />
+                  <col />
+                </colgroup>
                 <thead>
                   <tr>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-full">Details</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -126,7 +132,7 @@ export function AuditLogPage() {
                         <span className="font-medium">{entry.actor}</span>
                         <span className="text-gray-400 ml-1 text-xs">#{entry.actor_id}</span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs max-w-xs truncate">
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs break-all">
                         {Object.entries(entry.details).map(([k, v]) => (
                           <span key={k} className="mr-2">
                             <span className="text-gray-400">{k}:</span>
