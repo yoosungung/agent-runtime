@@ -16,8 +16,8 @@ export function PipelineProjectOverviewPage() {
   const navigate = useNavigate();
   const { data: project, isLoading, isError } = usePipelineProject(projectId);
   const { data: binding } = usePipelineProjectBinding(projectId);
-  const { data: sourcesData } = usePipelineSources(projectId);
-  const sourceCount = sourcesData?.items.length ?? 0;
+  const { data: sourcesData } = usePipelineSources(projectId, { limit: 50, offset: 0 });
+  const sourceCount = sourcesData?.total ?? 0;
 
   if (!projectId) {
     return <p className="text-sm text-red-600">Missing project id.</p>;

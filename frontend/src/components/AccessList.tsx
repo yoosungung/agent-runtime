@@ -4,7 +4,7 @@ import { useSourceMetaAccess } from "../hooks/useSourceMeta";
 import { useUserAccess, useGrantAccess, useRevokeAccess, useBulkRevokeAccess } from "../hooks/useUsers";
 import { Paginator } from "./Paginator";
 import { UserSearchInput } from "./UserSearchInput";
-import { usePagination } from "../hooks/usePagination";
+import { useViewportPagination } from "../hooks/useViewportPagination";
 import { apiJson, type PageResponse } from "../lib/api";
 
 interface SourceOption {
@@ -31,7 +31,7 @@ function ResourceAccessList({
   kind?: string;
   name?: string;
 }) {
-  const { limit, offset, setOffset } = usePagination(20);
+  const { anchorRef, limit, offset, setOffset } = useViewportPagination({ min: 10 });
   const { data, isLoading, isError } = useSourceMetaAccess(sourceMetaId, {
     limit,
     offset,
@@ -68,6 +68,7 @@ function ResourceAccessList({
         />
       </div>
       {addError && <p className="text-sm text-red-600 mb-2">{addError}</p>}
+      <div ref={anchorRef}>
       <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead>
@@ -118,6 +119,7 @@ function ResourceAccessList({
           onOffsetChange={setOffset}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -147,7 +149,7 @@ function RevokeButton({
 
 // User-view: show resources for a given user
 function UserAccessList({ userId }: { userId: number }) {
-  const { limit, offset, setOffset } = usePagination(20);
+  const { anchorRef, limit, offset, setOffset } = useViewportPagination({ min: 10 });
   const { data, isLoading, isError } = useUserAccess(userId, { limit, offset });
   const revoke = useRevokeAccess(userId);
   const bulkRevoke = useBulkRevokeAccess(userId);
@@ -278,6 +280,7 @@ function UserAccessList({ userId }: { userId: number }) {
           </button>
         </div>
       )}
+      <div ref={anchorRef}>
       <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead>
@@ -358,6 +361,7 @@ function UserAccessList({ userId }: { userId: number }) {
           onOffsetChange={setOffset}
         />
       )}
+      </div>
     </div>
   );
 }

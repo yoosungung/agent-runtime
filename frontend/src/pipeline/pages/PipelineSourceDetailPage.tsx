@@ -29,7 +29,16 @@ export function PipelineSourceDetailPage() {
   const { projectId, sourceId: id } = useParams<{ projectId: string; sourceId: string }>();
   const navigate = useNavigate();
   const { data: source, isLoading, isError } = usePipelineSource(id);
-  const { data: documentsData, refetch: refetchDocuments } = usePipelineSourceDocuments(id);
+  const { data: documentsData, refetch: refetchDocuments } = usePipelineSourceDocuments(
+    id,
+    undefined,
+    { limit: 1, offset: 0 },
+  );
+  const { data: pendingDocsData } = usePipelineSourceDocuments(
+    id,
+    "pending",
+    { limit: 1, offset: 0 },
+  );
   const updateMut = useUpdatePipelineSource(id ?? "");
   const deleteMut = useDeletePipelineSource();
   const testMut = useTestPipelineSource(id ?? "");
@@ -51,8 +60,8 @@ export function PipelineSourceDetailPage() {
   );
 
   const isManual = source?.driver === "manual";
-  const documents = documentsData?.items ?? [];
-  const pendingCount = documents.filter((d) => d.ingest_state === "pending").length;
+  const documentCount = documentsData?.total ?? 0;
+  const pendingCount = pendingDocsData?.total ?? 0;
 
   if (!id) {
     return <p className="text-sm text-red-600">Missing source id.</p>;
@@ -332,7 +341,7 @@ export function PipelineSourceDetailPage() {
       <div className="bg-white shadow rounded-lg p-4 mb-4 max-w-xl">
         <h3 className="text-sm font-medium text-gray-900 mb-2">Documents</h3>
         <p className="text-sm text-gray-600">
-          {documents.length} document(s)
+          {documentCount} document(s)
           {pendingCount > 0 ? ` · ${pendingCount} pending ingest` : ""}
         </p>
         <Link

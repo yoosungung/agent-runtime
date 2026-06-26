@@ -133,12 +133,12 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/projects` | project 생성 |
 | `GET` | `/api/pipeline/projects/{id}` | project 상세 |
 | `GET` | `/api/pipeline/projects/{id}/binding` | `resolve_knowledge_binding` (RAG/graph/wiki) |
-| `GET` | `/api/pipeline/projects/{id}/documents` | project 문서 목록 (`?ingest_state=` `?source_id=`) |
+| `GET` | `/api/pipeline/projects/{id}/documents` | project 문서 목록 (`?ingest_state=` `?source_id=` `?filename=` contains, 표준 페이지네이션) |
 | `GET` | `/api/pipeline/projects/{id}/tombstones` | tombstone 목록 |
 | `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |
 | `POST` | `/api/pipeline/projects/{id}/cleanup` | artifact cleanup (`{dry_run}`) |
 | `POST` | `/api/pipeline/projects/{id}/purge` | project purge (`{reason?}`) |
-| `GET` | `/api/pipeline/sources` | sources (`?project_id=` 필터) |
+| `GET` | `/api/pipeline/sources` | sources (`?project_id=` 필터, 표준 페이지네이션) |
 | `POST` | `/api/pipeline/sources` | source 생성 (`project_id` 필수) |
 | `GET` | `/api/pipeline/sources/{id}` | 상세 |
 | `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron`/`credential_id` |
@@ -148,12 +148,12 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/sources/{id}/purge` | source purge |
 | `POST` | `/api/pipeline/sources/{id}/upload` | manual raw upload |
 | `POST` | `/api/pipeline/sources/{id}/ingest` | manual ingest WF |
-| `GET` | `/api/pipeline/sources/{id}/documents` | source 문서 목록 |
+| `GET` | `/api/pipeline/sources/{id}/documents` | source 문서 목록 (표준 페이지네이션) |
 | `GET` | `/api/pipeline/documents/{id}` | document 상세 + DLQ error |
 | `POST` | `/api/pipeline/documents/{id}/purge` | `{reason?, hard_raw?}` |
 | `POST` | `/api/pipeline/documents/{id}/restore` | tombstone 해제 → pending |
 | `POST` | `/api/pipeline/documents/{id}/reingest` | compensation → pending |
-| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo Workflows `status`/`startedAt`/`finishedAt` 병합 + recent documents (`?project_id=`). Argo 미연결 시 PG `status`만, `argo_available: false` |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo Workflows `status`/`startedAt`/`finishedAt` 병합 + recent documents (`?project_id=`). 표준 페이지네이션; 정렬 `started_at DESC NULLS LAST`. `recent_documents`·`argo_available`는 부가 필드. terminal phase(`Succeeded`/`Failed`/`Error`) 확인 시 PG에 `status`/`started_at`/`ended_at` write-back(lazy persist). Workflow CR 삭제 후에는 PG 스냅샷 사용. Argo 미연결 시 PG 값, `argo_available: false` |
 | `GET` | `/api/pipeline/dead-letters` | dead_letter documents (`?project_id=`) |
 
 도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3)만 전달 — inline `batch_manifest`는 빈 문자열(Argo `resolve-manifest`가 inline을 우선하므로). 로컬 dev Argo 미연결 시 run → 503.
@@ -230,6 +230,13 @@ backend가 `kubernetes-asyncio` 클라이언트로 `runtime` 네임스페이스 
 - `status='pending'` 행이 5분 초과 → K8s 4종 강제 삭제 + `status='failed'` 마킹 (앱 크래시 복구)
 - `status='active'` 행 ↔ Deployment 존재 검사: 누락/잉여 로그 경고 (자동 복구는 admin 액션 요구)
 - `status='retired'` 후 K8s 리소스 잔존 시 강제 정리
+
+#### Pipeline run reconciler (`backend.pipeline_run_reconciler`)
+
+`PIPELINE_CONSOLE_ENABLED` 시 5분(300초) 간격 백그라운드 태스크:
+
+- PG `pipeline_runs` 중 terminal 미확정(`status` ∉ `Succeeded`/`Failed`/`Error`) 행을 Argo에 조회
+- terminal phase 확인 시 `status`/`started_at`/`ended_at` PG 저장 — Runs 페이지 미방문·Workflow TTL 삭제 후에도 이력 유지
 
 #### Infra reconcile (`backend.infra_reconciler`)
 
@@ -445,11 +452,11 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 
 ### Pagination / 공통 응답 규약
 
-모든 list 엔드포인트(`GET /api/source-meta`, `GET /api/users`, `GET /api/users/{id}/access`, `GET /api/source-meta/{id}/access`)에 동일 규약 적용:
+모든 list 엔드포인트(`GET /api/source-meta`, `GET /api/users`, `GET /api/users/{id}/access`, `GET /api/source-meta/{id}/access`, `GET /api/pipeline/sources`, `GET /api/pipeline/projects/{id}/documents`, `GET /api/pipeline/sources/{id}/documents`, `GET /api/pipeline/runs`)에 동일 규약 적용:
 
 - 쿼리: `?limit=<1..100, default 50>&offset=<>=0, default 0>`. `limit>100`은 서버가 100으로 clamp(400 아님).
 - 응답: `{"items": [...], "total": N, "limit": L, "offset": O}`. `total`은 같은 filter의 전체 카운트(cursor가 아니라 offset 기반이라 cheap).
-- 정렬: list 별 기본값 고정 (source-meta: `created_at DESC`; users: `username ASC`). 오버라이드는 MVP에선 지원 X.
+- 정렬: list 별 기본값 고정 (source-meta: `created_at DESC`; users: `username ASC`; pipeline sources: `name ASC`; pipeline documents: `id DESC`; pipeline runs: `started_at DESC NULLS LAST, id DESC`). 오버라이드는 MVP에선 지원 X.
 
 ### 설정 (env)
 

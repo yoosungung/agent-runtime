@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSourceMetaList } from "../hooks/useSourceMeta";
 import { Paginator } from "../components/Paginator";
-import { usePagination } from "../hooks/usePagination";
+import { useViewportPagination } from "../hooks/useViewportPagination";
 import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { PageHeader } from "../components/PageHeader";
@@ -25,7 +25,9 @@ function formatDate(iso: string): string {
 
 export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props) {
   const navigate = useNavigate();
-  const { limit, offset, setOffset, reset } = usePagination(50);
+  const { anchorRef, limit, offset, setOffset, reset } = useViewportPagination({
+    min: 10,
+  });
   const [nameFilter, setNameFilter] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [retiredFilter, setRetiredFilter] = useState<boolean | undefined>(
@@ -114,7 +116,7 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
         {isLoading && (
           <p className="p-4 text-sm text-gray-500">Loading...</p>
         )}

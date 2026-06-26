@@ -1,4 +1,6 @@
 import { useParams } from "react-router-dom";
+import { Paginator } from "../../components/Paginator";
+import { useViewportPagination } from "../../hooks/useViewportPagination";
 import { WorkflowStatusBadge } from "../components/WorkflowStatusBadge";
 import { usePipelineRuns } from "../hooks/usePipeline";
 
@@ -9,8 +11,9 @@ function formatDate(iso: string | null): string {
 
 export function PipelineRunsPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const runsQuery = usePipelineRuns(projectId);
-  const runs = runsQuery.data?.runs ?? [];
+  const { anchorRef, limit, offset, setOffset } = useViewportPagination({ min: 10 });
+  const runsQuery = usePipelineRuns(projectId, { limit, offset });
+  const runs = runsQuery.data?.items ?? [];
   const recentDocs = runsQuery.data?.recent_documents ?? [];
   const argoAvailable = runsQuery.data?.argo_available ?? true;
 
@@ -26,7 +29,7 @@ export function PipelineRunsPage() {
             Argo Workflows에 연결할 수 없어 제출 시점 status만 표시합니다.
           </p>
         )}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-600">
               <tr>
@@ -59,6 +62,16 @@ export function PipelineRunsPage() {
               )}
             </tbody>
           </table>
+          {runsQuery.data && (
+            <div className="border-t border-gray-200 px-4">
+              <Paginator
+                total={runsQuery.data.total}
+                limit={limit}
+                offset={offset}
+                onOffsetChange={setOffset}
+              />
+            </div>
+          )}
         </div>
 
         <div>

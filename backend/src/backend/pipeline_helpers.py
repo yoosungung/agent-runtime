@@ -8,7 +8,12 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
-from backend.pipeline_argo import _ACTIVE_WORKFLOW_PHASES, get_workflow_phase, get_workflow_status
+from backend.pipeline_argo import (
+    _ACTIVE_WORKFLOW_PHASES,
+    _TERMINAL_WORKFLOW_PHASES,
+    get_workflow_phase,
+    get_workflow_status,
+)
 from backend.pipeline_credential_secrets import make_credential_secret_store
 from backend.settings import Settings
 from path_graph.admin.credential_settings import merge_credential_into_settings
@@ -100,10 +105,43 @@ async def get_source_workflow_status(
     return result
 
 
+def _is_terminal_pipeline_run(run: dict[str, Any]) -> bool:
+    return str(run.get("status") or "").strip() in _TERMINAL_WORKFLOW_PHASES
+
+
+def _merge_persisted_run_fields(enriched: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
+    for key in ("status", "started_at", "ended_at"):
+        if run.get(key) is not None:
+            enriched[key] = run[key]
+    return enriched
+
+
+async def _persist_terminal_run(
+    *,
+    store: SourceStore,
+    tenant: str,
+    run: dict[str, Any],
+    wf_status: dict[str, str | None],
+) -> None:
+    phase = str(wf_status.get("phase") or "").strip()
+    if phase not in _TERMINAL_WORKFLOW_PHASES:
+        return
+    await asyncio.to_thread(
+        store.finalize_pipeline_run,
+        tenant,
+        str(run["id"]),
+        phase,
+        wf_status.get("started_at"),
+        wf_status.get("ended_at"),
+    )
+
+
 async def enrich_pipeline_runs_with_argo(
     *,
     settings: Settings,
     runs: list[dict[str, Any]],
+    store: SourceStore | None = None,
+    tenant: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Merge Argo Workflow phase/timestamps into PG pipeline run rows."""
     if not runs:
@@ -115,9 +153,12 @@ async def enrich_pipeline_runs_with_argo(
         nonlocal argo_available
         enriched = {
             **run,
-            "started_at": None,
-            "ended_at": None,
+            "started_at": run.get("started_at"),
+            "ended_at": run.get("ended_at"),
         }
+        if _is_terminal_pipeline_run(run):
+            return _apply_batch_started_fallback(enriched)
+
         workflow_name = str(run.get("workflow_name") or "").strip()
         if not workflow_name:
             return _apply_batch_started_fallback(enriched)
@@ -128,12 +169,21 @@ async def enrich_pipeline_runs_with_argo(
             )
         except HTTPException:
             argo_available = False
-            return _apply_batch_started_fallback(enriched)
+            return _apply_batch_started_fallback(_merge_persisted_run_fields(enriched, run))
         if wf_status is None:
-            return _apply_batch_started_fallback(enriched)
+            if _is_terminal_pipeline_run(run):
+                return _apply_batch_started_fallback(enriched)
+            return _apply_batch_started_fallback(_merge_persisted_run_fields(enriched, run))
         enriched["status"] = wf_status["phase"] or run.get("status")
         enriched["started_at"] = wf_status["started_at"]
         enriched["ended_at"] = wf_status["ended_at"]
+        if store is not None and tenant is not None:
+            await _persist_terminal_run(
+                store=store,
+                tenant=tenant,
+                run=run,
+                wf_status=wf_status,
+            )
         return _apply_batch_started_fallback(enriched)
 
     enriched_runs = await asyncio.gather(*(enrich_one(run) for run in runs))

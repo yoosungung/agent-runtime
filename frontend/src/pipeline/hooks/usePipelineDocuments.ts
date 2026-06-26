@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiJson } from "../../lib/api";
+import { apiJson, type PageResponse } from "../../lib/api";
 import type {
   PipelineDocumentSummary,
   PipelineSourceDocument,
@@ -24,16 +24,25 @@ function projectDocsKey(projectId: string) {
 
 export function useProjectDocuments(
   projectId: string | undefined,
-  filters?: { ingest_state?: string; source_id?: string },
+  filters?: {
+    ingest_state?: string;
+    source_id?: string;
+    filename?: string;
+    limit?: number;
+    offset?: number;
+  },
 ) {
   const params = new URLSearchParams();
   if (filters?.ingest_state) params.set("ingest_state", filters.ingest_state);
   if (filters?.source_id) params.set("source_id", filters.source_id);
+  if (filters?.filename) params.set("filename", filters.filename);
+  if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
   const qs = params.toString() ? `?${params}` : "";
   return useQuery({
     queryKey: [...projectDocsKey(projectId ?? ""), filters ?? {}],
     queryFn: () =>
-      apiJson<{ items: PipelineSourceDocument[] }>(
+      apiJson<PageResponse<PipelineSourceDocument>>(
         `/api/pipeline/projects/${projectId}/documents${qs}`,
       ),
     enabled: Boolean(projectId),

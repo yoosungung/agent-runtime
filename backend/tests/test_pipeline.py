@@ -172,6 +172,7 @@ async def test_list_sources(pipeline_client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["items"]) == 1
+    assert data["total"] == 1
     assert data["items"][0]["name"] == "kms"
     assert data["items"][0]["project_id"] == "550e8400-e29b-41d4-a716-446655440000"
 
@@ -631,6 +632,10 @@ async def test_list_project_documents(pipeline_client, monkeypatch):
             }
         ],
     )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.count_documents_for_project",
+        lambda tenant, project_id, **kwargs: 1,
+    )
     resp = await client.get(
         "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/documents",
     )
@@ -695,6 +700,8 @@ async def test_list_runs_enriched_from_argo(pipeline_client, monkeypatch):
             "argo_uid": "uid-1",
             "batch_id": "20260626-120000",
             "status": "submitted",
+            "started_at": None,
+            "ended_at": None,
         }
     ]
 
@@ -714,6 +721,106 @@ async def test_list_runs_enriched_from_argo(pipeline_client, monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert data["argo_available"] is True
-    assert data["runs"][0]["status"] == "Succeeded"
-    assert data["runs"][0]["started_at"] == "2026-06-26T12:00:01Z"
-    assert data["runs"][0]["ended_at"] == "2026-06-26T12:05:00Z"
+    assert data["items"][0]["status"] == "Succeeded"
+    assert data["items"][0]["started_at"] == "2026-06-26T12:00:01Z"
+    assert data["items"][0]["ended_at"] == "2026-06-26T12:05:00Z"
+
+
+@pytest.mark.asyncio
+async def test_list_sources_pagination(pipeline_client):
+    client, mock_store, _mock_project_store = pipeline_client
+    other = _profile_obj()
+    other.name = "other"
+    mock_store.list_sources.return_value = [_profile_obj(), other]
+
+    resp = await client.get(
+        "/api/pipeline/sources",
+        params={"limit": 1, "offset": 1},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert data["limit"] == 1
+    assert data["offset"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["name"] == "other"
+
+
+@pytest.mark.asyncio
+async def test_list_project_documents_pagination(pipeline_client, monkeypatch):
+    client, _mock_store, _mock_project_store = pipeline_client
+    project_id = "550e8400-e29b-41d4-a716-446655440000"
+
+    def _list_docs(tenant, pid, **kwargs):
+        assert kwargs["limit"] == 10
+        assert kwargs["offset"] == 20
+        assert kwargs["filename_contains"] == "report"
+        return [
+            {
+                "document_id": "doc-1",
+                "source_id": "manual:docs",
+                "project_id": pid,
+                "content_hash": "sha256:abc",
+                "ingest_state": "pending",
+                "s3_raw_uri": "s3://b/raw/dev/p/manual/docs/sha256:abc/report.pdf",
+                "filename": "report.pdf",
+            }
+        ]
+
+    def _count_docs(tenant, pid, **kwargs):
+        assert kwargs["filename_contains"] == "report"
+        return 31
+
+    monkeypatch.setattr("backend.routers.pipeline.list_documents_for_project", _list_docs)
+    monkeypatch.setattr("backend.routers.pipeline.count_documents_for_project", _count_docs)
+
+    resp = await client.get(
+        f"/api/pipeline/projects/{project_id}/documents",
+        params={"limit": 10, "offset": 20, "filename": "report"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 31
+    assert data["limit"] == 10
+    assert data["offset"] == 20
+    assert len(data["items"]) == 1
+    assert data["items"][0]["filename"] == "report.pdf"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_pagination(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.list_pipeline_runs.return_value = [
+        {
+            "id": "run-2",
+            "workflow_name": "ingest-b",
+            "argo_uid": None,
+            "batch_id": "batch-2",
+            "status": "Succeeded",
+            "started_at": "2026-06-26T13:00:00Z",
+            "ended_at": "2026-06-26T13:05:00Z",
+        }
+    ]
+    mock_store.count_pipeline_runs.return_value = 75
+
+    async def _enrich(**kwargs):
+        return kwargs["runs"], True
+
+    monkeypatch.setattr(
+        "backend.routers.pipeline.enrich_pipeline_runs_with_argo",
+        _enrich,
+    )
+
+    resp = await client.get(
+        "/api/pipeline/runs",
+        params={"limit": 25, "offset": 50},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 75
+    assert data["limit"] == 25
+    assert data["offset"] == 50
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == "run-2"
+    mock_store.list_pipeline_runs.assert_called_once_with("dev", 25, 50)

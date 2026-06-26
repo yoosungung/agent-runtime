@@ -2,8 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PipelineDocumentsPage } from "../pages/PipelineDocumentsPage";
+import { useProjectDocuments } from "../hooks/usePipelineDocuments";
 
 const PROJECT_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -43,12 +44,34 @@ vi.mock("../hooks/usePipeline", () => ({
 }));
 
 vi.mock("../hooks/usePipelineDocuments", () => ({
-  useProjectDocuments: vi.fn(() => ({
-    data: { items: docs },
-    isLoading: false,
-    isError: false,
-  })),
+  useProjectDocuments: vi.fn(),
 }));
+
+function filterDocs(filters?: {
+  ingest_state?: string;
+  filename?: string;
+}) {
+  let filtered = docs;
+  if (filters?.ingest_state) {
+    filtered = filtered.filter((d) => d.ingest_state === filters.ingest_state);
+  }
+  if (filters?.filename) {
+    const q = filters.filename.toLowerCase();
+    filtered = filtered.filter((d) => d.filename.toLowerCase().includes(q));
+  }
+  return filtered;
+}
+
+beforeEach(() => {
+  vi.mocked(useProjectDocuments).mockImplementation((_projectId, filters) => {
+    const items = filterDocs(filters);
+    return {
+      data: { items, total: items.length, limit: 50, offset: 0 },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useProjectDocuments>;
+  });
+});
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

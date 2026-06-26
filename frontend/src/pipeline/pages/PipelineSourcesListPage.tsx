@@ -1,4 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { Paginator } from "../../components/Paginator";
+import { useViewportPagination } from "../../hooks/useViewportPagination";
 import { usePipelineSources } from "../hooks/usePipeline";
 
 function formatDate(iso: string | null): string {
@@ -9,7 +11,11 @@ function formatDate(iso: string | null): string {
 export function PipelineSourcesListPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { data, isLoading, isError } = usePipelineSources(projectId);
+  const { anchorRef, limit, offset, setOffset } = useViewportPagination({ min: 10 });
+  const { data, isLoading, isError } = usePipelineSources(projectId, {
+    limit,
+    offset,
+  });
   const items = data?.items ?? [];
 
   if (!projectId) {
@@ -42,7 +48,7 @@ export function PipelineSourcesListPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-600">
               <tr>
@@ -93,6 +99,16 @@ export function PipelineSourcesListPage() {
               )}
             </tbody>
           </table>
+          {data && (
+            <div className="border-t border-gray-200 px-4">
+              <Paginator
+                total={data.total}
+                limit={limit}
+                offset={offset}
+                onOffsetChange={setOffset}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -9,27 +9,7 @@ from uuid import uuid4
 
 import psycopg
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel, Field
-
-from backend.pipeline_helpers import (
-    assert_source_ingest_idle,
-    assert_source_workflow_idle,
-    enrich_pipeline_runs_with_argo,
-    get_source_workflow_status,
-    pg_settings_for_source,
-    pipeline_blob_settings,
-    resolve_credential_secret,
-)
-from backend.deps import check_csrf, get_settings, require_admin
-from backend.pipeline_argo import submit_collect_ingest_rag, submit_ingest_rag
-from backend.pipeline_cron import (
-    delete_source_cron,
-    reconcile_source_cron,
-    validate_cron_schedule_or_http,
-)
-from backend.settings import Settings
-from path_graph.admin.credentials import CredentialStore
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from path_graph.admin.lifecycle import (
     api_cleanup_project,
     api_get_binding,
@@ -47,6 +27,8 @@ from path_graph.admin.sources import SourceStore
 from path_graph.admin.uploads import (
     UploadValidationError,
     build_ingest_manifest,
+    count_documents_for_project,
+    count_documents_for_source,
     filename_from_raw_uri,
     list_documents_for_project,
     list_documents_for_source,
@@ -58,6 +40,25 @@ from path_graph.contracts.s3_keys import s3_key_dead_letter
 from path_graph.contracts.source import SourceCreate, SourceDriver, SourceProfile, SourceUpdate
 from path_graph.meta.pg import PgMetaStore
 from path_graph.storage.blob import make_blob_store
+from pydantic import BaseModel, Field
+
+from backend.deps import check_csrf, get_settings, require_admin
+from backend.pipeline_argo import submit_collect_ingest_rag, submit_ingest_rag
+from backend.pipeline_cron import (
+    delete_source_cron,
+    reconcile_source_cron,
+    validate_cron_schedule_or_http,
+)
+from backend.pipeline_helpers import (
+    assert_source_ingest_idle,
+    assert_source_workflow_idle,
+    enrich_pipeline_runs_with_argo,
+    get_source_workflow_status,
+    pg_settings_for_source,
+    pipeline_blob_settings,
+    resolve_credential_secret,
+)
+from backend.settings import Settings
 from runtime_common.schemas import Principal
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,16 @@ router = APIRouter(
     tags=["pipeline"],
     dependencies=[Depends(require_admin), Depends(check_csrf)],
 )
+
+
+def _clamp_page_limit(limit: int, maximum: int = 100) -> int:
+    return min(max(limit, 1), maximum)
+
+
+class PaginatedResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
 
 
 class ProjectCreateRequest(BaseModel):
@@ -153,7 +164,7 @@ class SourceResponse(BaseModel):
         )
 
 
-class SourcesListResponse(BaseModel):
+class SourcesListResponse(PaginatedResponse):
     items: list[SourceResponse]
 
 
@@ -209,12 +220,18 @@ class DocumentDetailResponse(DocumentResponse):
     dead_letter_error: dict[str, Any] | None = None
 
 
-class DocumentsListResponse(BaseModel):
+class DocumentsListResponse(PaginatedResponse):
     items: list[DocumentResponse]
 
 
 class TombstonesListResponse(BaseModel):
     items: list[dict[str, Any]]
+
+
+class RunsListResponse(PaginatedResponse):
+    items: list[dict[str, Any]]
+    recent_documents: list[dict[str, Any]]
+    argo_available: bool = True
 
 
 class PurgeDocumentRequest(BaseModel):
@@ -441,18 +458,40 @@ async def list_project_documents(
     settings: Settings = Depends(get_settings),  # noqa: B008
     source_id: str | None = None,
     ingest_state: str | None = None,
+    filename: str | None = None,
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
 ) -> DocumentsListResponse:
     tenant = _require_tenant(principal)
     await _require_project(tenant, project_id, store)
+    limit = _clamp_page_limit(limit)
+    dsn = _path_graph_dsn(settings)
+    total = await asyncio.to_thread(
+        count_documents_for_project,
+        tenant,
+        project_id,
+        source_id=source_id,
+        ingest_state=ingest_state,
+        filename_contains=filename or None,
+        dsn=dsn,
+    )
     docs = await asyncio.to_thread(
         list_documents_for_project,
         tenant,
         project_id,
         source_id=source_id,
         ingest_state=ingest_state,
-        dsn=_path_graph_dsn(settings),
+        filename_contains=filename or None,
+        limit=limit,
+        offset=offset,
+        dsn=dsn,
     )
-    return DocumentsListResponse(items=[DocumentResponse(**d) for d in docs])
+    return DocumentsListResponse(
+        items=[DocumentResponse(**d) for d in docs],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/projects/{project_id}/tombstones", dependencies=[Depends(require_admin)])
@@ -509,12 +548,22 @@ async def list_sources(
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
     project_id: str | None = None,
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
 ) -> SourcesListResponse:
     tenant = _require_tenant(principal)
+    limit = _clamp_page_limit(limit)
     profiles = await asyncio.to_thread(store.list_sources, tenant)
     if project_id:
         profiles = [p for p in profiles if p.project_id == project_id]
-    return SourcesListResponse(items=[SourceResponse.from_profile(p) for p in profiles])
+    total = len(profiles)
+    page = profiles[offset : offset + limit]
+    return SourcesListResponse(
+        items=[SourceResponse.from_profile(p) for p in page],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/sources", status_code=201)
@@ -786,22 +835,38 @@ async def list_source_documents(
     store: SourceStore = Depends(_store),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     ingest_state: str | None = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
 ) -> DocumentsListResponse:
     tenant = _require_tenant(principal)
     profile = await asyncio.to_thread(store.get_source, tenant, source_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Source not found")
 
+    limit = _clamp_page_limit(limit)
+    dsn = _path_graph_dsn(settings)
+    total = await asyncio.to_thread(
+        count_documents_for_source,
+        tenant,
+        profile,
+        ingest_state=ingest_state,
+        dsn=dsn,
+    )
     docs = await asyncio.to_thread(
         list_documents_for_source,
         tenant,
         profile,
         ingest_state=ingest_state,
         limit=limit,
-        dsn=_path_graph_dsn(settings),
+        offset=offset,
+        dsn=dsn,
     )
-    return DocumentsListResponse(items=[DocumentResponse(**d) for d in docs])
+    return DocumentsListResponse(
+        items=[DocumentResponse(**d) for d in docs],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/documents/{document_id}", dependencies=[Depends(require_admin)])
@@ -942,25 +1007,37 @@ async def list_runs(
     store: SourceStore = Depends(_store),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     project_id: str | None = None,
-    limit: int = 50,
-) -> dict[str, Any]:
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
+) -> RunsListResponse:
     tenant = _require_tenant(principal)
-    runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit)
+    limit = _clamp_page_limit(limit)
+    total = await asyncio.to_thread(store.count_pipeline_runs, tenant)
+    runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit, offset)
     runs, argo_available = await enrich_pipeline_runs_with_argo(
         settings=settings,
         runs=runs,
+        store=store,
+        tenant=tenant,
     )
     if project_id:
         docs = await asyncio.to_thread(
             list_documents_for_project,
             tenant,
             project_id,
+            limit=20,
             dsn=_path_graph_dsn(settings),
         )
-        docs = docs[:20]
     else:
         docs = await asyncio.to_thread(store.list_documents_summary, tenant, limit=20)
-    return {"runs": runs, "recent_documents": docs, "argo_available": argo_available}
+    return RunsListResponse(
+        items=runs,
+        total=total,
+        limit=limit,
+        offset=offset,
+        recent_documents=docs,
+        argo_available=argo_available,
+    )
 
 
 @router.get("/dead-letters", dependencies=[Depends(require_admin)])

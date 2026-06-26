@@ -100,64 +100,64 @@ export function PipelineMaintenancePage() {
         </pre>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2 mb-6">
-        <section className="bg-white shadow rounded-lg p-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">Lifecycle summary</h3>
-          <ul className="text-sm text-gray-700 space-y-2">
-            <li>
-              Dead letters:{" "}
-              <span className="font-medium">{deadLetters.length}</span>
-              {deadLetters.length > 0 && (
-                <>
-                  {" "}
-                  —{" "}
-                  <Link
-                    to={`/pipeline/projects/${projectId}/documents?ingest_state=dead_letter`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    Documents에서 보기
-                  </Link>
-                </>
-              )}
-            </li>
-            <li>
-              Tombstones:{" "}
-              <span className="font-medium">{tombstones.length}</span>
-              {tombstones.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowTombstones((v) => !v)}
-                  className="ml-2 text-blue-600 hover:underline text-sm"
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-gray-900 mb-2">Lifecycle summary</h3>
+        <ul className="text-sm text-gray-700 space-y-1">
+          <li>
+            Dead letters:{" "}
+            <span className="font-medium">{deadLetters.length}</span>
+            {deadLetters.length > 0 && (
+              <>
+                {" "}
+                —{" "}
+                <Link
+                  to={`/pipeline/projects/${projectId}/documents?ingest_state=dead_letter`}
+                  className="text-blue-600 hover:underline"
                 >
-                  {showTombstones ? "숨기기" : "목록 보기"}
-                </button>
-              )}
-            </li>
-          </ul>
-          {showTombstones && tombstones.length > 0 && (
-            <div className="mt-3 border border-gray-100 rounded overflow-hidden max-h-48 overflow-y-auto">
-              <table className="min-w-full text-xs">
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    <th className="px-2 py-1 text-left">Hash</th>
-                    <th className="px-2 py-1 text-left">Reason</th>
+                  Documents에서 보기
+                </Link>
+              </>
+            )}
+          </li>
+          <li>
+            Tombstones:{" "}
+            <span className="font-medium">{tombstones.length}</span>
+            {tombstones.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowTombstones((v) => !v)}
+                className="ml-2 text-blue-600 hover:underline text-sm"
+              >
+                {showTombstones ? "숨기기" : "목록 보기"}
+              </button>
+            )}
+          </li>
+        </ul>
+        {showTombstones && tombstones.length > 0 && (
+          <div className="mt-3 border border-gray-200 rounded overflow-hidden max-w-xl max-h-48 overflow-y-auto">
+            <table className="min-w-full text-xs">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  <th className="px-2 py-1 text-left">Hash</th>
+                  <th className="px-2 py-1 text-left">Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {tombstones.map((row, i) => (
+                  <tr key={`${row.content_hash ?? i}`}>
+                    <td className="px-2 py-1 font-mono">
+                      {String(row.content_hash ?? "—").slice(0, 16)}…
+                    </td>
+                    <td className="px-2 py-1">{String(row.reason ?? "—")}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {tombstones.map((row, i) => (
-                    <tr key={`${row.content_hash ?? i}`}>
-                      <td className="px-2 py-1 font-mono">
-                        {String(row.content_hash ?? "—").slice(0, 16)}…
-                      </td>
-                      <td className="px-2 py-1">{String(row.reason ?? "—")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
+      <div className="grid gap-4 lg:grid-cols-2 mb-6">
         <section className="bg-white shadow rounded-lg p-4">
           <h3 className="text-sm font-medium text-gray-900 mb-2">Index reconcile</h3>
           <p className="text-sm text-gray-600 mb-3">

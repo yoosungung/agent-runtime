@@ -18,6 +18,7 @@ from backend.bootstrap import run_bootstrap
 from backend.bundle_serve_guard import BlockPublicBundleMiddleware
 from backend.bundle_storage import make_bundle_storage
 from backend.object_store_browser import make_object_store_browser
+from backend.pipeline_run_reconciler import run_pipeline_run_reconciler
 from backend.pool_status import PoolRegistryMonitor
 from backend.reconciler import run_reconciler
 from backend.routers import audit as audit_router_module
@@ -32,8 +33,8 @@ from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import llm_presets as llm_presets_router_module
 from backend.routers import me_api_keys as me_api_keys_router_module
 from backend.routers import me_user_meta as me_user_meta_router_module
-from backend.routers import pipeline_credentials as pipeline_credentials_router_module
 from backend.routers import pipeline as pipeline_router_module
+from backend.routers import pipeline_credentials as pipeline_credentials_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
@@ -220,6 +221,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Background reconciler for image-mode state machine
     reconciler_task = asyncio.create_task(run_reconciler(app))
+    pipeline_run_reconciler_task = None
+    if settings.PIPELINE_CONSOLE_ENABLED:
+        pipeline_run_reconciler_task = asyncio.create_task(run_pipeline_run_reconciler(app))
 
     pool_monitor = PoolRegistryMonitor(settings.REDIS_URL)
     await pool_monitor.start()
@@ -251,6 +255,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await reconciler_task
     except asyncio.CancelledError:
         pass
+
+    if pipeline_run_reconciler_task is not None:
+        pipeline_run_reconciler_task.cancel()
+        try:
+            await pipeline_run_reconciler_task
+        except asyncio.CancelledError:
+            pass
 
     if app.state.k8s_pool_manager is not None:
         await app.state.k8s_pool_manager.aclose()

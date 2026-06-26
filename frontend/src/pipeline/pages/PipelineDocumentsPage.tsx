@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Paginator } from "../../components/Paginator";
+import { useViewportPagination } from "../../hooks/useViewportPagination";
 import { IngestStateBadge } from "../../knowledge/components/IngestStateBadge";
 import { useProjectDocuments } from "../hooks/usePipelineDocuments";
 
@@ -30,33 +32,37 @@ export function PipelineDocumentsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { anchorRef, limit, offset, setOffset, reset } = useViewportPagination({
+    min: 10,
+  });
   const [nameQuery, setNameQuery] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
   const [statusFilter, setStatusFilter] = useState<DocStatusFilter>(() =>
     statusFromParams(searchParams.get("ingest_state")),
   );
   const sourceFilter = searchParams.get("source_id") ?? "";
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedName(nameQuery);
+      reset();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [nameQuery, reset]);
+
   const apiFilters = useMemo(
     () => ({
       ingest_state: statusFilter || undefined,
       source_id: sourceFilter || undefined,
+      filename: debouncedName.trim() || undefined,
+      limit,
+      offset,
     }),
-    [statusFilter, sourceFilter],
+    [statusFilter, sourceFilter, debouncedName, limit, offset],
   );
 
   const { data, isLoading, isError } = useProjectDocuments(projectId, apiFilters);
-  const items = useMemo(() => {
-    const all = data?.items ?? [];
-    let filtered = all;
-    if (statusFilter) {
-      filtered = filtered.filter((d) => d.ingest_state === statusFilter);
-    }
-    const q = nameQuery.trim().toLowerCase();
-    if (q) {
-      filtered = filtered.filter((doc) => doc.filename.toLowerCase().includes(q));
-    }
-    return filtered;
-  }, [data?.items, nameQuery, statusFilter]);
+  const items = data?.items ?? [];
 
   if (!projectId) {
     return <p className="text-sm text-red-600">Missing project id.</p>;
@@ -85,7 +91,10 @@ export function PipelineDocumentsPage() {
           <select
             id="doc-status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as DocStatusFilter)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as DocStatusFilter);
+              reset();
+            }}
             className="border border-gray-300 rounded px-2 py-1.5 text-sm"
           >
             {INGEST_STATE_FILTERS.map((opt) => (
@@ -106,7 +115,7 @@ export function PipelineDocumentsPage() {
       {isError && <p className="text-sm text-red-600">Failed to load documents.</p>}
 
       {!isLoading && !isError && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-600">
               <tr>
@@ -149,6 +158,16 @@ export function PipelineDocumentsPage() {
               )}
             </tbody>
           </table>
+          {data && (
+            <div className="border-t border-gray-200 px-4">
+              <Paginator
+                total={data.total}
+                limit={limit}
+                offset={offset}
+                onOffsetChange={setOffset}
+              />
+            </div>
+          )}
         </div>
       )}
 

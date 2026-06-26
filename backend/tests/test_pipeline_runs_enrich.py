@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -18,6 +18,8 @@ async def test_enrich_pipeline_runs_merges_argo_status():
             "argo_uid": "uid-1",
             "batch_id": "20260626-120000",
             "status": "submitted",
+            "started_at": None,
+            "ended_at": None,
         }
     ]
 
@@ -41,6 +43,45 @@ async def test_enrich_pipeline_runs_merges_argo_status():
 
 
 @pytest.mark.asyncio
+async def test_enrich_pipeline_runs_persists_terminal_status():
+    runs = [
+        {
+            "id": "run-1",
+            "workflow_name": "ingest-docs-abc",
+            "argo_uid": "uid-1",
+            "batch_id": "20260626-120000",
+            "status": "submitted",
+            "started_at": None,
+            "ended_at": None,
+        }
+    ]
+    store = MagicMock()
+
+    async def _status(**_kwargs):
+        return {
+            "phase": "Succeeded",
+            "started_at": "2026-06-26T12:00:01Z",
+            "ended_at": "2026-06-26T12:05:00Z",
+        }
+
+    with patch("backend.pipeline_helpers.get_workflow_status", side_effect=_status):
+        await enrich_pipeline_runs_with_argo(
+            settings=Settings(),
+            runs=runs,
+            store=store,
+            tenant="dev",
+        )
+
+    store.finalize_pipeline_run.assert_called_once_with(
+        "dev",
+        "run-1",
+        "Succeeded",
+        "2026-06-26T12:00:01Z",
+        "2026-06-26T12:05:00Z",
+    )
+
+
+@pytest.mark.asyncio
 async def test_enrich_pipeline_runs_keeps_pg_status_when_workflow_missing():
     runs = [
         {
@@ -49,6 +90,8 @@ async def test_enrich_pipeline_runs_keeps_pg_status_when_workflow_missing():
             "argo_uid": "uid-1",
             "batch_id": "batch-old",
             "status": "submitted",
+            "started_at": None,
+            "ended_at": None,
         }
     ]
 
@@ -65,6 +108,33 @@ async def test_enrich_pipeline_runs_keeps_pg_status_when_workflow_missing():
     assert enriched[0]["status"] == "submitted"
     assert enriched[0]["started_at"] is None
     assert enriched[0]["ended_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_enrich_pipeline_runs_uses_pg_snapshot_when_workflow_deleted():
+    runs = [
+        {
+            "id": "run-1",
+            "workflow_name": "ingest-docs-gone",
+            "argo_uid": "uid-1",
+            "batch_id": "20260626-120000",
+            "status": "Succeeded",
+            "started_at": "2026-06-26T12:00:01Z",
+            "ended_at": "2026-06-26T12:05:00Z",
+        }
+    ]
+
+    status_mock = AsyncMock(return_value=None)
+    with patch("backend.pipeline_helpers.get_workflow_status", status_mock):
+        enriched, argo_available = await enrich_pipeline_runs_with_argo(
+            settings=Settings(),
+            runs=runs,
+        )
+
+    assert argo_available is True
+    status_mock.assert_not_called()
+    assert enriched[0]["status"] == "Succeeded"
+    assert enriched[0]["ended_at"] == "2026-06-26T12:05:00Z"
 
 
 def test_started_at_from_batch_id_parses_utc_timestamp():

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUsersList } from "../hooks/useUsers";
 import { Paginator } from "../components/Paginator";
-import { usePagination } from "../hooks/usePagination";
+import { useViewportPagination } from "../hooks/useViewportPagination";
 import { PageHeader } from "../components/PageHeader";
 import { listNewUserButtonLabel } from "../lib/uiLabels";
 
@@ -12,7 +12,9 @@ function formatDate(iso: string): string {
 
 export function UsersListPage() {
   const navigate = useNavigate();
-  const { limit, offset, setOffset, reset } = usePagination(50);
+  const { anchorRef, limit, offset, setOffset, reset } = useViewportPagination({
+    min: 10,
+  });
   const [usernameFilter, setUsernameFilter] = useState("");
   const [debouncedUsername, setDebouncedUsername] = useState("");
   const [disabledFilter, setDisabledFilter] = useState<boolean | undefined>(
@@ -82,7 +84,7 @@ export function UsersListPage() {
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div ref={anchorRef} className="bg-white shadow rounded-lg overflow-hidden">
         {isLoading && (
           <p className="p-4 text-sm text-gray-500">Loading...</p>
         )}

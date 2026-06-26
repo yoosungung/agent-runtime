@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, apiJson, formatApiErrorDetail } from "../../lib/api";
+import { apiFetch, apiJson, formatApiErrorDetail, type PageResponse } from "../../lib/api";
 
 export type SourceDriver = "sharepoint" | "gdrive" | "onedrive" | "manual";
 
@@ -141,14 +141,19 @@ export function useCreatePipelineProject() {
   });
 }
 
-export function usePipelineSources(projectId?: string) {
-  const qs = projectId
-    ? `?project_id=${encodeURIComponent(projectId)}`
-    : "";
+export function usePipelineSources(
+  projectId?: string,
+  params?: { limit?: number; offset?: number },
+) {
+  const search = new URLSearchParams();
+  if (projectId) search.set("project_id", projectId);
+  if (params?.limit !== undefined) search.set("limit", String(params.limit));
+  if (params?.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString() ? `?${search}` : "";
   return useQuery({
-    queryKey: ["pipeline", "sources", projectId ?? "all"],
+    queryKey: ["pipeline", "sources", projectId ?? "all", params ?? {}],
     queryFn: () =>
-      apiJson<{ items: PipelineSource[] }>(`/api/pipeline/sources${qs}`),
+      apiJson<PageResponse<PipelineSource>>(`/api/pipeline/sources${qs}`),
   });
 }
 
@@ -243,30 +248,41 @@ export function useRunPipelineSource(id: string) {
   });
 }
 
-export function usePipelineRuns(projectId?: string) {
-  const qs = projectId
-    ? `?project_id=${encodeURIComponent(projectId)}`
-    : "";
+export interface PipelineRunsResponse extends PageResponse<PipelineRun> {
+  recent_documents: PipelineDocumentSummary[];
+  argo_available: boolean;
+}
+
+export function usePipelineRuns(
+  projectId?: string,
+  params?: { limit?: number; offset?: number },
+) {
+  const search = new URLSearchParams();
+  if (projectId) search.set("project_id", projectId);
+  if (params?.limit !== undefined) search.set("limit", String(params.limit));
+  if (params?.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString() ? `?${search}` : "";
   return useQuery({
-    queryKey: ["pipeline", "runs", projectId ?? "all"],
+    queryKey: ["pipeline", "runs", projectId ?? "all", params ?? {}],
     queryFn: () =>
-      apiJson<{
-        runs: PipelineRun[];
-        recent_documents: PipelineDocumentSummary[];
-        argo_available: boolean;
-      }>(`/api/pipeline/runs${qs}`),
+      apiJson<PipelineRunsResponse>(`/api/pipeline/runs${qs}`),
   });
 }
 
 export function usePipelineSourceDocuments(
   id: string | undefined,
   ingestState?: string,
+  params?: { limit?: number; offset?: number },
 ) {
-  const qs = ingestState ? `?ingest_state=${encodeURIComponent(ingestState)}` : "";
+  const search = new URLSearchParams();
+  if (ingestState) search.set("ingest_state", ingestState);
+  if (params?.limit !== undefined) search.set("limit", String(params.limit));
+  if (params?.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString() ? `?${search}` : "";
   return useQuery({
-    queryKey: ["pipeline", "sources", id, "documents", ingestState ?? "all"],
+    queryKey: ["pipeline", "sources", id, "documents", ingestState ?? "all", params ?? {}],
     queryFn: () =>
-      apiJson<{ items: PipelineSourceDocument[] }>(
+      apiJson<PageResponse<PipelineSourceDocument>>(
         `/api/pipeline/sources/${id}/documents${qs}`,
       ),
     enabled: Boolean(id),

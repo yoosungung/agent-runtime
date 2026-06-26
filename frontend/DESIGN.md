@@ -36,9 +36,10 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - **인증 쿠키는 자동 전송**. fetch는 `credentials: "include"` 기본값 유지(same-origin이면 불필요, cross-origin이면 필수).
 - **CSRF**: state-changing 요청(POST/PUT/DELETE/PATCH)은 `X-CSRF-Token` 헤더 필수. 로그인 응답으로 받은 `csrf_token` cookie 값을 읽어서 첨부(double-submit cookie). 이는 httpOnly가 아니므로 JS에서 읽힘.
 - **캐시**: `apiFetch`는 `cache: "no-store"`; BFF `/api/*`는 `Cache-Control: no-store` 응답.
-- **페이지네이션 표준** (모든 list GET):
-  - 요청: `?limit=<1..100, default 50>&offset=<>=0, default 0>`. 서버가 `limit>100`은 100으로 clamp.
-  - 응답: `{items: [...], total: N, limit: L, offset: O}`. UI는 `total`로 페이지 수 계산(offset 기반).
+- **페이지네이션 표준** (모든 list GET + UI):
+  - API 요청: `?limit=<1..100>&offset=<>=0>`. 서버가 `limit>100`은 100으로 clamp.
+  - API 응답: `{items: [...], total: N, limit: L, offset: O}`. UI는 `total`로 페이지 수 계산(offset 기반).
+  - UI: `useViewportPagination` + `Paginator`. 목록 카드(`ref={anchorRef}`) 위치·뷰포트 높이로 `limit`을 동적 계산(`lib/viewportPageLimit.ts`, 기본 `min=10`·`max=50`·`rowHeight=44`). 리사이즈·필터 변경 시 offset 리셋. 고정 `usePagination`은 사용하지 않음.
   - 정렬: 서버 기본값 고정 — 오버라이드 UI 없음 (MVP).
 - **에러 처리**:
   - `401` → 세션 만료 → 로그인 페이지로.
@@ -95,7 +96,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /files/*                               → `/pipeline` redirect (구 파일관리)
 ```
 
-**Pipeline (`/pipeline/*`, admin)** — `frontend/src/pipeline/`. 상단 nav **Pipeline** 단일 진입. **좌측 사이드바**: 검색·**+ New project** 버튼(모달 생성)·Credentials 링크·project 목록(검색 필터). **우측**: project 선택 시 헤더 + 탭(Sources · Runs · Documents). **Runs**: PG run 목록 + API가 Argo Workflows에서 조회한 `status`/`started_at`/`ended_at` 표시(Argo 미연결 시 PG `status`만). Documents: filename like(클라이언트)·상태 필터(`dead_letter` · `purged` tombstone). Maintenance는 탭이 아닌 project 헤더 **Maintenance** 링크 — reconcile/cleanup/tombstones/dead letters/purge. **Argo workflow 시작**(`Run now`, `Index to RAG`): 클릭 시 `WorkflowStartDialog` — `GET .../workflow-status`로 실행 중 workflow 확인 후 확인(중복 시 경고·Start anyway). 성공 시 배너 + Runs 링크. 공유: `frontend/src/knowledge/` (`KnowledgeProjectContext`). `localStorage`의 `knowledge:selectedProjectId`가 tenant에 없는 UUID면 project 목록 로드 후 첫 project로 교체; URL의 stale `projectId`는 `/pipeline` 또는 유효 project로 `replace` redirect. API `/api/pipeline/*`. VFS(`/vfs`)는 agent 런타임 파일 — Pipeline document와 별개.
+**Pipeline (`/pipeline/*`, admin)** — … **Sources · Runs · Documents** 탭 목록은 표준 페이지네이션(`Paginator` + `useViewportPagination`). …
 
 **ingest_state 배지**: `pending` · `indexed_rag` · `dead_letter` · `purging` · `purged` — `knowledge/components/IngestStateBadge.tsx`. **Runs status 배지**: Argo phase(`Succeeded`/`Running`/…) · PG `submitted` — `pipeline/components/WorkflowStatusBadge.tsx`.
 
@@ -257,7 +258,8 @@ src/
     useUserMeta.ts                   admin get / upsert / delete (break-glass)
     useUsers.ts                      list / create / patch / password / delete
     useAccess.ts                     grant / revoke (양쪽 쿼리 동시 invalidate)
-    usePagination.ts                 limit/offset 상태 + URL sync
+    useViewportPagination.ts       뷰포트 기반 limit/offset + anchorRef
+    viewportPageLimit.ts           행 수 계산 유틸
 ```
 
 ### 접근성·i18n

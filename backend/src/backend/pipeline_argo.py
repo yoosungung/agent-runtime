@@ -57,6 +57,7 @@ def _workflow_body(
 
 
 _ACTIVE_WORKFLOW_PHASES = frozenset({"Running", "Pending"})
+_TERMINAL_WORKFLOW_PHASES = frozenset({"Succeeded", "Failed", "Error"})
 
 
 def ingest_rag_parameters(
