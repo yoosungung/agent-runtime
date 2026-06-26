@@ -27,11 +27,11 @@ resources:
   - keda.yaml
   - ingress.yaml
 patches:
-  # GHCR :latest is mutable — rollout must pull fresh layers, not reuse node cache.
+  # Immutable image tags + IfNotPresent — node cache is safe; deploy bumps __IMAGE_TAG__ via Makefile.
   - patch: |-
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
-        value: Always
+        value: IfNotPresent
     target:
       kind: Deployment
 secretGenerator:

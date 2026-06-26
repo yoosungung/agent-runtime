@@ -35,8 +35,8 @@ deploy/k8s/
 적용:
 
 ```bash
-make k8s-apply-dev
-make k8s-rollout-restart   # GHA 빌드 후 :latest pull
+make k8s-apply-dev          # IMAGE_TAG=git rev-parse HEAD (default)
+make k8s-redeploy-dev       # GHA build → apply with current HEAD SHA
 ```
 
 컨테이너 이미지 빌드·GHCR push는 GitHub Actions — [## Commands](#commands) 참조.
@@ -101,15 +101,15 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
   - 메타데이터 DB: `postgres` StatefulSet + Service (PVC 5Gi). **auth / deploy-api만 접근.**
   - **Redis**: LangGraph 체크포인터 + ext-authz warm-registry 공용.
   - 서비스: `auth`, `deploy-api`, `ext-authz`, `envoy`, `backend`
-  - Agent pools (2 정적): `agent-pool-compiled-graph` / `-adk` — 동일한 `agent-base:latest` 이미지, `RUNTIME_KIND` env만 다름
+  - Agent pools (2 정적): `agent-pool-compiled-graph` / `-adk` — 동일한 `agent-base` 이미지(동일 `IMAGE_TAG`), `RUNTIME_KIND` env만 다름
   - MCP pools (2 정적): `mcp-pool-fastmcp` / `-mcp-sdk` — 동일 패턴
   - **Image 모드 pool (동적)**: admin이 `POST /api/admin/custom-images` 호출 시 backend가 K8s API로 생성. 네이밍 규칙 `{kind}-pool-custom-{slug}`. 정적 kustomize 파일 없음. (`agent-pool-custom.yaml` / `mcp-pool-custom.yaml` 삭제됨)
 
 ## 컨테이너 이미지 (GHCR)
 
-- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:latest` (+ commit SHA tag). base overlay의 모든 `Deployment`는 `imagePullPolicy: Always` — `:latest` rollout 시 노드 캐시를 쓰지 않는다.
+- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` — **`:latest` 미사용**. 배포 시 `IMAGE_TAG`(`git rev-parse HEAD` 기본)로 kustomize `__IMAGE_TAG__` 치환(`make k8s-apply-*`). base overlay의 모든 runtime `Deployment`는 `imagePullPolicy: IfNotPresent` — immutable tag이므로 노드 캐시 안전.
 - **빌드**: GitHub Actions (`.github/workflows/build-images.yml`) — Release publish 또는 `workflow_dispatch`
-- **dev overlay**: base `agents-runtime/*` → GHCR remap, `imagePullSecrets: registry-creds` (private GHCR 시)
+- **overlays**: `components/ghcr-images`로 GHCR remap + tag placeholder. dev/stage/prod 공통.
 
 ## Ingress 호스트
 
@@ -261,27 +261,23 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 
 빌드 대상(6종): `backend`, `agent-base`, `mcp-base`, `auth`, `deploy-api`, `ext-authz`
 
-태그: `ghcr.io/yoosungung/agent-runtime/<service>:latest` 및 `:<git-sha>`
+태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)
 
 ```bash
-# 1) 변경분을 원격 main에 push (GHA는 checkout ref 기준)
+# 1) 변경분을 원격에 push (GHA는 checkout ref 기준)
 git push origin main
 
 # 2) 워크플로 실행 (Makefile 래퍼)
 make build-images
+make build-images-wait   # 또는 gh run watch <run-id>
 
-# 또는 gh 직접 호출
-gh workflow run "Build and push images" --ref main
+# 3) 클러스터에 반영 (IMAGE_TAG 기본값 = 현재 HEAD SHA)
+make k8s-apply-dev
+# 또는 빌드+적용 일괄:
+make k8s-redeploy-dev
 
-# 3) 진행 확인
-gh run list --workflow=build-images.yml --limit=3
-gh run watch   # 최근 run ID 지정 시: gh run watch <run-id>
-
-# 4) 클러스터에 반영 (base: imagePullPolicy Always — rollout 시 GHCR :latest 재 pull)
-make k8s-rollout-restart
-# backend / agent pool만:
-kubectl -n runtime rollout restart deployment/backend \
-  deployment/agent-pool-compiled-graph deployment/agent-pool-adk
+# 특정 커밋 태그로 배포:
+IMAGE_TAG=abc123... make k8s-apply-dev
 ```
 
 Release publish로 빌드:

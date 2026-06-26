@@ -34,6 +34,14 @@ def test_dev_overlay_includes_garage() -> None:
     assert "name: garage" in manifest
 
 
+def test_dev_overlay_uses_immutable_image_tags() -> None:
+    manifest = _kustomize_build(REPO_ROOT / "deploy/k8s/overlays/dev")
+    assert "ghcr.io/yoosungung/agent-runtime/backend:__IMAGE_TAG__" in manifest
+    assert "agents-runtime/backend:latest" not in manifest
+    assert "imagePullPolicy: IfNotPresent" in manifest
+    assert "imagePullPolicy: Always" not in manifest
+
+
 def test_makefile_applies_garage_via_overlay() -> None:
     makefile = (REPO_ROOT / "Makefile").read_text()
     assert "k8s-apply-garage" in makefile

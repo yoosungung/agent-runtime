@@ -2,12 +2,13 @@ REGISTRY  ?= ghcr.io/yoosungung/agent-runtime
 GHCR_USER ?= $(shell echo $(REGISTRY) | cut -d/ -f2)
 NAMESPACE ?= runtime
 S3_BUCKET ?= agent-bundles
+IMAGE_TAG ?= $(shell git rev-parse HEAD)
 
 .PHONY: help sync lint typecheck test fmt \
         registry-secret ensure-registry-secret _bootstrap-registry-secret \
         ncr-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         k8s-apply-garage k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
-        k8s-rollout-restart k8s-redeploy-dev build-images \
+        k8s-rollout-restart k8s-redeploy-dev build-images build-images-wait \
         db-migrate db-migrate-all \
         diagram diagram-png
 
@@ -100,30 +101,41 @@ s3-secret: ## override embedded Garage with external S3 (.s3-config.json + S3_BU
 
 # --- k8s ------------------------------------------------------------------
 
+# Substitute __IMAGE_TAG__ placeholder from deploy/k8s/components/ghcr-images (git SHA by default).
+define K8S_APPLY_OVERLAY
+	kubectl kustomize deploy/k8s/overlays/$(1) \
+		| sed 's/__IMAGE_TAG__/$(IMAGE_TAG)/g' \
+		| kubectl apply -f -
+endef
+
 k8s-apply-garage: ## apply embedded Garage object store only (namespace: runtime; also in base overlay)
 	kubectl apply -k deploy/k8s/garage
 
-k8s-apply-dev: ensure-jwt-secret ensure-registry-secret ## apply dev overlay (includes Garage in runtime)
-	kubectl apply -k deploy/k8s/overlays/dev
+k8s-apply-dev: ensure-jwt-secret ensure-registry-secret ## apply dev overlay (IMAGE_TAG=$(IMAGE_TAG))
+	$(call K8S_APPLY_OVERLAY,dev)
 
 k8s-apply-stage: ensure-jwt-secret ensure-registry-secret
-	kubectl apply -k deploy/k8s/overlays/stage
+	$(call K8S_APPLY_OVERLAY,stage)
 
 k8s-apply-prod: ensure-jwt-secret ensure-registry-secret
-	kubectl apply -k deploy/k8s/overlays/prod
+	$(call K8S_APPLY_OVERLAY,prod)
 
 k8s-delete-dev:
 	kubectl delete -k deploy/k8s/overlays/dev
 
-k8s-rollout-restart: ## rolling restart all Deployments in $(NAMESPACE) (picks up new :latest images)
+k8s-rollout-restart: ## rolling restart all Deployments in $(NAMESPACE) (same image tag — prefer k8s-apply-* with new IMAGE_TAG)
 	kubectl -n $(NAMESPACE) rollout restart deployment
 
-k8s-redeploy-dev: k8s-apply-dev k8s-rollout-restart ## apply dev overlay → rollout (images from GHCR via GHA release)
+k8s-redeploy-dev: build-images-wait k8s-apply-dev ## build images for current HEAD → apply dev overlay
 
 REF ?= main
-build-images: ## trigger GHA build-images workflow (push REF first; watch: gh run list --workflow=build-images.yml)
+build-images: ## trigger GHA build-images workflow (push REF first; tags GHCR with commit SHA only)
 	gh workflow run "Build and push images" --ref $(REF)
 	@echo "Triggered. Watch: gh run list --workflow=build-images.yml --limit=1"
+
+build-images-wait: ## wait for the latest build-images workflow run to finish
+	@run_id=$$(gh run list --workflow=build-images.yml --limit=1 --json databaseId --jq '.[0].databaseId'); \
+	gh run watch "$$run_id"
 
 # --- db -------------------------------------------------------------------
 

@@ -3,25 +3,8 @@ kind: Kustomization
 namespace: runtime
 resources:
   - ../../base
-images:
-  - name: agents-runtime/ext-authz
-    newName: ghcr.io/yoosungung/agent-runtime/ext-authz
-    newTag: latest
-  - name: agents-runtime/auth
-    newName: ghcr.io/yoosungung/agent-runtime/auth
-    newTag: latest
-  - name: agents-runtime/deploy-api
-    newName: ghcr.io/yoosungung/agent-runtime/deploy-api
-    newTag: latest
-  - name: agents-runtime/agent-base
-    newName: ghcr.io/yoosungung/agent-runtime/agent-base
-    newTag: latest
-  - name: agents-runtime/mcp-base
-    newName: ghcr.io/yoosungung/agent-runtime/mcp-base
-    newTag: latest
-  - name: agents-runtime/backend
-    newName: ghcr.io/yoosungung/agent-runtime/backend
-    newTag: latest
+components:
+  - ../../components/ghcr-images
 patches:
   - patch: |-
       - op: replace

@@ -52,12 +52,13 @@ uv run uvicorn deploy_api.app:app --reload --port 8002
 
 ### Build & deploy
 
-Images are built by **GitHub Actions** (`.github/workflows/build-images.yml`) and pushed to `ghcr.io/yoosungung/agent-runtime/<service>` (`:latest` + commit SHA).
+Images are built by **GitHub Actions** (`.github/workflows/build-images.yml`) and pushed to `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (no `:latest`).
 
 ```bash
 git push origin main
-make build-images              # workflow_dispatch — see deploy/DESIGN.md § Commands
-make k8s-apply-dev
+make build-images-wait         # wait for GHA build
+make k8s-apply-dev             # IMAGE_TAG = git HEAD SHA (default)
+make k8s-redeploy-dev          # build + apply
 make db-migrate-all
 make k8s-rollout-restart
 ```

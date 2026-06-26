@@ -1,0 +1,22 @@
+# GHCR image remap. Tag placeholder __IMAGE_TAG__ is substituted at apply time (see Makefile).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+images:
+  - name: agents-runtime/ext-authz
+    newName: ghcr.io/yoosungung/agent-runtime/ext-authz
+    newTag: __IMAGE_TAG__
+  - name: agents-runtime/auth
+    newName: ghcr.io/yoosungung/agent-runtime/auth
+    newTag: __IMAGE_TAG__
+  - name: agents-runtime/deploy-api
+    newName: ghcr.io/yoosungung/agent-runtime/deploy-api
+    newTag: __IMAGE_TAG__
+  - name: agents-runtime/agent-base
+    newName: ghcr.io/yoosungung/agent-runtime/agent-base
+    newTag: __IMAGE_TAG__
+  - name: agents-runtime/mcp-base
+    newName: ghcr.io/yoosungung/agent-runtime/mcp-base
+    newTag: __IMAGE_TAG__
+  - name: agents-runtime/backend
+    newName: ghcr.io/yoosungung/agent-runtime/backend
+    newTag: __IMAGE_TAG__
