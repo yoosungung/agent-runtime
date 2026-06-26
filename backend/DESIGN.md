@@ -53,7 +53,7 @@
 
 ### 엔드포인트
 
-모두 `/api/*`. state-changing(POST/PUT/DELETE)은 CSRF 헤더 필수.
+모두 `/api/*`. state-changing(POST/PUT/DELETE)은 CSRF 헤더 필수. 모든 `/api/*` 응답은 `Cache-Control: no-store` — 브라우저 disk cache로 stale JSON(예: pipeline project 404)이 재사용되지 않게 한다.
 
 | method | path | 처리 | 비고 |
 |---|---|---|---|

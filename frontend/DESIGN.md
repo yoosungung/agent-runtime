@@ -35,6 +35,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - 프로덕션은 same origin(`agents.*`)에서 SPA·`/api/*`·`/v1/agents/*`가 동일 Ingress host. cross-origin dev는 BFF `CORS_ORIGINS`에 SPA origin 등록(`/api/*`만 해당 — invoke는 Vite proxy로 same-origin 유지 권장).
 - **인증 쿠키는 자동 전송**. fetch는 `credentials: "include"` 기본값 유지(same-origin이면 불필요, cross-origin이면 필수).
 - **CSRF**: state-changing 요청(POST/PUT/DELETE/PATCH)은 `X-CSRF-Token` 헤더 필수. 로그인 응답으로 받은 `csrf_token` cookie 값을 읽어서 첨부(double-submit cookie). 이는 httpOnly가 아니므로 JS에서 읽힘.
+- **캐시**: `apiFetch`는 `cache: "no-store"`; BFF `/api/*`는 `Cache-Control: no-store` 응답.
 - **페이지네이션 표준** (모든 list GET):
   - 요청: `?limit=<1..100, default 50>&offset=<>=0, default 0>`. 서버가 `limit>100`은 100으로 clamp.
   - 응답: `{items: [...], total: N, limit: L, offset: O}`. UI는 `total`로 페이지 수 계산(offset 기반).

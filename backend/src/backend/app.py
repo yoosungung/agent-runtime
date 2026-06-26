@@ -146,6 +146,32 @@ class RateLimitMiddleware:
         await self._app(scope, receive, send)
 
 
+class ApiNoCacheMiddleware:
+    """Prevent browsers from disk-caching mutable /api/* JSON responses."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+        if not path.startswith("/api/"):
+            await self._app(scope, receive, send)
+            return
+
+        async def send_no_cache(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["Cache-Control"] = "no-store"
+                headers["Pragma"] = "no-cache"
+            await send(message)
+
+        await self._app(scope, receive, send_no_cache)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -243,6 +269,7 @@ app = FastAPI(title="admin-console-backend", lifespan=lifespan)
 # ---------------------------------------------------------------------------
 
 app.add_middleware(RateLimitMiddleware)  # type: ignore[arg-type]
+app.add_middleware(ApiNoCacheMiddleware)  # type: ignore[arg-type]
 app.add_middleware(BlockPublicBundleMiddleware)  # type: ignore[arg-type]
 
 # ---------------------------------------------------------------------------

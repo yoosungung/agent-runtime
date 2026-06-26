@@ -46,6 +46,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   const resp = await fetch(path, {
     ...init,
     credentials: "include",
+    cache: "no-store",
     headers,
   });
 

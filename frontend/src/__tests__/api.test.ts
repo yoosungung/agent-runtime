@@ -40,6 +40,7 @@ describe("apiFetch", () => {
 
     const [, init] = mockFetch.mock.calls[0];
     expect(init.credentials).toBe("include");
+    expect(init.cache).toBe("no-store");
   });
 
   it("throws on non-ok with detail field", async () => {
