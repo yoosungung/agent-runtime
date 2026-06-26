@@ -251,7 +251,6 @@ export function useRunPipelineSource(id: string) {
 }
 
 export interface PipelineRunsResponse extends PageResponse<PipelineRun> {
-  recent_documents: PipelineDocumentSummary[];
   argo_available: boolean;
 }
 

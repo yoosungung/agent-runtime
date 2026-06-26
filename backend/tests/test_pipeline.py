@@ -949,10 +949,6 @@ async def test_list_runs_filters_by_project_id(pipeline_client, monkeypatch):
         "backend.routers.pipeline.enrich_pipeline_runs_with_argo",
         AsyncMock(return_value=(mock_store.list_pipeline_runs.return_value, True)),
     )
-    monkeypatch.setattr(
-        "backend.routers.pipeline.list_documents_for_project",
-        lambda *_args, **_kwargs: [],
-    )
 
     resp = await client.get(
         "/api/pipeline/runs?project_id=550e8400-e29b-41d4-a716-446655440000",

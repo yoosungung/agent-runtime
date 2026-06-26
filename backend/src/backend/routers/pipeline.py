@@ -236,7 +236,6 @@ class TombstonesListResponse(BaseModel):
 
 class RunsListResponse(PaginatedResponse):
     items: list[dict[str, Any]]
-    recent_documents: list[dict[str, Any]]
     argo_available: bool = True
 
 
@@ -1121,22 +1120,11 @@ async def list_runs(
         store=store,
         tenant=tenant,
     )
-    if project_id:
-        docs = await asyncio.to_thread(
-            list_documents_for_project,
-            tenant,
-            project_id,
-            limit=20,
-            dsn=_path_graph_dsn(settings),
-        )
-    else:
-        docs = await asyncio.to_thread(store.list_documents_summary, tenant, limit=20)
     return RunsListResponse(
         items=runs,
         total=total,
         limit=limit,
         offset=offset,
-        recent_documents=docs,
         argo_available=argo_available,
     )
 

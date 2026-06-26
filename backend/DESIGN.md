@@ -154,7 +154,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/documents/{id}/purge` | `{reason?, hard_raw?}` |
 | `POST` | `/api/pipeline/documents/{id}/restore` | tombstone 해제 → pending |
 | `POST` | `/api/pipeline/documents/{id}/reingest` | compensation → pending |
-| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo 병합. `?project_id=` — `project_id`·ingest/graphrag run_kind 필터. `run_kind`·`project_id` 컬럼 포함 |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo 병합. `?project_id=` — `project_id`·ingest/graphrag run_kind 필터. 응답: 표준 페이지네이션 + `argo_available` (문서 목록은 `GET …/documents` 사용) |
 | `GET` | `/api/pipeline/dead-letters` | dead_letter documents (`?project_id=`) |
 
 도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3)만 전달 — inline `batch_manifest`는 빈 문자열(Argo `resolve-manifest`가 inline을 우선하므로). 로컬 dev Argo 미연결 시 run → 503.

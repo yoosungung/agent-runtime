@@ -41,7 +41,6 @@ describe("PipelineRunsPage", () => {
           },
         ],
         total: 1,
-        recent_documents: [],
         argo_available: true,
       },
     });
@@ -83,7 +82,6 @@ describe("PipelineRunsPage", () => {
           },
         ],
         total: 2,
-        recent_documents: [],
         argo_available: true,
       },
     });

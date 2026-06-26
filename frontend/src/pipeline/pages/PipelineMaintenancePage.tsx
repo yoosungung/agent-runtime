@@ -196,9 +196,9 @@ export function PipelineMaintenancePage() {
           </div>
         </section>
 
-        <section className="bg-white shadow rounded-lg p-4 border border-red-100 lg:col-span-2">
+        <section className="bg-white shadow rounded-lg p-4 border border-red-100">
           <h3 className="text-sm font-medium text-red-900 mb-2">Danger zone</h3>
-          <div className="space-y-3 max-w-xl">
+          <div className="space-y-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Purge source</label>
               <div className="flex gap-2">
