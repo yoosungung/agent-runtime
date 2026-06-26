@@ -107,7 +107,7 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 
 ## 컨테이너 이미지 (GHCR)
 
-- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:latest` (+ commit SHA tag)
+- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:latest` (+ commit SHA tag). base overlay의 모든 `Deployment`는 `imagePullPolicy: Always` — `:latest` rollout 시 노드 캐시를 쓰지 않는다.
 - **빌드**: GitHub Actions (`.github/workflows/build-images.yml`) — Release publish 또는 `workflow_dispatch`
 - **dev overlay**: base `agents-runtime/*` → GHCR remap, `imagePullSecrets: registry-creds` (private GHCR 시)
 
@@ -277,7 +277,7 @@ gh workflow run "Build and push images" --ref main
 gh run list --workflow=build-images.yml --limit=3
 gh run watch   # 최근 run ID 지정 시: gh run watch <run-id>
 
-# 4) 클러스터에 반영 (dev overlay는 :latest + imagePullPolicy: Always)
+# 4) 클러스터에 반영 (base: imagePullPolicy Always — rollout 시 GHCR :latest 재 pull)
 make k8s-rollout-restart
 # backend / agent pool만:
 kubectl -n runtime rollout restart deployment/backend \

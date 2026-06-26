@@ -26,6 +26,14 @@ resources:
   - hpa.yaml
   - keda.yaml
   - ingress.yaml
+patches:
+  # GHCR :latest is mutable — rollout must pull fresh layers, not reuse node cache.
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+    target:
+      kind: Deployment
 secretGenerator:
   - name: s3-creds
     envs:

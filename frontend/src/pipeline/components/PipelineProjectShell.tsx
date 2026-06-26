@@ -1,5 +1,8 @@
-import { Link, NavLink, Outlet, useParams } from "react-router-dom";
-import { usePipelineProject } from "../hooks/usePipeline";
+import { useEffect } from "react";
+import { Link, NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { usePipelineProject, usePipelineProjects } from "../hooks/usePipeline";
+import { useKnowledgeProjectContext } from "../../knowledge/context/KnowledgeProjectContext";
+import { pickFallbackProjectId } from "../../knowledge/reconcileProject";
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
   `px-4 py-2 text-sm border-b-2 -mb-px ${
@@ -10,18 +13,41 @@ const tabClass = ({ isActive }: { isActive: boolean }) =>
 
 export function PipelineProjectShell() {
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
+  const { setSelectedProjectId } = useKnowledgeProjectContext();
+  const { data: projectsData, isLoading: projectsLoading } = usePipelineProjects();
   const { data: project, isLoading, isError } = usePipelineProject(projectId);
+  const projects = projectsData?.items;
+
+  useEffect(() => {
+    if (!projectId || isLoading || projectsLoading) return;
+    if (project) return;
+
+    const fallback = pickFallbackProjectId(projectId, projects);
+    if (fallback && fallback !== projectId) {
+      setSelectedProjectId(fallback);
+      navigate(`/pipeline/projects/${fallback}/sources`, { replace: true });
+      return;
+    }
+
+    setSelectedProjectId(null);
+    navigate("/pipeline", { replace: true });
+  }, [
+    projectId,
+    project,
+    isLoading,
+    projectsLoading,
+    projects,
+    navigate,
+    setSelectedProjectId,
+  ]);
 
   if (!projectId) {
     return <p className="text-sm text-red-600">Missing project id.</p>;
   }
 
-  if (isLoading) {
+  if (isLoading || projectsLoading || isError || !project) {
     return <p className="text-sm text-gray-500">Loading…</p>;
-  }
-
-  if (isError || !project) {
-    return <p className="text-sm text-red-600">Project not found.</p>;
   }
 
   const base = `/pipeline/projects/${projectId}`;
