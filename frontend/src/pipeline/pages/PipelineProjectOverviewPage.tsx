@@ -78,6 +78,9 @@ export function PipelineProjectOverviewPage() {
               <dd className="font-mono text-xs">{binding.wiki.s3_prefix}</dd>
             </div>
           </dl>
+          <p className="mt-3 text-xs text-gray-500">
+            RAG ingest 완료 후 Runs 탭에서 Graph & Wiki를 빌드할 수 있습니다 (재실행 가능).
+          </p>
         </div>
       )}
 

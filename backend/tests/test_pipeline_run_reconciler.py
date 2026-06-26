@@ -49,6 +49,52 @@ async def test_reconcile_pipeline_runs_persists_terminal_runs():
 
 
 @pytest.mark.asyncio
+async def test_reconcile_applies_graphrag_success_on_terminal():
+    app = MagicMock()
+    app.state.settings = Settings(
+        PIPELINE_CONSOLE_ENABLED=True,
+        PATH_GRAPH_DSN="postgresql://localhost/test",
+    )
+
+    open_run = {
+        "tenant": "dev",
+        "id": "run-g",
+        "workflow_name": "graphrag-default-abc",
+        "batch_id": "batch-1",
+        "status": "submitted",
+        "run_kind": "graphrag",
+        "project_id": "550e8400-e29b-41d4-a716-446655440000",
+    }
+
+    store = MagicMock()
+    store.list_non_finalized_pipeline_runs.return_value = [open_run]
+
+    async def _status(**_kwargs):
+        return {
+            "phase": "Succeeded",
+            "started_at": "2026-06-26T12:00:01Z",
+            "ended_at": "2026-06-26T12:05:00Z",
+        }
+
+    with (
+        patch("backend.pipeline_run_reconciler.SourceStore", return_value=store),
+        patch("backend.pipeline_run_reconciler.get_workflow_status", side_effect=_status),
+        patch(
+            "backend.pipeline_run_reconciler._persist_terminal_run",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.pipeline_run_reconciler.apply_graphrag_after_terminal",
+            new=AsyncMock(),
+        ) as graphrag_mock,
+    ):
+        await reconcile_pipeline_runs_once(app)
+
+    graphrag_mock.assert_awaited_once()
+    assert graphrag_mock.await_args.kwargs["phase"] == "Succeeded"
+
+
+@pytest.mark.asyncio
 async def test_reconcile_pipeline_runs_skips_when_console_disabled():
     app = MagicMock()
     app.state.settings = Settings(PIPELINE_CONSOLE_ENABLED=False)

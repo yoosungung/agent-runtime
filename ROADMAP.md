@@ -2,6 +2,22 @@
 
 각 컴포넌트 `DESIGN.md`에서 수집한 미완료 항목. 세부 맥락은 해당 문서 및 [ARCHITECTURE.md](ARCHITECTURE.md) 참조.
 
+**path-graph 연동** 상세·번호는 [path-graph/ROADMAP.md](../path-graph/ROADMAP.md)가 정본. 아래는 agents-runtime 측만 요약.
+
+## path-graph · Knowledge Pipeline
+
+Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream·runtime 소비는 미착수.
+
+| # | 작업 | 상태 | path-graph ROADMAP |
+|---|---|---|---|
+| PG-1 | Console GraphRAG BFF + UI | [x] | path-graph 4.5.1–4.5.3 |
+| PG-2 | `source_meta.path_graph_project_id` 저장 + invoke 시 Knowledge Binding resolve | [ ] | 3.2.0 |
+| PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [ ] | 3.2.1 |
+| PG-4 | retrieval tool — Qdrant `rag.qdrant_collection` + `project_id` filter | [ ] | 3.2.0 |
+| PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [ ] | 4.4.4 |
+
+**권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 → PG-4 (Console에서 end-to-end 확인 후 agent 소비).
+
 ## 향후 계획
 
 ### Image 모드 Phase 2 (MVP 이후)

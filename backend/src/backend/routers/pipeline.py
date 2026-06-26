@@ -21,6 +21,12 @@ from path_graph.admin.lifecycle import (
     api_reingest_document,
     api_restore_document,
 )
+from path_graph.admin.downstream import (
+    DownstreamBusyError,
+    DownstreamValidationError,
+    assert_project_graphrag_idle,
+    prepare_graphrag_submission,
+)
 from path_graph.admin.projects import ProjectStore
 from path_graph.admin.runner import probe_source
 from path_graph.admin.sources import SourceStore
@@ -43,7 +49,7 @@ from path_graph.storage.blob import make_blob_store
 from pydantic import BaseModel, Field
 
 from backend.deps import check_csrf, get_settings, require_admin
-from backend.pipeline_argo import submit_collect_ingest_rag, submit_ingest_rag
+from backend.pipeline_argo import submit_collect_ingest_rag, submit_graphrag, submit_ingest_rag
 from backend.pipeline_cron import (
     delete_source_cron,
     reconcile_source_cron,
@@ -239,6 +245,19 @@ class PurgeDocumentRequest(BaseModel):
     hard_raw: bool = False
 
 
+class GraphragSubmitRequest(BaseModel):
+    batch_id: str
+
+
+class GraphragSubmitResponse(BaseModel):
+    batch_id: str
+    chunks_key: str
+    document_count: int
+    workflow_name: str
+    workflow_template: str
+    argo_uid: str
+
+
 class PurgeReasonRequest(BaseModel):
     reason: str | None = None
 
@@ -330,6 +349,8 @@ async def _submit_ingest_for_manifest(
         batch_id,
         "submitted",
         argo.get("argo_uid"),
+        project_id=profile.project_id,
+        run_kind="ingest",
     )
     return RunSourceResponse(
         batch_id=batch_id,
@@ -541,6 +562,72 @@ async def purge_project_endpoint(
     tenant = _require_tenant(principal)
     await _require_project(tenant, project_id, store)
     return await asyncio.to_thread(api_purge_project, tenant, project_id, reason=body.reason)
+
+
+@router.post("/projects/{project_id}/graphrag", status_code=202)
+async def submit_project_graphrag(
+    project_id: str,
+    body: GraphragSubmitRequest,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    project_store: ProjectStore = Depends(_project_store),  # noqa: B008
+    source_store: SourceStore = Depends(_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> GraphragSubmitResponse:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, project_store)
+    batch_id = body.batch_id.strip()
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+
+    dsn = _path_graph_dsn(settings)
+    try:
+        plan = await asyncio.to_thread(
+            prepare_graphrag_submission,
+            tenant,
+            project_id,
+            batch_id,
+            dsn=dsn,
+        )
+        await asyncio.to_thread(
+            assert_project_graphrag_idle,
+            source_store,
+            tenant,
+            project_id,
+            batch_id,
+        )
+    except DownstreamValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DownstreamBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    argo = await submit_graphrag(
+        settings=settings,
+        tenant=tenant,
+        project_id=plan.project_id,
+        project_slug=plan.project_slug,
+        batch_id=plan.batch_id,
+        chunks_key=plan.chunks_key,
+    )
+    run_id = str(uuid4())
+    await asyncio.to_thread(
+        source_store.insert_pipeline_run,
+        tenant,
+        run_id,
+        argo["workflow_name"],
+        batch_id,
+        "submitted",
+        argo.get("argo_uid"),
+        project_id=project_id,
+        run_kind="graphrag",
+    )
+    return GraphragSubmitResponse(
+        batch_id=plan.batch_id,
+        chunks_key=plan.chunks_key,
+        document_count=plan.document_count,
+        workflow_name=argo["workflow_name"],
+        workflow_template=settings.PATH_GRAPH_GRAPHRAG_WF_TEMPLATE,
+        argo_uid=argo["argo_uid"],
+    )
 
 
 @router.get("/sources", dependencies=[Depends(require_admin)])
@@ -760,6 +847,8 @@ async def run_source(
         batch_id,
         "submitted",
         argo.get("argo_uid"),
+        project_id=profile.project_id,
+        run_kind="ingest",
     )
     return RunSourceResponse(
         batch_id=batch_id,
@@ -1012,8 +1101,20 @@ async def list_runs(
 ) -> RunsListResponse:
     tenant = _require_tenant(principal)
     limit = _clamp_page_limit(limit)
-    total = await asyncio.to_thread(store.count_pipeline_runs, tenant)
-    runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit, offset)
+    if project_id:
+        total = await asyncio.to_thread(
+            store.count_pipeline_runs, tenant, project_id=project_id
+        )
+        runs = await asyncio.to_thread(
+            store.list_pipeline_runs,
+            tenant,
+            limit,
+            offset,
+            project_id=project_id,
+        )
+    else:
+        total = await asyncio.to_thread(store.count_pipeline_runs, tenant)
+        runs = await asyncio.to_thread(store.list_pipeline_runs, tenant, limit, offset)
     runs, argo_available = await enrich_pipeline_runs_with_argo(
         settings=settings,
         runs=runs,

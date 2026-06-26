@@ -37,6 +37,8 @@ export interface PipelineRun {
   status: string;
   started_at: string | null;
   ended_at: string | null;
+  project_id?: string | null;
+  run_kind?: string;
 }
 
 export interface SourceWorkflowStatus {
@@ -266,6 +268,28 @@ export function usePipelineRuns(
     queryKey: ["pipeline", "runs", projectId ?? "all", params ?? {}],
     queryFn: () =>
       apiJson<PipelineRunsResponse>(`/api/pipeline/runs${qs}`),
+  });
+}
+
+export function useSubmitProjectGraphrag(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: string) =>
+      apiJson<{
+        batch_id: string;
+        chunks_key: string;
+        document_count: number;
+        workflow_name: string;
+        workflow_template: string;
+        argo_uid: string;
+      }>(`/api/pipeline/projects/${projectId}/graphrag`, {
+        method: "POST",
+        body: JSON.stringify({ batch_id: batchId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs", projectId] });
+      qc.invalidateQueries({ queryKey: ["pipeline", "runs"] });
+    },
   });
 }
 

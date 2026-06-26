@@ -824,3 +824,142 @@ async def test_list_runs_pagination(pipeline_client, monkeypatch):
     assert len(data["items"]) == 1
     assert data["items"][0]["id"] == "run-2"
     mock_store.list_pipeline_runs.assert_called_once_with("dev", 25, 50)
+
+
+@pytest.mark.asyncio
+async def test_submit_project_graphrag_success(pipeline_client, monkeypatch):
+    from path_graph.admin.downstream import DownstreamBusyError, DownstreamValidationError
+    from unittest.mock import AsyncMock, MagicMock
+
+    client, mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = _project_obj()
+
+    plan = MagicMock(
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+        project_slug="default",
+        batch_id="20260101-120000",
+        chunks_key="chunks/dev/550e8400-e29b-41d4-a716-446655440000/20260101-120000/chunks.jsonl",
+        document_count=2,
+    )
+
+    monkeypatch.setattr(
+        "backend.routers.pipeline.prepare_graphrag_submission",
+        lambda *args, **kwargs: plan,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.assert_project_graphrag_idle",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.submit_graphrag",
+        AsyncMock(
+            return_value={"workflow_name": "graphrag-default-abc", "argo_uid": "uid-1"}
+        ),
+    )
+
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/graphrag",
+        headers=_csrf_headers(),
+        json={"batch_id": "20260101-120000"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["batch_id"] == "20260101-120000"
+    assert data["document_count"] == 2
+    assert data["workflow_name"] == "graphrag-default-abc"
+    assert data["workflow_template"] == "pipeline-graphrag"
+    mock_store.insert_pipeline_run.assert_called()
+    assert mock_store.insert_pipeline_run.call_args.kwargs.get("run_kind") == "graphrag"
+
+
+@pytest.mark.asyncio
+async def test_submit_project_graphrag_validation_error(pipeline_client, monkeypatch):
+    from path_graph.admin.downstream import DownstreamValidationError
+
+    client, _mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = _project_obj()
+
+    def _raise(*args, **kwargs):
+        raise DownstreamValidationError("no indexed_rag documents")
+
+    monkeypatch.setattr("backend.routers.pipeline.prepare_graphrag_submission", _raise)
+
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/graphrag",
+        headers=_csrf_headers(),
+        json={"batch_id": "bad-batch"},
+    )
+    assert resp.status_code == 400
+    assert "indexed_rag" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_submit_project_graphrag_busy(pipeline_client, monkeypatch):
+    from path_graph.admin.downstream import DownstreamBusyError
+    from unittest.mock import MagicMock
+
+    client, _mock_store, mock_project_store = pipeline_client
+    mock_project_store.get_project.return_value = _project_obj()
+
+    plan = MagicMock(
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+        project_slug="default",
+        batch_id="20260101-120000",
+        chunks_key="chunks/x",
+        document_count=1,
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.prepare_graphrag_submission",
+        lambda *args, **kwargs: plan,
+    )
+
+    def _busy(*args, **kwargs):
+        raise DownstreamBusyError("active workflow")
+
+    monkeypatch.setattr("backend.routers.pipeline.assert_project_graphrag_idle", _busy)
+
+    resp = await client.post(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/graphrag",
+        headers=_csrf_headers(),
+        json={"batch_id": "20260101-120000"},
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_list_runs_filters_by_project_id(pipeline_client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    client, mock_store, _mock_project_store = pipeline_client
+    mock_store.count_pipeline_runs.return_value = 1
+    mock_store.list_pipeline_runs.return_value = [
+        {
+            "id": "run-1",
+            "workflow_name": "graphrag-default-x",
+            "argo_uid": None,
+            "batch_id": "b1",
+            "status": "Succeeded",
+            "started_at": None,
+            "ended_at": None,
+            "project_id": "550e8400-e29b-41d4-a716-446655440000",
+            "run_kind": "graphrag",
+        }
+    ]
+    monkeypatch.setattr(
+        "backend.routers.pipeline.enrich_pipeline_runs_with_argo",
+        AsyncMock(return_value=(mock_store.list_pipeline_runs.return_value, True)),
+    )
+    monkeypatch.setattr(
+        "backend.routers.pipeline.list_documents_for_project",
+        lambda *_args, **_kwargs: [],
+    )
+
+    resp = await client.get(
+        "/api/pipeline/runs?project_id=550e8400-e29b-41d4-a716-446655440000",
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 200
+    mock_store.list_pipeline_runs.assert_called_once()
+    assert mock_store.list_pipeline_runs.call_args.kwargs["project_id"] == (
+        "550e8400-e29b-41d4-a716-446655440000"
+    )

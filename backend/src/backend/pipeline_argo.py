@@ -32,6 +32,13 @@ def _collect_generate_prefix(source_name: str) -> str:
     return f"collect-{slug}-"
 
 
+def _graphrag_generate_prefix(project_slug: str) -> str:
+    slug = re.sub(r"[^a-z0-9-]+", "-", project_slug.lower()).strip("-")
+    if not slug:
+        slug = "project"
+    return f"graphrag-{slug}-"
+
+
 def _workflow_body(
     *,
     settings: Settings,
@@ -39,14 +46,19 @@ def _workflow_body(
     template_name: str,
     source_name: str,
     parameters: list[dict[str, str]],
+    generate_prefix: str | None = None,
 ) -> dict[str, Any]:
+    if generate_prefix:
+        name_prefix = generate_prefix
+    elif template_name == settings.PATH_GRAPH_COLLECT_WF_TEMPLATE:
+        name_prefix = _collect_generate_prefix(source_name)
+    else:
+        name_prefix = _safe_generate_prefix(source_name)
     return {
         "apiVersion": f"{_ARGO_GROUP}/{_ARGO_VERSION}",
         "kind": "Workflow",
         "metadata": {
-            "generateName": _collect_generate_prefix(source_name)
-            if template_name == settings.PATH_GRAPH_COLLECT_WF_TEMPLATE
-            else _safe_generate_prefix(source_name),
+            "generateName": name_prefix,
             "namespace": settings.PATH_GRAPH_ARGO_NAMESPACE,
         },
         "spec": {
@@ -246,5 +258,52 @@ async def submit_collect_ingest_rag(
         template_name=settings.PATH_GRAPH_COLLECT_WF_TEMPLATE,
         source_name=source_name,
         parameters=parameters,
+    )
+    return await _submit_workflow(settings=settings, body=body)
+
+
+def graphrag_parameters(
+    *,
+    tenant: str,
+    project_id: str,
+    project_slug: str,
+    batch_id: str,
+    chunks_key: str,
+    skip_agent: bool = False,
+) -> list[dict[str, str]]:
+    return [
+        {"name": "tenant", "value": tenant},
+        {"name": "project_id", "value": project_id},
+        {"name": "project_slug", "value": project_slug},
+        {"name": "batch_id", "value": batch_id},
+        {"name": "chunks_key", "value": chunks_key},
+        {"name": "skip_agent", "value": "1" if skip_agent else "0"},
+    ]
+
+
+async def submit_graphrag(
+    *,
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+    project_slug: str,
+    batch_id: str,
+    chunks_key: str,
+) -> dict[str, str]:
+    """Submit pipeline-graphrag Workflow."""
+    parameters = graphrag_parameters(
+        tenant=tenant,
+        project_id=project_id,
+        project_slug=project_slug,
+        batch_id=batch_id,
+        chunks_key=chunks_key,
+    )
+    body = _workflow_body(
+        settings=settings,
+        tenant=tenant,
+        template_name=settings.PATH_GRAPH_GRAPHRAG_WF_TEMPLATE,
+        source_name=project_slug,
+        parameters=parameters,
+        generate_prefix=_graphrag_generate_prefix(project_slug),
     )
     return await _submit_workflow(settings=settings, body=body)
