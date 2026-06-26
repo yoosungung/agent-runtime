@@ -101,7 +101,7 @@
 | `POST` | `/api/users/{id}/access` | Postgres INSERT `(user_id, kind, name)` | 중복은 204(idempotent) |
 | `DELETE` | `/api/users/{id}/access` | Postgres DELETE by `(user_id, kind, name)` | 쿼리 파라미터로 `kind`, `name` |
 | `GET` | `/api/source-meta/{id}/access` | Postgres SELECT user_resource_access JOIN users (해당 리소스에 접근 가능한 user 목록) | 리소스 관점의 역조회 |
-| `GET` | `/api/audit` | Postgres SELECT from audit_log (향후 도입) | 감사 조회 (향후) |
+| `GET` | `/api/audit` | Postgres SELECT from audit_log | 감사 조회 (admin) |
 | `POST` | `/api/admin/custom-images` | Image 모드 agent/MCP 등록 (admin only) — slug 생성·검증 → `source_meta` INSERT (`status='pending'`) → K8s 4종 apply → ready 확인 → `status='active'` | 아래 "Custom Image 관리" |
 | `GET` | `/api/admin/custom-images` | Image 모드 목록 조회. `?kind=agent\|mcp` 필터 | |
 | `DELETE` | `/api/admin/custom-images/{kind}/{slug}` | `source_meta` retire + K8s 4종 삭제 | 204 |
@@ -138,6 +138,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |
 | `POST` | `/api/pipeline/projects/{id}/cleanup` | artifact cleanup (`{dry_run}`) |
 | `POST` | `/api/pipeline/projects/{id}/purge` | project purge (`{reason?}`) |
+| `POST` | `/api/pipeline/projects/{id}/graphrag` | **202** — GraphRAG WF (`{batch_id}`). ingest batch 재사용; active graphrag 시 409 |
 | `GET` | `/api/pipeline/sources` | sources (`?project_id=` 필터, 표준 페이지네이션) |
 | `POST` | `/api/pipeline/sources` | source 생성 (`project_id` 필수) |
 | `GET` | `/api/pipeline/sources/{id}` | 상세 |
@@ -153,10 +154,33 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/documents/{id}/purge` | `{reason?, hard_raw?}` |
 | `POST` | `/api/pipeline/documents/{id}/restore` | tombstone 해제 → pending |
 | `POST` | `/api/pipeline/documents/{id}/reingest` | compensation → pending |
-| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo Workflows `status`/`startedAt`/`finishedAt` 병합 + recent documents (`?project_id=`). 표준 페이지네이션; 정렬 `started_at DESC NULLS LAST`. `recent_documents`·`argo_available`는 부가 필드. terminal phase(`Succeeded`/`Failed`/`Error`) 확인 시 PG에 `status`/`started_at`/`ended_at` write-back(lazy persist). Workflow CR 삭제 후에는 PG 스냅샷 사용. Argo 미연결 시 PG 값, `argo_available: false` |
+| `GET` | `/api/pipeline/runs` | `pipeline_runs`(PG) + Argo 병합. `?project_id=` — `project_id`·ingest/graphrag run_kind 필터. `run_kind`·`project_id` 컬럼 포함 |
 | `GET` | `/api/pipeline/dead-letters` | dead_letter documents (`?project_id=`) |
 
 도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3)만 전달 — inline `batch_manifest`는 빈 문자열(Argo `resolve-manifest`가 inline을 우선하므로). 로컬 dev Argo 미연결 시 run → 503.
+
+**감사 (BFF 계층)** — state-changing mutation **성공** 시 Postgres `public.audit_log` + structured logger (`audit` logger). **Pipeline Console BFF 전용** — `PIPELINE_CONSOLE_ENABLED=false`이면 라우터·감사 훅 모두 미등록. 구현: `backend/pipeline_audit/` 패키지(라우트 래퍼 + Request context middleware). **`routers/pipeline.py`·`pipeline_credentials.py` 핸들러는 직접 수정하지 않음** — 향후 Pipeline BFF 분리 시 이 패키지만 이전 가능. action prefix `pipeline.*`, details에 `domain=pipeline` 고정. path-graph `purge_audit_log`(WF 단계 감사)와 **별 테이블·별 목적**.
+
+| action | 트리거 |
+|--------|--------|
+| `pipeline.project.create` | `POST /api/pipeline/projects` |
+| `pipeline.project.reconcile` | `POST …/projects/{id}/reconcile` |
+| `pipeline.project.cleanup` | `POST …/projects/{id}/cleanup` |
+| `pipeline.project.purge` | `POST …/projects/{id}/purge` |
+| `pipeline.project.graphrag` | `POST …/projects/{id}/graphrag` |
+| `pipeline.source.create` | `POST /api/pipeline/sources` |
+| `pipeline.source.update` | `PATCH …/sources/{id}` |
+| `pipeline.source.delete` | `DELETE …/sources/{id}` |
+| `pipeline.source.run` | `POST …/sources/{id}/run` |
+| `pipeline.source.upload` | `POST …/sources/{id}/upload` |
+| `pipeline.source.purge` | `POST …/sources/{id}/purge` |
+| `pipeline.source.ingest` | `POST …/sources/{id}/ingest` |
+| `pipeline.document.purge` | `POST …/documents/{id}/purge` |
+| `pipeline.document.restore` | `POST …/documents/{id}/restore` |
+| `pipeline.document.reingest` | `POST …/documents/{id}/reingest` |
+| `pipeline.credential.create` | `POST /api/pipeline/credentials` |
+| `pipeline.credential.delete` | `DELETE …/credentials/{id}` |
+| `pipeline.credential.secrets_put` | `PUT …/credentials/{id}/secrets` |
 
 **Bundle 모드 vs General vs Image 모드 분류**:
 - `POST /api/source-meta` / `POST /api/source-meta/bundle` — **bundle 모드** (entrypoint + bundle_uri 필수)

@@ -325,6 +325,13 @@ app.include_router(custom_images_router_module.router)  # /api/admin/custom-imag
 
 _settings = get_settings()
 if _settings.PIPELINE_CONSOLE_ENABLED:
+    from backend.pipeline_audit import install_pipeline_console_audit
+
+    install_pipeline_console_audit(
+        app,
+        pipeline_router_module.router,
+        pipeline_credentials_router_module.router,
+    )
     app.include_router(pipeline_router_module.router)  # /api/pipeline/*
     app.include_router(pipeline_credentials_router_module.router)
     app.include_router(pipeline_credentials_router_module.oauth_router)
