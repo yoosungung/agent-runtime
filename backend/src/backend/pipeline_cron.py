@@ -46,6 +46,13 @@ def cron_workflow_name(tenant: str, source_id: str) -> str:
     return name[:63].rstrip("-")
 
 
+def project_reconcile_cron_name(tenant: str, project_id: str) -> str:
+    slug = re.sub(r"[^a-z0-9-]+", "-", tenant.lower()).strip("-") or "tenant"
+    short_id = project_id.replace("-", "")[:12]
+    name = f"pg-reconcile-{slug}-{short_id}".lower()
+    return name[:63].rstrip("-")
+
+
 def build_cron_workflow_body(
     *,
     name: str,
@@ -85,6 +92,47 @@ def build_cron_workflow_body(
                         {"name": "batch_id", "value": ""},
                         {"name": "credential_secret", "value": credential_secret},
                         {"name": "rag", "value": "true"},
+                    ]
+                },
+            },
+        },
+    }
+
+
+def build_project_reconcile_cron_body(
+    *,
+    name: str,
+    namespace: str,
+    schedule: str,
+    template_name: str,
+    tenant: str,
+    project_id: str,
+) -> dict[str, Any]:
+    return {
+        "apiVersion": f"{_ARGO_GROUP}/{_ARGO_VERSION}",
+        "kind": "CronWorkflow",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "labels": {
+                "path-graph/managed-by": "backend",
+                "path-graph/tenant": tenant[:63],
+                "path-graph/project-id": project_id[:63],
+            },
+        },
+        "spec": {
+            "schedule": schedule,
+            "timezone": "UTC",
+            "suspend": False,
+            "concurrencyPolicy": "Forbid",
+            "startingDeadlineSeconds": 300,
+            "workflowSpec": {
+                "serviceAccountName": "path-graph-pipeline",
+                "workflowTemplateRef": {"name": template_name},
+                "arguments": {
+                    "parameters": [
+                        {"name": "tenant", "value": tenant},
+                        {"name": "project_id", "value": project_id},
                     ]
                 },
             },
@@ -214,4 +262,35 @@ async def delete_source_cron(*, settings: Settings, tenant: str, source_id: str)
     await _delete_cron_workflow(
         settings=settings,
         name=cron_workflow_name(tenant, source_id),
+    )
+
+
+async def reconcile_project_cron(
+    *,
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+) -> None:
+    """Create or update daily index-reconcile CronWorkflow for a project."""
+    schedule = validate_cron_schedule(settings.PATH_GRAPH_RECONCILE_CRON_SCHEDULE)
+    body = build_project_reconcile_cron_body(
+        name=project_reconcile_cron_name(tenant, project_id),
+        namespace=settings.PATH_GRAPH_ARGO_NAMESPACE,
+        schedule=schedule,
+        template_name=settings.PATH_GRAPH_RECONCILE_WF_TEMPLATE,
+        tenant=tenant,
+        project_id=project_id,
+    )
+    await _upsert_cron_workflow(settings=settings, body=body)
+
+
+async def delete_project_reconcile_cron(
+    *,
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+) -> None:
+    await _delete_cron_workflow(
+        settings=settings,
+        name=project_reconcile_cron_name(tenant, project_id),
     )

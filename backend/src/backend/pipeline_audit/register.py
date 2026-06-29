@@ -39,6 +39,8 @@ def _wrap_route(route: APIRoute) -> None:
         return
 
     original = route.endpoint
+    if getattr(original, "_pipeline_audit_wrapped", False):
+        return
 
     @wraps(original)
     async def audited_endpoint(*args: Any, **kwargs: Any) -> Any:
@@ -55,6 +57,8 @@ def _wrap_route(route: APIRoute) -> None:
         )
         await emit_pipeline_audit(request, principal, action, details)
         return result
+
+    audited_endpoint._pipeline_audit_wrapped = True  # type: ignore[attr-defined]
 
     route.endpoint = audited_endpoint
     route.app = route.get_route_handler()

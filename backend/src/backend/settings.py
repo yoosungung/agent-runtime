@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     PATH_GRAPH_GRAPHRAG_WF_TEMPLATE: str = "pipeline-graphrag"
     PATH_GRAPH_PURGE_PROJECT_WF_TEMPLATE: str = "pipeline-purge-project"
     PATH_GRAPH_DELETE_PROJECT_WF_TEMPLATE: str = "pipeline-delete-project"
+    PATH_GRAPH_RECONCILE_WF_TEMPLATE: str = "pipeline-reconcile-index"
+    PATH_GRAPH_RECONCILE_CRON_SCHEDULE: str = "0 3 * * *"
     PATH_GRAPH_WF_TEMPLATE: str = "pipeline-collect-ingest-rag"
     MAX_PIPELINE_RAW_UPLOAD_MB: int = 100
     PATH_GRAPH_CREDENTIAL_NAMESPACE: str = "path-graph"

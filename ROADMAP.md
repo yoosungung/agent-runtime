@@ -14,7 +14,7 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream·runtime 소비는 
 | PG-2 | `source_meta.path_graph_project_id` 저장 + invoke 시 Knowledge Binding resolve | [ ] | 3.2.0 |
 | PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [ ] | 3.2.1 |
 | PG-4 | retrieval tool — Qdrant `rag.qdrant_collection` + `project_id` filter | [ ] | 3.2.0 |
-| PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [ ] | 4.4.4 |
+| PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [x] | 4.4.4 — BFF `pg-reconcile-{tenant}-{project}` 일 1회 upsert; create/delete + startup bootstrap |
 
 **권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 → PG-4 (Console에서 end-to-end 확인 후 agent 소비).
 

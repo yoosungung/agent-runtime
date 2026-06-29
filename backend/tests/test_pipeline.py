@@ -189,8 +189,13 @@ async def test_list_projects(pipeline_client):
 
 
 @pytest.mark.asyncio
-async def test_create_project(pipeline_client):
+async def test_create_project(pipeline_client, monkeypatch):
+    from unittest.mock import AsyncMock
+
     client, _mock_store, mock_project_store = pipeline_client
+    sync_mock = AsyncMock()
+    monkeypatch.setattr("backend.routers.pipeline._sync_project_reconcile_cron", sync_mock)
+
     resp = await client.post(
         "/api/pipeline/projects",
         headers=_csrf_headers(),
@@ -199,6 +204,7 @@ async def test_create_project(pipeline_client):
     assert resp.status_code == 201
     assert resp.json()["slug"] == "default"
     mock_project_store.create_project.assert_called_once()
+    sync_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio

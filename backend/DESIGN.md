@@ -127,6 +127,8 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 **Sources** — `credential_id` 필수 권장. Test/Run은 credential Secret에서 토큰 resolve. `schedule_cron` 설정 시 BFF가 Argo `CronWorkflow` `pg-cron-{tenant}-{source}` reconcile.
 
+**Projects** — 생성 시 BFF가 Argo `CronWorkflow` `pg-reconcile-{tenant}-{project}` upsert (`pipeline-reconcile-index`, 기본 `PATH_GRAPH_RECONCILE_CRON_SCHEDULE=0 3 * * *` UTC). 삭제 제출 시 cron 삭제. backend startup bootstrap은 `ProjectStore.list_all_projects()`로 기존 project cron drift 보정.
+
 | Method | Path | 동작 |
 |--------|------|------|
 | `GET` | `/api/pipeline/projects` | project 목록 |

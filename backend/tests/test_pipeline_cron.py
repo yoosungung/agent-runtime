@@ -8,7 +8,9 @@ from fastapi import HTTPException
 
 from backend.pipeline_cron import (
     build_cron_workflow_body,
+    build_project_reconcile_cron_body,
     cron_workflow_name,
+    project_reconcile_cron_name,
     validate_cron_schedule,
 )
 
@@ -112,3 +114,78 @@ def test_validate_cron_schedule_http_error():
     with pytest.raises(HTTPException) as exc:
         validate_cron_schedule_or_http("bad cron")
     assert exc.value.status_code == 400
+
+
+def test_project_reconcile_cron_name_is_dns_safe():
+    name = project_reconcile_cron_name(
+        "dev", "550e8400-e29b-41d4-a716-446655440000"
+    )
+    assert name.startswith("pg-reconcile-dev-")
+    assert len(name) <= 63
+    assert re.fullmatch(r"[a-z0-9-]+", name)
+
+
+def test_build_project_reconcile_cron_body():
+    body = build_project_reconcile_cron_body(
+        name="pg-reconcile-dev-550e8400e29b",
+        namespace="path-graph",
+        schedule="0 3 * * *",
+        template_name="pipeline-reconcile-index",
+        tenant="dev",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+    )
+    assert body["kind"] == "CronWorkflow"
+    assert body["spec"]["schedule"] == "0 3 * * *"
+    params = {
+        p["name"]: p["value"]
+        for p in body["spec"]["workflowSpec"]["arguments"]["parameters"]
+    }
+    assert params["tenant"] == "dev"
+    assert params["project_id"] == "550e8400-e29b-41d4-a716-446655440000"
+    assert body["spec"]["workflowSpec"]["workflowTemplateRef"]["name"] == (
+        "pipeline-reconcile-index"
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_project_cron_upsert(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from backend.pipeline_cron import reconcile_project_cron
+    from backend.settings import Settings
+
+    upsert_mock = AsyncMock()
+    monkeypatch.setattr("backend.pipeline_cron._upsert_cron_workflow", upsert_mock)
+
+    settings = Settings(
+        PATH_GRAPH_ARGO_NAMESPACE="path-graph",
+        PATH_GRAPH_RECONCILE_WF_TEMPLATE="pipeline-reconcile-index",
+        PATH_GRAPH_RECONCILE_CRON_SCHEDULE="0 3 * * *",
+    )
+    await reconcile_project_cron(
+        settings=settings,
+        tenant="dev",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+    )
+    upsert_mock.assert_awaited_once()
+    body = upsert_mock.await_args.kwargs["body"]
+    assert body["spec"]["schedule"] == "0 3 * * *"
+
+
+@pytest.mark.asyncio
+async def test_delete_project_reconcile_cron(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from backend.pipeline_cron import delete_project_reconcile_cron
+    from backend.settings import Settings
+
+    delete_mock = AsyncMock()
+    monkeypatch.setattr("backend.pipeline_cron._delete_cron_workflow", delete_mock)
+
+    settings = Settings(PATH_GRAPH_ARGO_NAMESPACE="path-graph")
+    await delete_project_reconcile_cron(
+        settings=settings,
+        tenant="dev",
+        project_id="550e8400-e29b-41d4-a716-446655440000",
+    )
+    delete_mock.assert_awaited_once()

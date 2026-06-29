@@ -18,6 +18,7 @@ from backend.bootstrap import run_bootstrap
 from backend.bundle_serve_guard import BlockPublicBundleMiddleware
 from backend.bundle_storage import make_bundle_storage
 from backend.object_store_browser import make_object_store_browser
+from backend.pipeline_project_cron_bootstrap import bootstrap_project_reconcile_crons
 from backend.pipeline_run_reconciler import run_pipeline_run_reconciler
 from backend.pool_status import PoolRegistryMonitor
 from backend.reconciler import run_reconciler
@@ -224,6 +225,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pipeline_run_reconciler_task = None
     if settings.PIPELINE_CONSOLE_ENABLED:
         pipeline_run_reconciler_task = asyncio.create_task(run_pipeline_run_reconciler(app))
+        await bootstrap_project_reconcile_crons(app)
 
     pool_monitor = PoolRegistryMonitor(settings.REDIS_URL)
     await pool_monitor.start()

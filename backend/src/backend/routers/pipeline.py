@@ -60,7 +60,9 @@ from backend.pipeline_argo import (
     submit_purge_project,
 )
 from backend.pipeline_cron import (
+    delete_project_reconcile_cron,
     delete_source_cron,
+    reconcile_project_cron,
     reconcile_source_cron,
     validate_cron_schedule_or_http,
 )
@@ -496,6 +498,42 @@ async def _sync_source_cron(
     )
 
 
+async def _sync_project_reconcile_cron(
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+) -> None:
+    try:
+        await reconcile_project_cron(
+            settings=settings,
+            tenant=tenant,
+            project_id=project_id,
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "project_reconcile_cron.sync_failed",
+            extra={"tenant": tenant, "project_id": project_id, "status": exc.status_code},
+        )
+
+
+async def _delete_project_reconcile_cron_safe(
+    settings: Settings,
+    tenant: str,
+    project_id: str,
+) -> None:
+    try:
+        await delete_project_reconcile_cron(
+            settings=settings,
+            tenant=tenant,
+            project_id=project_id,
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "project_reconcile_cron.delete_failed",
+            extra={"tenant": tenant, "project_id": project_id, "status": exc.status_code},
+        )
+
+
 @router.get("/projects", dependencies=[Depends(require_admin)])
 async def list_projects(
     principal: Principal = Depends(require_admin),  # noqa: B008
@@ -511,6 +549,7 @@ async def create_project(
     body: ProjectCreateRequest,
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: ProjectStore = Depends(_project_store),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> ProjectResponse:
     tenant = _require_tenant(principal)
     create = ProjectCreate(name=body.name, slug=body.slug)
@@ -520,6 +559,7 @@ async def create_project(
         raise HTTPException(status_code=409, detail="Project slug already exists") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await _sync_project_reconcile_cron(settings, tenant, profile.id)
     return ProjectResponse.from_profile(profile)
 
 
@@ -662,6 +702,11 @@ async def delete_project_endpoint(
 ) -> ProjectLifecycleSubmitResponse:
     tenant = _require_tenant(principal)
     project = await _require_project(tenant, project_id, project_store)
+    await _delete_project_reconcile_cron_safe(
+        settings=settings,
+        tenant=tenant,
+        project_id=project.id,
+    )
     return await _submit_project_lifecycle(
         operation="delete",
         tenant=tenant,
