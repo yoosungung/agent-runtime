@@ -26,6 +26,7 @@ from backend.deps import (
 from backend.settings import Settings
 from runtime_common.config_schema import (
     GeneralAgentSourceConfig,
+    HermesGeneralSourceConfig,
     McpToolManifestEntry,
     UserMetaFormTemplate,
 )
@@ -53,7 +54,7 @@ router = APIRouter(
 
 
 def _ensure_can_read_source_meta(row: SourceMetaRow, principal: Principal) -> None:
-    if row.deploy_mode == "general":
+    if row.deploy_mode in ("general", "hermes_general"):
         if not can_use_general_agent(
             visibility=row.visibility,
             created_by_user_id=row.created_by_user_id,
@@ -69,7 +70,7 @@ def _ensure_can_read_source_meta(row: SourceMetaRow, principal: Principal) -> No
 
 
 def _ensure_can_write_source_meta(row: SourceMetaRow, principal: Principal) -> None:
-    if row.deploy_mode == "general":
+    if row.deploy_mode in ("general", "hermes_general"):
         if not can_manage_general_agent(
             created_by_user_id=row.created_by_user_id,
             principal_user_id=principal.user_id,
@@ -99,8 +100,8 @@ def _apply_role_list_filter(
 ):
     if role_at_least(principal.role, UserRole.DEVELOPER):
         return q, count_q
-    q = q.where(SourceMetaRow.deploy_mode == "general")
-    count_q = count_q.where(SourceMetaRow.deploy_mode == "general")
+    q = q.where(SourceMetaRow.deploy_mode.in_(("general", "hermes_general")))
+    count_q = count_q.where(SourceMetaRow.deploy_mode.in_(("general", "hermes_general")))
     visibility_filter = _general_visibility_filter(principal)
     q = q.where(visibility_filter)
     count_q = count_q.where(visibility_filter)
@@ -108,6 +109,7 @@ def _apply_role_list_filter(
 
 
 GENERAL_RUNTIME_POOL = "agent:compiled_graph"
+HERMES_RUNTIME_POOL = "agent:hermes"
 MAX_MCP_TOOLS = 32
 
 
@@ -166,8 +168,29 @@ def _build_general_config(
     return config
 
 
+def _build_hermes_config(
+    soul: str,
+    mcp_servers: list[str],
+    mcp_tools: list[McpToolManifestEntry],
+    *,
+    skills: list[str],
+    model: str,
+    extra_config: dict | None,
+) -> dict:
+    hermes = HermesGeneralSourceConfig(
+        soul=soul.strip(),
+        mcp_servers=mcp_servers,
+        mcp_tools=mcp_tools,
+        skills=skills,
+        model=model,
+    )
+    config = dict(extra_config or {})
+    config["hermes"] = hermes.model_dump()
+    return config
+
+
 VALID_KINDS = {"agent", "mcp"}
-VALID_DEPLOY_MODES = {"bundle", "general", "image"}
+VALID_DEPLOY_MODES = {"bundle", "general", "image", "hermes_general"}
 VALID_BUNDLE_RUNTIME_POOLS = {
     f"agent:{k}" for k in AgentRuntimeKind if k != AgentRuntimeKind.CUSTOM
 } | {f"mcp:{k}" for k in McpRuntimeKind if k != McpRuntimeKind.CUSTOM}
@@ -1189,3 +1212,127 @@ async def verify_bundle(
     if actual_hex == expected_hex:
         return {"verified": True, "checksum": actual_checksum}
     return {"verified": False, "error": "checksum mismatch"}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/source-meta/hermes-general  (Hermes profile agent — no bundle)
+# ---------------------------------------------------------------------------
+
+
+class HermesAgentCreateRequest(BaseModel):
+    name: str
+    version: str
+    soul: str
+    mcp_servers: list[str]
+    skills: list[str] = []
+    model: str = ""
+    config: dict = {}
+    visibility: str = GeneralVisibility.PRIVATE
+
+
+@router.post("/hermes-general", response_model=SourceMetaResponse, status_code=201)
+async def create_hermes_general_agent(
+    request: Request,
+    body: HermesAgentCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(get_principal),
+) -> SourceMetaResponse:
+    from hermes_base.vfs_profile import ProfileVfsSync
+
+    _validate_name(body.name)
+    _validate_version(body.version)
+    if not body.soul.strip():
+        raise HTTPException(status_code=400, detail="soul is required")
+    if not body.mcp_servers:
+        raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+
+    for server in body.mcp_servers:
+        if not principal.can_access("mcp", server):
+            raise HTTPException(
+                status_code=403,
+                detail=f"No access to MCP server '{server}'",
+            )
+
+    owner_tenant = await _resolve_creator_tenant(db, principal)
+    _validate_general_visibility(body.visibility, owner_tenant)
+
+    access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="access token required for MCP discovery")
+
+    mcp_tools = await _discover_mcp_tools(settings, access_token, body.mcp_servers)
+    config = _build_hermes_config(
+        body.soul,
+        body.mcp_servers,
+        mcp_tools,
+        skills=body.skills,
+        model=body.model,
+        extra_config=body.config,
+    )
+    _validate_config(config)
+
+    row = SourceMetaRow(
+        kind="agent",
+        name=body.name,
+        version=body.version,
+        runtime_pool=HERMES_RUNTIME_POOL,
+        entrypoint=None,
+        bundle_uri=None,
+        checksum=None,
+        sig_uri=None,
+        config=config,
+        retired=False,
+        deploy_mode="hermes_general",
+        image_uri=None,
+        image_digest=None,
+        slug=None,
+        status="active",
+        created_by_user_id=principal.user_id,
+        owner_tenant=owner_tenant,
+        visibility=body.visibility,
+    )
+    db.add(row)
+    db.add(
+        make_audit_row(
+            "source_meta.create_hermes_general",
+            principal.user_id,
+            principal.sub,
+            kind="agent",
+            name=body.name,
+            version=body.version,
+        )
+    )
+    try:
+        await db.flush()
+        vfs_store = getattr(request.app.state, "vfs_agent_store", None)
+        if vfs_store is None:
+            raise HTTPException(status_code=503, detail="VFS store not configured (set VFS_DSN)")
+        vfs_sync = ProfileVfsSync(vfs_store)
+        session_dsn = (settings.VFS_DSN or settings.POSTGRES_DSN or "").replace(
+            "postgresql+asyncpg://", "postgresql://"
+        )
+        await vfs_sync.seed_from_config(
+            body.name,
+            config,
+            session_dsn=session_dsn or None,
+        )
+        await db.commit()
+        await db.refresh(row)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"source_meta (kind=agent, name={body.name}, version={body.version}) already exists",
+        ) from exc
+
+    log_event(
+        "source_meta.create_hermes_general",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        source_meta_id=row.id,
+        name=body.name,
+        version=body.version,
+        mcp_tool_count=len(mcp_tools),
+    )
+    return _row_to_response(row)

@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "runtime-common",
+    "hermes-base",
     "argon2-cffi>=25.1.0",
     "python-multipart>=0.0.18",
     "aiofiles>=24.1",
@@ -21,6 +22,7 @@ dependencies = [
 
 [tool.uv.sources]
 path-graph = { path = "../../path-graph/pipeline", editable = true }
+hermes-base = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

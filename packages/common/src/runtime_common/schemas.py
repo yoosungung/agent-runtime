@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 class AgentRuntimeKind(StrEnum):
     COMPILED_GRAPH = "compiled_graph"
     ADK = "adk"
+    HERMES = "hermes"
     CUSTOM = "custom"  # image-mode marker — not used in bundle pool routing
 
 

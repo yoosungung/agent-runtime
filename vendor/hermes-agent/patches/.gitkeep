@@ -1,0 +1,2 @@
+# Patches applied in order by scripts/vendor-hermes.sh
+# Add *.patch files here (Phase 1: runtime-profile-scope)

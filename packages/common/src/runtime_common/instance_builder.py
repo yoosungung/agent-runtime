@@ -27,6 +27,8 @@ def source_instance_key(source: SourceMeta) -> str | None:
         return source.checksum
     if source.deploy_mode == "general":
         return f"general:{source.name}:{source.version}"
+    if source.deploy_mode == "hermes_general":
+        return f"hermes:{source.name}:{source.version}"
     return source.checksum
 
 

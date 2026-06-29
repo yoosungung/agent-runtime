@@ -12,6 +12,7 @@ members = [
     "services/auth",
     "services/deploy-api",
     "runtimes/agent-base",
+    "runtimes/hermes-base",
     "runtimes/mcp-base",
     "backend",
 ]

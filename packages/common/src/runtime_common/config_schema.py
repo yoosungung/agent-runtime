@@ -358,6 +358,27 @@ class GeneralAgentUserConfig(BaseModel):
     langgraph: LangGraphUserConfig | None = None
 
 
+class HermesMemoryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+
+
+class HermesGeneralSourceConfig(BaseModel):
+    """source_meta.config['hermes'] — Hermes profile agent (no bundle)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    soul: str = Field(..., min_length=1)
+    model: str = ""
+    mcp_servers: list[str] = Field(..., min_length=1)
+    mcp_tools: list[McpToolManifestEntry] = Field(default_factory=list)
+    enabled_toolsets: list[str] = Field(default_factory=lambda: ["web", "runtime_mcp"])
+    skills: list[str] = Field(default_factory=list)
+    memory: HermesMemoryConfig = Field(default_factory=HermesMemoryConfig)
+    max_iterations: int = Field(default=90, ge=1, le=200)
+
+
 # ── Root config models ────────────────────────────────────────────────────────
 
 
@@ -383,6 +404,7 @@ class SourceConfig(BaseModel):
     fastmcp: FastMcpSourceConfig = Field(default_factory=FastMcpSourceConfig)
     mcp: McpSdkSourceConfig = Field(default_factory=McpSdkSourceConfig)
     general: GeneralAgentSourceConfig | None = None
+    hermes: HermesGeneralSourceConfig | None = None
     email: EmailSourceConfig | None = None
     outlook: OutlookSourceConfig | None = None
     gmail: GmailSourceConfig | None = None

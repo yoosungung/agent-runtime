@@ -1,0 +1,88 @@
+# Example — agents-runtime deploy/k8s/base/agent-pool-hermes.yaml
+# Profile storage: Postgres VFS (VFS_DSN). No profile PVC.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-pool-hermes
+  namespace: runtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-pool
+      kind: hermes
+  template:
+    metadata:
+      labels:
+        app: agent-pool
+        kind: hermes
+        runtime/role: pool
+    spec:
+      serviceAccountName: agent-pool
+      containers:
+        - name: agent
+          image: ghcr.io/yoosungung/agent-runtime/hermes-base:__IMAGE_TAG__
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: runtime-env
+            - configMapRef:
+                name: runtime-infra
+                optional: true
+            - secretRef:
+                name: runtime-infra-secrets
+                optional: true
+          env:
+            - name: SERVICE_NAME
+              value: agent-pool-hermes
+            - name: RUNTIME_KIND
+              value: hermes
+            - name: HERMES_WORK_DIR
+              value: /var/cache/hermes-work
+            - name: VFS_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+            - name: HERMES_SESSION_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+            - name: VFS_PGBOUNCER
+              value: "true"
+            - name: MCP_GATEWAY_URL
+              value: http://envoy.runtime.svc.cluster.local:8080
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_PORT
+              value: "8080"
+            - name: MAX_CONCURRENT
+              value: "32"
+          volumeMounts:
+            - name: hermes-work
+              mountPath: /var/cache/hermes-work
+      volumes:
+        - name: hermes-work
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-pool-hermes
+  namespace: runtime
+spec:
+  selector:
+    app: agent-pool
+    kind: hermes
+  ports:
+    - port: 8080
+      targetPort: 8080
