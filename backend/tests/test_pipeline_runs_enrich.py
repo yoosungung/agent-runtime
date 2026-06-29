@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from backend.pipeline_helpers import enrich_pipeline_runs_with_argo, started_at_from_batch_id
+from backend.pipeline_helpers import (
+    enrich_pipeline_runs_with_argo,
+    sort_pipeline_runs_by_started,
+    started_at_from_batch_id,
+)
 from backend.settings import Settings
 
 
@@ -140,6 +144,42 @@ async def test_enrich_pipeline_runs_uses_pg_snapshot_when_workflow_deleted():
 def test_started_at_from_batch_id_parses_utc_timestamp():
     assert started_at_from_batch_id("20260626-015255") == "2026-06-26T01:52:55Z"
     assert started_at_from_batch_id("batch-old") is None
+
+
+def test_sort_pipeline_runs_by_started_desc():
+    runs = [
+        {"id": "a", "batch_id": "20260624-072131", "started_at": None},
+        {"id": "b", "batch_id": "20260626-120000", "started_at": "2026-06-26T12:00:01Z"},
+        {"id": "c", "batch_id": "batch-old", "started_at": None},
+    ]
+    sorted_runs = sort_pipeline_runs_by_started(runs)
+    assert [r["id"] for r in sorted_runs] == ["b", "a", "c"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_pipeline_runs_reorders_by_started():
+    runs = [
+        {
+            "id": "old",
+            "workflow_name": "ingest-old",
+            "batch_id": "20260624-072131",
+            "status": "Succeeded",
+            "started_at": None,
+        },
+        {
+            "id": "new",
+            "workflow_name": "ingest-new",
+            "batch_id": "20260626-120000",
+            "status": "Succeeded",
+            "started_at": None,
+        },
+    ]
+    enriched, argo_available = await enrich_pipeline_runs_with_argo(
+        settings=Settings(),
+        runs=runs,
+    )
+    assert argo_available is True
+    assert [r["id"] for r in enriched] == ["new", "old"]
 
 
 @pytest.mark.asyncio

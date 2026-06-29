@@ -484,7 +484,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 
 - 쿼리: `?limit=<1..100, default 50>&offset=<>=0, default 0>`. `limit>100`은 서버가 100으로 clamp(400 아님).
 - 응답: `{"items": [...], "total": N, "limit": L, "offset": O}`. `total`은 같은 filter의 전체 카운트(cursor가 아니라 offset 기반이라 cheap).
-- 정렬: list 별 기본값 고정 (source-meta: `created_at DESC`; users: `username ASC`; pipeline sources: `name ASC`; pipeline documents: `id DESC`; pipeline runs: `started_at DESC NULLS LAST, id DESC`). 오버라이드는 MVP에선 지원 X.
+- 정렬: list 별 기본값 고정 (source-meta: `created_at DESC`; users: `username ASC`; pipeline sources: `name ASC`; pipeline documents: `id DESC`; pipeline runs: effective `started_at` DESC — `COALESCE(started_at, batch_id→UTC timestamp when `YYYYMMDD-HHMMSS`) NULLS LAST, `id DESC`; Argo enrich 후 BFF가 동일 키로 재정렬). 오버라이드는 MVP에선 지원 X.
 
 ### 설정 (env)
 

@@ -59,6 +59,22 @@ def _apply_batch_started_fallback(run: dict[str, Any]) -> dict[str, Any]:
     return run
 
 
+def _effective_started_at(run: dict[str, Any]) -> str | None:
+    started = run.get("started_at")
+    if started:
+        return str(started)
+    return started_at_from_batch_id(str(run.get("batch_id") or ""))
+
+
+def sort_pipeline_runs_by_started(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sort runs by effective started time (most recent first)."""
+    return sorted(
+        runs,
+        key=lambda run: (_effective_started_at(run) or "", str(run.get("id") or "")),
+        reverse=True,
+    )
+
+
 async def get_source_workflow_status(
     *,
     settings: Settings,
@@ -253,7 +269,7 @@ async def enrich_pipeline_runs_with_argo(
         return _apply_batch_started_fallback(enriched)
 
     enriched_runs = await asyncio.gather(*(enrich_one(run) for run in runs))
-    return list(enriched_runs), argo_available
+    return sort_pipeline_runs_by_started(list(enriched_runs)), argo_available
 
 
 async def assert_source_workflow_idle(
