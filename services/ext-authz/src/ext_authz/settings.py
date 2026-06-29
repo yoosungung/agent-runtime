@@ -12,6 +12,9 @@ class Settings(BaseRuntimeSettings):
         default="http://agent-pool-compiled-graph.runtime.svc.cluster.local:8080"
     )
     pool_adk_url: str = Field(default="http://agent-pool-adk.runtime.svc.cluster.local:8080")
+    pool_hermes_url: str = Field(
+        default="http://agent-pool-hermes.runtime.svc.cluster.local:8080"
+    )
 
     # MCP pool service URLs.
     pool_fastmcp_url: str = Field(default="http://mcp-pool-fastmcp.runtime.svc.cluster.local:8080")
@@ -39,6 +42,7 @@ class Settings(BaseRuntimeSettings):
         return {
             "compiled_graph": self.pool_compiled_graph_url,
             "adk": self.pool_adk_url,
+            "hermes": self.pool_hermes_url,
         }.get(runtime_kind)
 
     def mcp_pool_url(self, runtime_kind: str) -> str | None:

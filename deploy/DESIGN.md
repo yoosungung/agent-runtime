@@ -101,7 +101,7 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
   - 메타데이터 DB: `postgres` StatefulSet + Service (PVC 5Gi). **auth / deploy-api만 접근.**
   - **Redis**: LangGraph 체크포인터 + ext-authz warm-registry 공용.
   - 서비스: `auth`, `deploy-api`, `ext-authz`, `envoy`, `backend`
-  - Agent pools (2 정적): `agent-pool-compiled-graph` / `-adk` — 동일한 `agent-base` 이미지(동일 `IMAGE_TAG`), `RUNTIME_KIND` env만 다름
+- Agent pools (3 정적): `agent-pool-compiled-graph` / `-adk` (`agent-base` 이미지) + `agent-pool-hermes` (`hermes-base`)
   - MCP pools (2 정적): `mcp-pool-fastmcp` / `-mcp-sdk` — 동일 패턴
   - **Image 모드 pool (동적)**: admin이 `POST /api/admin/custom-images` 호출 시 backend가 K8s API로 생성. 네이밍 규칙 `{kind}-pool-custom-{slug}`. 정적 kustomize 파일 없음. (`agent-pool-custom.yaml` / `mcp-pool-custom.yaml` 삭제됨)
 
@@ -259,7 +259,7 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 | `workflow_dispatch` | dev/stage 배포용 — **커밋 push 후** 수동 실행 (일반적) |
 | Release **published** | 태그 릴리스와 함께 빌드 |
 
-빌드 대상(6종): `backend`, `agent-base`, `mcp-base`, `auth`, `deploy-api`, `ext-authz`
+빌드 대상(7종): `backend`, `agent-base`, `mcp-base`, `hermes-base`, `auth`, `deploy-api`, `ext-authz`
 
 태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)
 

@@ -39,5 +39,9 @@ fi
 git -C "$VENDOR_SRC" rev-parse HEAD > "$REVISION_FILE"
 echo "hermes-agent @ $(cat "$REVISION_FILE")"
 
+if [[ "${HERMES_VENDOR_SKIP_INSTALL:-}" == "1" ]]; then
+  exit 0
+fi
+
 cd "$ROOT"
 uv pip install -e "$VENDOR_SRC"

@@ -1,5 +1,4 @@
-# Example — agents-runtime deploy/k8s/base/agent-pool-hermes.yaml
-# Profile storage: Postgres VFS (VFS_DSN). No profile PVC.
+# Hermes profile pool — VFS-backed profiles (no bundle PVC).
 
 apiVersion: apps/v1
 kind: Deployment
@@ -7,7 +6,7 @@ metadata:
   name: agent-pool-hermes
   namespace: runtime
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: agent-pool
@@ -22,7 +21,7 @@ spec:
       serviceAccountName: agent-pool
       containers:
         - name: agent
-          image: ghcr.io/yoosungung/agent-runtime/hermes-base:__IMAGE_TAG__
+          image: agents-runtime/hermes-base:latest
           ports:
             - containerPort: 8080
           envFrom:

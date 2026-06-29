@@ -28,6 +28,8 @@ jobs:
             image: mcp-base
           - dockerfile: backend/Dockerfile
             image: backend
+          - dockerfile: runtimes/hermes-base/Dockerfile
+            image: hermes-base
 
     steps:
       - uses: actions/checkout@v4

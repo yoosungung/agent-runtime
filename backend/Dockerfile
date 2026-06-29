@@ -22,6 +22,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
+COPY runtimes/hermes-base ./runtimes/hermes-base
 COPY backend/ ./backend/
 # backend pyproject path: ../../path-graph/pipeline → /path-graph/pipeline in this layout
 COPY path-graph/pipeline /path-graph/pipeline

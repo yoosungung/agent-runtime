@@ -20,3 +20,6 @@ images:
   - name: agents-runtime/backend
     newName: ghcr.io/yoosungung/agent-runtime/backend
     newTag: __IMAGE_TAG__
+  - name: agents-runtime/hermes-base
+    newName: ghcr.io/yoosungung/agent-runtime/hermes-base
+    newTag: __IMAGE_TAG__

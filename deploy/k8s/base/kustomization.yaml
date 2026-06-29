@@ -18,6 +18,7 @@ resources:
   - envoy.yaml
   - agent-pool-compiled-graph.yaml
   - agent-pool-adk.yaml
+  - agent-pool-hermes.yaml
   - mcp-pool-fastmcp.yaml
   - mcp-pool-mcp-sdk.yaml
   - network-policy.yaml

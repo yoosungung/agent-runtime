@@ -4,9 +4,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /usr/local/bin/
 
 WORKDIR /src
-COPY scripts/vendor-hermes.sh scripts/
-COPY scripts/prune-hermes-packages.sh scripts/
+COPY scripts/hermes/vendor-hermes.sh scripts/
+COPY scripts/hermes/prune-hermes-packages.sh scripts/
 COPY vendor/hermes-agent/patches vendor/hermes-agent/patches
+ENV HERMES_VENDOR_SKIP_INSTALL=1
 RUN mkdir -p vendor/hermes-agent && ./scripts/vendor-hermes.sh
 RUN ./scripts/prune-hermes-packages.sh /src/vendor/hermes-agent/src
 
@@ -24,7 +25,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
 COPY runtimes/hermes-base ./runtimes/hermes-base
-COPY scripts/prune-hermes-packages.sh scripts/
+COPY scripts/hermes/prune-hermes-packages.sh scripts/
 COPY --from=vendor /src/vendor/hermes-agent/src ./vendor/hermes-agent/src
 COPY --from=vendor /src/vendor/hermes-agent/REVISION ./vendor/hermes-agent/REVISION
 
