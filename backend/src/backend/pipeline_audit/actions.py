@@ -68,6 +68,11 @@ def _model_fields(obj: Any) -> dict[str, Any]:
         "argo_uid",
         "file_count",
         "uploaded",
+        "uploaded_count",
+        "skipped_count",
+        "items",
+        "status",
+        "purged_count",
         "skipped",
         "reason",
         "dry_run",
@@ -133,4 +138,40 @@ def build_audit_details(
     if ingest_ids and "document_ids" not in details:
         details["document_ids"] = list(ingest_ids)
 
-    return details
+    return _sanitize_audit_details(details, action)
+
+
+def _sanitize_audit_details(details: dict[str, Any], action: str) -> dict[str, Any]:
+    out = dict(details)
+
+    if action == "pipeline.source.upload":
+        items = out.pop("items", None)
+        if isinstance(items, list):
+            filenames = [
+                str(item.get("filename"))
+                for item in items
+                if isinstance(item, dict) and item.get("filename")
+            ]
+            if filenames:
+                out["filenames"] = filenames
+            status_counts: dict[str, int] = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                status = item.get("status")
+                if isinstance(status, str) and status:
+                    status_counts[status] = status_counts.get(status, 0) + 1
+            if status_counts:
+                out["status_counts"] = status_counts
+        uploaded_count = out.get("uploaded_count")
+        if isinstance(uploaded_count, int) and "file_count" not in out:
+            out["file_count"] = uploaded_count
+
+    if action in {
+        "pipeline.source.purge",
+        "pipeline.project.purge",
+        "pipeline.document.purge",
+    }:
+        out.pop("results", None)
+
+    return out

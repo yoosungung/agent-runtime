@@ -4,6 +4,7 @@ import { apiJson, type PageResponse } from "../lib/api";
 import { Paginator } from "../components/Paginator";
 import { useViewportPagination } from "../hooks/useViewportPagination";
 import { PageHeader } from "../components/PageHeader";
+import { formatAuditDetailKey, formatAuditDetailValue } from "../lib/formatAuditDetailValue";
 
 interface AuditLogEntry {
   id: number;
@@ -134,9 +135,9 @@ export function AuditLogPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500 font-mono text-xs break-all">
                         {Object.entries(entry.details).map(([k, v]) => (
-                          <span key={k} className="mr-2">
-                            <span className="text-gray-400">{k}:</span>
-                            <span className="ml-0.5">{String(v)}</span>
+                          <span key={k} className="mr-2 inline-block">
+                            <span className="text-gray-400">{formatAuditDetailKey(k)}:</span>
+                            <span className="ml-0.5">{formatAuditDetailValue(v)}</span>
                           </span>
                         ))}
                       </td>

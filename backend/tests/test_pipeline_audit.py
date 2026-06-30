@@ -65,6 +65,41 @@ def test_build_audit_details_redacts_credential_secrets():
     assert "secrets" not in details
 
 
+def test_build_audit_details_summarizes_upload_without_items():
+    result = SimpleNamespace(
+        items=[
+            {"filename": "a.pdf", "status": "uploaded"},
+            {"filename": "b.pdf", "status": "skipped", "reason": "duplicate"},
+        ],
+        uploaded_count=1,
+        skipped_count=1,
+    )
+    details = build_audit_details(
+        "pipeline.source.upload",
+        kwargs={"source_id": "src-1"},
+        result=result,
+        principal=_ADMIN_PRINCIPAL,
+    )
+    assert "items" not in details
+    assert details["filenames"] == ["a.pdf", "b.pdf"]
+    assert details["status_counts"] == {"uploaded": 1, "skipped": 1}
+    assert details["file_count"] == 1
+    assert details["source_id"] == "src-1"
+
+
+def test_build_audit_details_strips_purge_results():
+    details = build_audit_details(
+        "pipeline.source.purge",
+        kwargs={"source_id": "src-1", "body": SimpleNamespace(reason="cleanup")},
+        result={"status": "ok", "purged_count": 2, "results": [{"document_id": "d1"}]},
+        principal=_ADMIN_PRINCIPAL,
+    )
+    assert details["status"] == "ok"
+    assert details["purged_count"] == 2
+    assert details["reason"] == "cleanup"
+    assert "results" not in details
+
+
 @pytest_asyncio.fixture
 async def pipeline_audit_client(tmp_path, monkeypatch):
     from fastapi import FastAPI

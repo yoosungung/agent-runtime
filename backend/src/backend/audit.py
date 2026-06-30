@@ -53,3 +53,11 @@ def log_event(action: str, actor_id: int, actor: str, **kwargs: Any) -> None:
 
 def make_audit_row(action: str, actor_id: int, actor: str, **kwargs: Any) -> AuditLogRow:
     return AuditLogRow(action=action, actor_id=actor_id, actor=actor, details=kwargs)
+
+
+def audit_patch_details(update_data: dict[str, Any]) -> dict[str, str]:
+    """Scalar audit fields for source_meta PATCH — field names only, no values."""
+    keys = sorted(update_data.keys())
+    if not keys:
+        return {}
+    return {"changed": ", ".join(keys)}

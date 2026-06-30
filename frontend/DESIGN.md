@@ -120,9 +120,13 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 ### 주요 화면별 흐름
 
-**source_meta 리스트 (`/agents`, `/mcp-servers`)**
+**source_meta 리스트 (`/agents`, `/bundle/agents`, `/bundle/mcp`)**
 - `GET /api/source-meta?kind=agent&limit=50&offset=0` (표준 페이지네이션). TanStack Query로 캐시, 30s staleTime.
-- 열: `name`, `version`, `runtime_pool`, `checksum`(prefix 8자), `created_at`, `retired` 배지.
+- **Agent 목록**(general `/agents`, bundle `/bundle/agents`) 공통 tail 열: `chat_selectable`(헤더 **Chatable**) · `created_at` · `retired` 배지(**Status**). bundle agent는 deploy context가 이미 bundle이므로 **Mode** 열 없음.
+- general agent 열: `name`, `version`, `visibility`, Chatable, Created, Status.
+- bundle agent 열: `name`, `version`, `runtime_pool`, `checksum`(prefix 8자), Chatable, Created, Status.
+- bundle MCP 열: `name`, `version`, `runtime_pool`, `checksum`, Created, Status (Mode 없음).
+- **Container agent 리스트** (`/container/agents`): `name`, `version`, `slug`, `image_uri`, Chatable, Created, Status, Actions.
 - 필터: `name` prefix 검색(디바운스 300ms) + `retired` 토글.
 - 페이저: `total` 기준. 다음/이전 버튼 + 현재 페이지 표기.
 - row 클릭 → 상세. `+ 새로 등록` 버튼 → `/:kind/new`.
@@ -251,7 +255,7 @@ src/
     UserNewPage.tsx
     UserDetailPage.tsx               (PATCH 화이트리스트 + access 탭)
     MePage.tsx                       본인 비번 변경 + must_change_password 강제 모드
-    AuditLogPage.tsx                 (향후 /api/audit)
+    AuditLogPage.tsx                 GET /api/audit — details는 `lib/formatAuditDetailValue.ts`로 스칼라·배열·객체를 읽기 쉬운 문자열로 표시
     ChatPage.tsx                     agent 선택 + 메시지 + SSE 스트리밍
   components/
     Layout.tsx                       nav + sidebar

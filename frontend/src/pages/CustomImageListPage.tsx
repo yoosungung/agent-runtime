@@ -8,6 +8,7 @@ import {
 } from "../hooks/useCustomImages";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
+import { ChatSelectableBadge } from "../components/ChatSelectableBadge";
 import { listNewImageButtonLabel } from "../lib/uiLabels";
 
 interface Props {
@@ -45,6 +46,8 @@ export function CustomImageListPage({ kind, embedded = false }: Props) {
 
   const newPath =
     kind === "agent" ? "/container/agents/new" : "/container/mcp/new";
+  const showChatable = kind === "agent";
+  const tableColSpan = showChatable ? 8 : 7;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -88,8 +91,16 @@ export function CustomImageListPage({ kind, embedded = false }: Props) {
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr>
-                  {["Name", "Version", "Slug", "Image URI", "Status", "Created", "Actions"].map(
-                    (h) => (
+                  {[
+                    "Name",
+                    "Version",
+                    "Slug",
+                    "Image URI",
+                    ...(showChatable ? ["Chatable"] : []),
+                    "Created",
+                    "Status",
+                    "Actions",
+                  ].map((h) => (
                       <th
                         key={h}
                         className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
@@ -104,7 +115,7 @@ export function CustomImageListPage({ kind, embedded = false }: Props) {
                 {data?.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={tableColSpan}
                       className="px-4 py-8 text-sm text-gray-500 text-center"
                     >
                       No images registered.
@@ -128,11 +139,16 @@ export function CustomImageListPage({ kind, embedded = false }: Props) {
                     >
                       {item.image_uri}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      {statusBadge(item.status)}
-                    </td>
+                    {showChatable && (
+                      <td className="px-4 py-3 text-sm">
+                        <ChatSelectableBadge selectable={item.chat_selectable} />
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDate(item.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {statusBadge(item.status)}
                     </td>
                     <td className="px-4 py-3 text-sm flex flex-wrap gap-3">
                       {item.status === "active" && (

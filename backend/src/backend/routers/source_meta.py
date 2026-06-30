@@ -13,7 +13,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.audit import log_event, make_audit_row
+from backend.audit import audit_patch_details, log_event, make_audit_row
 from backend.bundle_storage import BundleStorage, bundle_path
 from backend.knowledge_validation import validate_knowledge_projects
 from backend.deps import (
@@ -840,8 +840,8 @@ async def patch_general_agent(
             "source_meta.patch_general",
             principal.user_id,
             principal.sub,
-            id=id,
-            changed_fields=list(update_data.keys()),
+            source_meta_id=id,
+            **audit_patch_details(update_data),
         )
     )
     await db.flush()
@@ -853,7 +853,7 @@ async def patch_general_agent(
         actor_id=principal.user_id,
         actor=principal.sub,
         source_meta_id=row.id,
-        changed_fields=list(update_data.keys()),
+        **audit_patch_details(update_data),
     )
     return _row_to_response(row)
 
@@ -1101,8 +1101,8 @@ async def patch_source_meta(
             "source_meta.patch",
             principal.user_id,
             principal.sub,
-            id=id,
-            changed_fields=list(update_data.keys()),
+            source_meta_id=id,
+            **audit_patch_details(update_data),
         )
     )
     await db.flush()
@@ -1113,8 +1113,8 @@ async def patch_source_meta(
         "source_meta.patch",
         actor_id=principal.user_id,
         actor=principal.sub,
-        id=id,
-        changed_fields=list(update_data.keys()),
+        source_meta_id=id,
+        **audit_patch_details(update_data),
     )
 
     return _row_to_response(row)

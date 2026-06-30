@@ -162,7 +162,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 도메인: editable dep `path-graph` (`path_graph.admin.*`, `path_graph.admin.lifecycle`). Argo: `pipeline_argo.py`. ingest WF는 `batch_manifest_key`(S3)만 전달 — inline `batch_manifest`는 빈 문자열(Argo `resolve-manifest`가 inline을 우선하므로). 로컬 dev Argo 미연결 시 run → 503.
 
-**감사 (BFF 계층)** — state-changing mutation **성공** 시 Postgres `public.audit_log` + structured logger (`audit` logger). **Pipeline Console BFF 전용** — `PIPELINE_CONSOLE_ENABLED=false`이면 라우터·감사 훅 모두 미등록. 구현: `backend/pipeline_audit/` 패키지(라우트 래퍼 + Request context middleware). **`routers/pipeline.py`·`pipeline_credentials.py` 핸들러는 직접 수정하지 않음** — 향후 Pipeline BFF 분리 시 이 패키지만 이전 가능. action prefix `pipeline.*`, details에 `domain=pipeline` 고정. path-graph `purge_audit_log`(WF 단계 감사)와 **별 테이블·별 목적**.
+**감사 (BFF 계층)** — state-changing mutation **성공** 시 Postgres `public.audit_log` + structured logger (`audit` logger). **Pipeline Console BFF 전용** — `PIPELINE_CONSOLE_ENABLED=false`이면 라우터·감사 훅 모두 미등록. 구현: `backend/pipeline_audit/` 패키지(라우트 래퍼 + Request context middleware). **`routers/pipeline.py`·`pipeline_credentials.py` 핸들러는 직접 수정하지 않음** — 향후 Pipeline BFF 분리 시 이 패키지만 이전 가능. action prefix `pipeline.*`, details에 `domain=pipeline` 고정. `build_audit_details`는 upload/purge 응답의 중첩 배열(`items`, `results`)을 제거하고 스칼라 요약(`uploaded_count`, `filenames`, `purged_count` 등)만 저장. path-graph `purge_audit_log`(WF 단계 감사)와 **별 테이블·별 목적**. `source_meta.patch*` details는 `source_meta_id` + 쉼표 구분 `changed` 문자열(필드명만, 값은 비저장).
 
 | action | 트리거 |
 |--------|--------|

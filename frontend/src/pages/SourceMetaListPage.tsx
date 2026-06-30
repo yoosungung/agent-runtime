@@ -6,6 +6,7 @@ import { useViewportPagination } from "../hooks/useViewportPagination";
 import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { PageHeader } from "../components/PageHeader";
+import { ChatSelectableBadge } from "../components/ChatSelectableBadge";
 import { listNewButtonLabel } from "../lib/uiLabels";
 
 interface Props {
@@ -69,6 +70,9 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
       : kind === "agent"
         ? "bundle agents"
         : "bundle MCP servers";
+  const showChatable = kind === "agent";
+  const tableColSpan =
+    deployMode === "general" ? 6 : showChatable ? 7 : 6;
 
   return (
     <div>
@@ -149,14 +153,14 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                         </th>
                       </>
                     )}
+                    {showChatable && (
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Chatable
+                      </th>
+                    )}
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Created
                     </th>
-                    {deployMode !== "general" && (
-                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Mode
-                      </th>
-                    )}
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Status
                     </th>
@@ -166,7 +170,7 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                   {data?.items.length === 0 && (
                     <tr>
                       <td
-                        colSpan={deployMode === "general" ? 6 : 7}
+                        colSpan={tableColSpan}
                         className="px-4 py-8 text-sm text-gray-500 text-center"
                       >
                         No {emptyLabel} found.
@@ -201,16 +205,14 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                           </td>
                         </>
                       )}
+                      {showChatable && (
+                        <td className="px-4 py-3 text-sm">
+                          <ChatSelectableBadge selectable={item.chat_selectable} />
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {formatDate(item.created_at)}
                       </td>
-                      {deployMode !== "general" && (
-                        <td className="px-4 py-3 text-sm">
-                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
-                            bundle
-                          </span>
-                        </td>
-                      )}
                       <td className="px-4 py-3 text-sm">
                         {item.retired ? (
                           <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-0.5 rounded">
