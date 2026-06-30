@@ -4,6 +4,7 @@ import { useSession } from "../hooks/useSession";
 import { useChangeSelfPassword } from "../hooks/useUsers";
 import { queryClient } from "../lib/queryClient";
 import { MyIntegrationsPanel } from "../components/MyIntegrationsPanel";
+import { MyApiKeysPanel } from "../components/MyApiKeysPanel";
 import { UserMetaEditDialog } from "../components/UserMetaEditDialog";
 
 export function MePage() {
@@ -176,6 +177,10 @@ export function MePage() {
               </button>
             </form>
           )}
+        </div>
+
+        <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
+          <MyApiKeysPanel />
         </div>
 
         <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
