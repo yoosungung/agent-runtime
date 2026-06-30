@@ -27,12 +27,17 @@ export interface MeUserMeta {
   updated_at: string | null;
 }
 
-export function useMyAccessResources(kind: "agent" | "mcp") {
+export function useMyAccessResources(
+  kind: "agent" | "mcp",
+  options?: { surface?: "chat" | "all" },
+) {
+  const surface = options?.surface;
+  const query = surface ? `&surface=${surface}` : "";
   return useQuery({
-    queryKey: ["me", "access-resources", kind],
+    queryKey: ["me", "access-resources", kind, surface ?? "all"],
     queryFn: () =>
       apiJson<{ items: AccessResource[]; total: number }>(
-        `/api/me/access-resources?kind=${kind}`,
+        `/api/me/access-resources?kind=${kind}${query}`,
       ),
   });
 }

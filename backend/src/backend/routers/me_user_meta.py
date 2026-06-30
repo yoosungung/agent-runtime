@@ -133,6 +133,7 @@ def _access_resources_for_kind(principal: Principal, kind: str) -> list[Resource
 @router.get("/access-resources", response_model=AccessResourceListResponse)
 async def list_access_resources(
     kind: str = Query(..., pattern="^(agent|mcp)$"),
+    surface: str | None = Query(None, pattern="^(chat|all)$"),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> AccessResourceListResponse:
@@ -143,6 +144,9 @@ async def list_access_resources(
         try:
             source = await _resolve_latest_source_meta(db, ref.kind, ref.name)
         except HTTPException:
+            continue
+
+        if kind == "agent" and surface == "chat" and not source.chat_selectable:
             continue
 
         um_result = await db.execute(

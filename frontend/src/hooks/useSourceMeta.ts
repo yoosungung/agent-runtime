@@ -91,8 +91,10 @@ export function useCreateGeneralAgent() {
       system_prompt: string;
       mcp_servers: string[];
       knowledge_project_ids?: string[];
+      delegate_agents?: string[];
       config?: Record<string, unknown>;
       visibility?: "private" | "tenant" | "public";
+      chat_selectable?: boolean;
     }) =>
       apiJson<SourceMeta>("/api/source-meta/general", {
         method: "POST",
@@ -111,8 +113,10 @@ export function usePatchGeneralAgent(id: number) {
       system_prompt?: string;
       mcp_servers?: string[];
       knowledge_project_ids?: string[];
+      delegate_agents?: string[];
       config?: Record<string, unknown>;
       visibility?: "private" | "tenant" | "public";
+      chat_selectable?: boolean;
     }) =>
       apiJson<SourceMeta>(`/api/source-meta/general/${id}`, {
         method: "PATCH",

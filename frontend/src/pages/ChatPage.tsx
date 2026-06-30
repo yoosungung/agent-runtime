@@ -171,7 +171,9 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const migrationStarted = useRef(false);
 
-  const { data: agentList, isLoading: agentsLoading } = useMyAccessResources("agent");
+  const { data: agentList, isLoading: agentsLoading } = useMyAccessResources("agent", {
+    surface: "chat",
+  });
   const { data: threadsData, isLoading: threadsLoading } = useChatThreads();
   const createThread = useCreateChatThread();
   const deleteThread = useDeleteChatThread();

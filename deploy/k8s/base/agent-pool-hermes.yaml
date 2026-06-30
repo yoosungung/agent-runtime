@@ -54,6 +54,8 @@ spec:
               value: "true"
             - name: MCP_GATEWAY_URL
               value: http://envoy.runtime.svc.cluster.local:8080
+            - name: AGENT_GATEWAY_URL
+              value: http://envoy.runtime.svc.cluster.local:8080
             - name: POD_NAME
               valueFrom:
                 fieldRef:

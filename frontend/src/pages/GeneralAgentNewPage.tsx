@@ -14,6 +14,8 @@ import {
 } from "../components/FormPageLayout";
 import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
+import { GeneralAgentDelegateAgentsField } from "../components/GeneralAgentDelegateAgentsField";
 import type { GeneralVisibility } from "../lib/generalVisibility";
 import { mcpSelectionRequiresKnowledge } from "../lib/knowledgePolicy";
 import {
@@ -33,10 +35,13 @@ export function GeneralAgentNewPage() {
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const [knowledgeProjectIds, setKnowledgeProjectIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<GeneralVisibility>("private");
+  const [chatSelectable, setChatSelectable] = useState(true);
+  const [delegateAgents, setDelegateAgents] = useState<string[]>([]);
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const { data: mcpAccess, isLoading: mcpLoading } = useMyAccessResources("mcp");
+  const { data: agentAccess, isLoading: agentLoading } = useMyAccessResources("agent");
   const createMut = useCreateGeneralAgent();
 
   const {
@@ -80,6 +85,8 @@ export function GeneralAgentNewPage() {
         mcp_servers: mcpServers,
         knowledge_project_ids: knowledgeProjectIds,
         visibility,
+        chat_selectable: chatSelectable,
+        delegate_agents: delegateAgents,
         config,
       });
       navigate(`/agents/${result.id}`);
@@ -144,6 +151,18 @@ export function GeneralAgentNewPage() {
             onChange={setVisibility}
           />
         </div>
+
+        <GeneralAgentChatSelectableField
+          checked={chatSelectable}
+          onChange={setChatSelectable}
+        />
+
+        <GeneralAgentDelegateAgentsField
+          agents={agentAccess?.items ?? []}
+          selected={delegateAgents}
+          onChange={setDelegateAgents}
+          loading={agentLoading}
+        />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

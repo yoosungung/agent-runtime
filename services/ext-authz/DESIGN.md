@@ -6,15 +6,16 @@ Envoy **HTTP ext_authz** 서비스. agent/mcp 통합 단일 서비스. 역할은
 2. **MCP 발견** — `GET /v1/mcp/servers`(인증+access 필터, ext-authz direct), `GET /v1/mcp/servers/{name}/catalog`(ext_authz check + Envoy → pool `/catalog`).
 3. **MCP stream auth** (`POST /v1/mcp/stream`) — Envoy ext_authz `check()`로 auth·pick 후 **Envoy가 pool `/mcp`로 relay**.
 
-`kind` (agent | mcp)과 grace_sec (edge 0 / internal `MCP_INTERNAL_GRACE_SEC`)은 요청 경로(`:path`)로 판정한다.
+`kind` (agent | mcp)과 grace_sec (edge 0 / internal `INTERNAL_GRACE_SEC`)은 요청 경로(`:path`)로 판정한다.
 
 ## 설계
 
-### check() — ext_authz 스케줄러 (`POST /v1/agents/invoke`, `POST /v1/mcp/invoke`, `POST /v1/mcp/invoke-internal`)
+### check() — ext_authz 스케줄러 (`POST /v1/agents/invoke`, `POST /v1/agents/invoke-internal`, `POST /v1/mcp/invoke`, `POST /v1/mcp/invoke-internal`)
 
 1. **경로 → `(kind, grace_sec)`**:
+   - `/v1/agents/invoke-internal` → (`agent`, `INTERNAL_GRACE_SEC`)  ← `/v1/agents/invoke`보다 먼저 매칭
    - `/v1/agents/invoke` → (`agent`, 0)
-   - `/v1/mcp/invoke-internal` → (`mcp`, `MCP_INTERNAL_GRACE_SEC`)  ← 순서 중요, `/invoke`보다 먼저 매칭
+   - `/v1/mcp/invoke-internal` → (`mcp`, `INTERNAL_GRACE_SEC`)  ← `/invoke`보다 먼저 매칭
    - `/v1/mcp/invoke` → (`mcp`, 0)
    - 그 외 → 403
 2. **JWT 추출 + 검증**: `Authorization: Bearer <jwt>`. `AuthClient.verify(token, grace_sec)` → `Principal`.
@@ -87,7 +88,8 @@ Lua 필터: `x-envoy-attempt-count > 1`이면 `:authority`를 `x-pod-fallback-ad
 | `pool_t2sql_url` | `http://mcp-pool-t2sql.runtime.svc.cluster.local:8080` | |
 | `runtime_namespace` | `runtime` | image 모드 Service DNS 생성 시 네임스페이스 |
 | `cluster_domain` | `cluster.local` | image 모드 Service DNS 클러스터 도메인 |
-| `mcp_internal_grace_sec` | `300` | `/v1/mcp/invoke-internal` grace 기간 |
+| `internal_grace_sec` | `300` | `/v1/mcp/invoke-internal`, `/v1/agents/invoke-internal` grace 기간 |
+| `mcp_internal_grace_sec` | `300` | (deprecated alias) `internal_grace_sec`와 동일 |
 | `rate_limit_per_principal` | `60` | /min |
 | `rate_limit_per_resource` | `120` | /min |
 | `auth_cache_ttl_sec` | `5` | AuthClient in-process verify 캐시 TTL |

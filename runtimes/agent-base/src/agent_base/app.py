@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from opentelemetry.metrics import Observation
 from pydantic import BaseModel
 
-from agent_base.context import reset_current_token, set_current_token
+from agent_base.context import reset_current_token, reset_delegate_depth, set_current_token, set_delegate_depth
 from agent_base.general_cache import get_or_build_general_agent
 from agent_base.http_client import close_mcp_http_client
 from agent_base.knowledge_context import reset_knowledge_bindings, setup_knowledge_bindings
@@ -171,6 +171,7 @@ async def invoke(
     authorization: Annotated[str | None, Header()] = None,
     x_principal: Annotated[str | None, Header()] = None,
     x_resolve: Annotated[str | None, Header()] = None,
+    x_runtime_delegate_depth: Annotated[str | None, Header(alias="X-Runtime-Delegate-Depth")] = None,
 ) -> dict | StreamingResponse:
     settings: Settings = app.state.settings
     counter: ActiveCounter = app.state.counter
@@ -192,9 +193,17 @@ async def invoke(
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
     tok_token = None
+    depth_token = None
     knowledge_token = None
+    delegate_depth = 0
+    if x_runtime_delegate_depth:
+        try:
+            delegate_depth = max(0, int(x_runtime_delegate_depth))
+        except ValueError:
+            delegate_depth = 0
     if not req.stream:
         tok_token = set_current_token(token)
+        depth_token = set_delegate_depth(delegate_depth)
 
     try:
         # Re-resolve: pool fetches meta itself (trust boundary at deploy-api)
@@ -257,6 +266,9 @@ async def invoke(
                     user_id=principal.user_id,
                     vfs_pool=vfs_pool,
                     mcp_gateway_url=settings.mcp_gateway_url,
+                    agent_gateway_url=settings.agent_gateway_url or settings.mcp_gateway_url,
+                    agent_delegate_timeout_sec=float(settings.agent_delegate_timeout_sec),
+                    max_delegate_depth=settings.max_delegate_depth,
                     principal_tenant=principal.tenant,
                     path_graph_dsn=pg_dsn,
                     wiki_s3_bucket=settings.wiki_s3_bucket,
@@ -280,6 +292,7 @@ async def invoke(
         if req.stream:
             async def _stream_with_counter():
                 set_current_token(token)
+                set_delegate_depth(delegate_depth)
                 with opik_trace_context(
                     name=f"agent:{req.agent}",
                     project_name=req.agent,
@@ -341,6 +354,8 @@ async def invoke(
             reset_knowledge_bindings(knowledge_token)
         if tok_token is not None:
             reset_current_token(tok_token)
+        if depth_token is not None:
+            reset_delegate_depth(depth_token)
 
 
 def get_current_token() -> str | None:

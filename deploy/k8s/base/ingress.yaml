@@ -31,8 +31,8 @@ spec:
           # Phase 2: agent + mcp invoke routes go through Envoy.
           # Envoy's HTTP ext_authz calls ext-authz for auth + access + resolve
           # + pod pick; the body is relayed by Envoy (C++) directly to the
-          # chosen pool pod. /v1/mcp/invoke-internal is intentionally kept
-          # off this public Ingress — internal callers dial the in-cluster
+          # chosen pool pod. /v1/mcp/invoke-internal and /v1/agents/invoke-internal are
+          # intentionally kept off this public Ingress — internal callers dial the
           # `envoy` Service directly.
           - path: /v1/agents/
             pathType: Prefix

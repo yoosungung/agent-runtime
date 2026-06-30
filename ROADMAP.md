@@ -18,6 +18,17 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream·runtime 소비는 
 
 **권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 → PG-4 (Console에서 end-to-end 확인 후 agent 소비).
 
+## Agent delegate invoke
+
+| # | 작업 | 상태 |
+|---|---|---|
+| AD-1 | `/v1/agents/invoke-internal` + ext-authz grace + `agent_base.agent_tools` | [x] |
+| AD-2 | `chat_selectable` + Chat access-resources 필터 | [x] |
+| AD-3 | `delegate_agents[]` config + 등록 ACL 검증 | [x] |
+| AD-4 | Hermes `agent_bridge` + bundle 예제 | [x] |
+
+**권장 순서**: AD-1 → AD-3 → AD-2 → AD-4.
+
 ## 향후 계획
 
 ### Image 모드 Phase 2 (MVP 이후)

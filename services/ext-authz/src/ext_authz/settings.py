@@ -24,8 +24,13 @@ class Settings(BaseRuntimeSettings):
     cluster_domain: str = Field(default="cluster.local")
     runtime_namespace: str = Field(default="runtime")
 
-    # Grace for mcp internal route — path-determined by ext_authz.
-    mcp_internal_grace_sec: int = Field(default=300)
+    # Grace for internal routes (mcp + agent invoke-internal) — path-determined by ext_authz.
+    internal_grace_sec: int = Field(default=300)
+    mcp_internal_grace_sec: int = Field(default=300)  # deprecated alias
+
+    @property
+    def agent_internal_grace_sec(self) -> int:
+        return self.internal_grace_sec
 
     # Rate limits (per-minute).
     rate_limit_per_principal: int = Field(default=60)

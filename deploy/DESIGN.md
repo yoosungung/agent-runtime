@@ -87,7 +87,7 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 | Pod-to-pod MCP (`MCP_GATEWAY_URL`) | `http://envoy.runtime.svc.cluster.local:8080` |
 | Backend legacy chat proxy (`ENVOY_URL`) | 동일 internal envoy ( `/api/chat/invoke` 전용) |
 
-`/v1/mcp/invoke-internal`은 공개 Ingress에 없음 — agent pool이 클러스터 내 envoy Service로 직접 호출.
+`/v1/mcp/invoke-internal`·`/v1/agents/invoke-internal`은 공개 Ingress에 없음 — agent pool이 클러스터 내 envoy Service로 직접 호출.
 
 각 pool은 동일 base image + 다른 `RUNTIME_KIND` env의 별도 `Deployment`.
 

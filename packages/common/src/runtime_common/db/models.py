@@ -170,6 +170,9 @@ class SourceMetaRow(Base):
     visibility: Mapped[str] = mapped_column(
         String(16), nullable=False, default="private", server_default="private"
     )
+    chat_selectable: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

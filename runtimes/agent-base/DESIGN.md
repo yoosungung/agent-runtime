@@ -9,6 +9,7 @@ Agent-Pool의 베이스 이미지. AWS Lambda와 유사하게 **같은 이미지
 ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/invoke` 시 `source.deploy_mode == 'general'`이면 `BundleLoader`를 건너뛰고 `agent_base.general_agent.build_general_agent()`를 호출한다.
 
 - **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`). `config.general.knowledge_project_ids[]`가 있으면 invoke마다 path-graph binding resolve 후 retrieval tool args에 collection/nebula_space/project_id를 서버가 덮어씀. 복수 project `search`는 parallel + RRF.
+- **Agent delegate**: `config.general.delegate_agents[]`에 등록된 agent를 LangChain tool로 래핑 → `POST {AGENT_GATEWAY_URL}/v1/agents/invoke-internal` (동일 JWT forward, `X-Runtime-Delegate-Depth`). depth ≥ 1인 invoke에서는 delegate tool 미노출. in-process DeepAgents `subagents`는 경량 위임으로 병행.
 - **VFS**: `CompositeBackend` — `/` → `StateBackend`, `/agent/` → `vfs_agent_files`, `/user/` → `vfs_user_files`, 선택 project의 `wiki.vfs_mount` → S3 prefix read-only backend (`WIKI_S3_BUCKET`). DSN: `VFS_DSN` / `PATH_GRAPH_DSN`.
 
 ## 설계
@@ -38,13 +39,13 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
 - **Postgres (VFS + session persistence)**: `VFS_DSN`, `CHECKPOINTER_DSN`, `SESSION_DB_DSN` env — deploy-api resolve는 여전히 HTTP only. checkpoint 테이블은 pod startup `AsyncPostgresSaver.setup()` 으로 auto-migrate.
 - **cold-start**: 첫 호출 시 번들 fetch + import 비용 발생. warm이면 resolve RTT + 해시 lookup만.
 
-### JWT forwarding (MCP 호출 시)
+### JWT forwarding (MCP·agent delegate 호출 시)
 
-factory가 리턴한 instance가 실행 중 Envoy `/v1/mcp/invoke-internal`로 tool 호출을 보낼 때 **사용자 JWT를 그대로 forward**. 서비스 간 별도 토큰을 발급하지 않는다.
+factory가 리턴한 instance가 실행 중 Envoy `*-internal`로 tool 호출을 보낼 때 **사용자 JWT를 그대로 forward**. 서비스 간 별도 토큰을 발급하지 않는다.
 
-- pool pod는 `/invoke` 진입 시 받은 `Authorization` 헤더를 **request-scoped**로 보관(LangGraph `config` 또는 contextvar)하고, MCP 호출 시점에 그대로 `Authorization: Bearer <same jwt>`로 재사용.
-- **내부 경로**를 호출: `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (엣지 경로 아님). 추가로 `X-Runtime-Caller: agent-pool` 헤더를 감사용으로 실음. pool Deployment만 NetworkPolicy로 이 경로에 도달 가능.
-- **grace period 기대**: 내부 경로이므로 ext-authz가 `AuthClient.verify(token, grace_sec=300)` 로 검증 → 한 턴이 LLM 스트리밍 + 다중 tool call로 토큰 TTL을 넘겨도 401 없이 완주.
+- pool pod는 `/invoke` 진입 시 받은 `Authorization` 헤더를 **request-scoped**로 보관(LangGraph `config` 또는 contextvar)하고, MCP·delegate 호출 시점에 그대로 `Authorization: Bearer <same jwt>`로 재사용.
+- **내부 경로**: `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal`, `POST {AGENT_GATEWAY_URL}/v1/agents/invoke-internal` (엣지 경로 아님). `X-Runtime-Caller: agent-pool` 감사 헤더. delegate는 `X-Runtime-Delegate-Depth`로 재귀 깊이 전달. pool Deployment만 NetworkPolicy로 이 경로에 도달 가능.
+- **grace period 기대**: 내부 경로이므로 ext-authz가 `AuthClient.verify(token, grace_sec=300)` 로 검증 → 한 턴이 LLM 스트리밍 + 다중 tool/delegate call로 토큰 TTL을 넘겨도 401 없이 완주.
 - **토큰 재발급 금지**: pool은 auth `/login`을 모르고 사용자 credential도 없다. 동일 JWT를 turn 범위 내에서만 재사용.
 - **다음 turn에서는 새 토큰**: user의 다음 `/v1/agents/invoke` 는 UI가 fresh 토큰으로 보냄. grace는 "한 turn 안에서만" 효과.
 

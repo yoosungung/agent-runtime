@@ -2214,3 +2214,83 @@ async def test_patch_general_tenant_visibility_uses_db_tenant(client: AsyncClien
     data = resp.json()
     assert data["visibility"] == "tenant"
     assert data["owner_tenant"] == "acme"
+
+
+@pytest.mark.asyncio
+async def test_me_access_resources_chat_surface_filters_non_selectable(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(
+        app.state,
+        {
+            "kind": "agent",
+            "name": "chat-visible",
+            "chat_selectable": True,
+        },
+    )
+    await _insert_source(
+        app.state,
+        {
+            "kind": "agent",
+            "name": "delegate-only",
+            "chat_selectable": False,
+        },
+    )
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "bob",
+        [
+            {"kind": "agent", "name": "chat-visible"},
+            {"kind": "agent", "name": "delegate-only"},
+        ],
+    )
+    try:
+        all_resp = await client.get(
+            "/api/me/access-resources",
+            params={"kind": "agent"},
+            headers=_csrf_headers(),
+        )
+        assert all_resp.status_code == 200
+        assert {i["name"] for i in all_resp.json()["items"]} == {
+            "chat-visible",
+            "delegate-only",
+        }
+
+        chat_resp = await client.get(
+            "/api/me/access-resources",
+            params={"kind": "agent", "surface": "chat"},
+            headers=_csrf_headers(),
+        )
+        assert chat_resp.status_code == 200
+        names = {i["name"] for i in chat_resp.json()["items"]}
+        assert names == {"chat-visible"}
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+
+@pytest.mark.asyncio
+async def test_create_general_agent_rejects_delegate_without_access(client: AsyncClient):
+    from backend.app import app
+
+    await _insert_source(app.state, {"kind": "mcp", "name": "search-server"})
+    prev = app.state.auth_client.verify.return_value
+    app.state.auth_client.verify.return_value = _user_principal(
+        "bob",
+        [{"kind": "mcp", "name": "search-server"}],
+    )
+    try:
+        resp = await client.post(
+            "/api/source-meta/general",
+            headers=_csrf_headers(),
+            json={
+                "name": "orchestrator",
+                "version": "v1",
+                "system_prompt": "You coordinate tasks.",
+                "mcp_servers": ["search-server"],
+                "delegate_agents": ["missing-agent"],
+            },
+        )
+        assert resp.status_code == 403
+        assert "missing-agent" in resp.json()["detail"]
+    finally:
+        app.state.auth_client.verify.return_value = prev

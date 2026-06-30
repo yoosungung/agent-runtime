@@ -30,6 +30,7 @@ Source config (``source_meta.config``):
         "checkpointer": "postgres"
       },
       "mcp_server": "search-server",
+      "delegate_agents": ["research-specialist"],
       "anthropic_api_key": "sk-ant-..."
     }
 
@@ -113,6 +114,18 @@ def build_agent(cfg: dict, secrets: SecretResolver) -> Any:
         return _stringify(result)
 
     tools = [think_tool, naver_search, fetch_url]
+
+    delegate_agents = cfg.get("delegate_agents") or []
+    if delegate_agents:
+        from agent_base.agent_tools import build_agent_delegate_tools
+
+        tools.extend(
+            build_agent_delegate_tools(
+                delegate_agents,
+                gateway_url=os.environ.get("AGENT_GATEWAY_URL", mcp_gateway_url),
+            )
+        )
+
     researcher = {
         "name": "researcher",
         "description": "Delegate one focused research topic to this subagent at a time.",

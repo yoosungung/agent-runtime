@@ -54,7 +54,8 @@ class _RouteMatch(NamedTuple):
 
 # Path → (kind, grace_mode, mode). Order matters: specific paths before prefixes.
 _ROUTE_TABLE: list[tuple[str, str, str, str]] = [
-    # grace_mode: "edge" → 0, "internal" → settings.mcp_internal_grace_sec
+    # grace_mode: "edge" → 0, "internal" → settings.internal_grace_sec
+    ("/v1/agents/invoke-internal", "agent", "internal", "invoke"),
     ("/v1/agents/invoke", "agent", "edge", "invoke"),
     ("/v1/mcp/invoke-internal", "mcp", "internal", "invoke"),
     ("/v1/mcp/stream", "mcp", "edge", "stream"),
@@ -78,7 +79,7 @@ def _match_route(path: str, settings: Settings) -> _RouteMatch | None:
         return _RouteMatch(kind="mcp", grace_sec=0, mode="catalog")
     for prefix, kind, grace_mode, mode in _ROUTE_TABLE:
         if path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?"):
-            grace = settings.mcp_internal_grace_sec if grace_mode == "internal" else 0
+            grace = settings.internal_grace_sec if grace_mode == "internal" else 0
             return _RouteMatch(kind=kind, grace_sec=grace, mode=mode)
     return None
 

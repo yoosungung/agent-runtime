@@ -30,6 +30,7 @@ from runtime_common.config_schema import (
     HermesGeneralSourceConfig,
     KnowledgePolicyConfig,
     McpToolManifestEntry,
+    SourceConfig,
     UserMetaFormTemplate,
 )
 from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow, UserRow
@@ -162,6 +163,8 @@ def _build_general_config(
     *,
     knowledge_project_ids: list[str] | None = None,
     mcp_requires_knowledge: list[str] | None = None,
+    delegate_agents: list[str] | None = None,
+    allow_agent_delegation: bool = True,
 ) -> dict:
     general = GeneralAgentSourceConfig(
         system_prompt=system_prompt,
@@ -169,6 +172,8 @@ def _build_general_config(
         mcp_tools=mcp_tools,
         knowledge_project_ids=knowledge_project_ids or [],
         mcp_requires_knowledge=mcp_requires_knowledge or [],
+        delegate_agents=delegate_agents or [],
+        allow_agent_delegation=allow_agent_delegation,
     )
     config = dict(extra_config or {})
     config["general"] = general.model_dump()
@@ -321,6 +326,15 @@ def _validate_config(config: dict | None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _validate_delegate_agents(principal: Principal, delegate_agents: list[str]) -> None:
+    for agent_name in delegate_agents:
+        if not principal.can_access("agent", agent_name):
+            raise HTTPException(
+                status_code=403,
+                detail=f"No access to delegate agent '{agent_name}'",
+            )
+
+
 def _validate_general_visibility(visibility: str, owner_tenant: str | None) -> None:
     if visibility not in {v.value for v in GeneralVisibility}:
         raise HTTPException(
@@ -368,6 +382,7 @@ class SourceMetaResponse(BaseModel):
     created_by_user_id: int | None = None
     owner_tenant: str | None = None
     visibility: str = GeneralVisibility.PRIVATE
+    chat_selectable: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -583,8 +598,10 @@ class GeneralAgentCreateRequest(BaseModel):
     system_prompt: str
     mcp_servers: list[str]
     knowledge_project_ids: list[str] = []
+    delegate_agents: list[str] = []
     config: dict = {}
     visibility: str = GeneralVisibility.PRIVATE
+    chat_selectable: bool = True
 
 
 @router.post("/general", response_model=SourceMetaResponse, status_code=201)
@@ -608,6 +625,8 @@ async def create_general_agent(
                 status_code=403,
                 detail=f"No access to MCP server '{server}'",
             )
+
+    _validate_delegate_agents(principal, body.delegate_agents)
 
     owner_tenant = await _resolve_creator_tenant(db, principal)
     _validate_general_visibility(body.visibility, owner_tenant)
@@ -635,6 +654,7 @@ async def create_general_agent(
         extra,
         knowledge_project_ids=body.knowledge_project_ids,
         mcp_requires_knowledge=mcp_requires_knowledge,
+        delegate_agents=body.delegate_agents,
     )
     _validate_config(config)
 
@@ -657,6 +677,7 @@ async def create_general_agent(
         created_by_user_id=principal.user_id,
         owner_tenant=owner_tenant,
         visibility=body.visibility,
+        chat_selectable=body.chat_selectable,
     )
     db.add(row)
     db.add(
@@ -696,8 +717,10 @@ class GeneralAgentPatchRequest(BaseModel):
     system_prompt: str | None = None
     mcp_servers: list[str] | None = None
     knowledge_project_ids: list[str] | None = None
+    delegate_agents: list[str] | None = None
     config: dict | None = None
     visibility: str | None = None
+    chat_selectable: bool | None = None
 
 
 @router.patch("/general/{id}", response_model=SourceMetaResponse)
@@ -728,6 +751,12 @@ async def patch_general_agent(
         if body.visibility == GeneralVisibility.TENANT:
             row.owner_tenant = owner_tenant
 
+    if body.chat_selectable is not None:
+        row.chat_selectable = body.chat_selectable
+
+    if body.delegate_agents is not None:
+        _validate_delegate_agents(principal, body.delegate_agents)
+
     if body.mcp_servers is not None:
         if not body.mcp_servers:
             raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
@@ -740,7 +769,13 @@ async def patch_general_agent(
 
     needs_config_rebuild = any(
         field in update_data
-        for field in ("system_prompt", "mcp_servers", "config", "knowledge_project_ids")
+        for field in (
+            "system_prompt",
+            "mcp_servers",
+            "config",
+            "knowledge_project_ids",
+            "delegate_agents",
+        )
     )
     if needs_config_rebuild or body.knowledge_project_ids is not None:
         general_cfg = row.config.get("general", {})
@@ -760,6 +795,11 @@ async def patch_general_agent(
             body.knowledge_project_ids
             if body.knowledge_project_ids is not None
             else general_cfg.get("knowledge_project_ids", [])
+        )
+        delegate_agents = (
+            body.delegate_agents
+            if body.delegate_agents is not None
+            else general_cfg.get("delegate_agents", [])
         )
 
         owner_tenant = await _resolve_creator_tenant(db, principal, fallback=row.owner_tenant)
@@ -788,6 +828,7 @@ async def patch_general_agent(
             extra_config,
             knowledge_project_ids=knowledge_project_ids,
             mcp_requires_knowledge=mcp_requires_knowledge,
+            delegate_agents=delegate_agents,
         )
         _validate_config(config)
         row.config = config
@@ -846,6 +887,11 @@ async def create_source_meta(
     _validate_entrypoint(body.entrypoint)
     _validate_checksum(body.checksum)
     _validate_config(body.config)
+    try:
+        root_cfg = SourceConfig.model_validate(body.config)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _validate_delegate_agents(principal, root_cfg.delegate_agents)
 
     # Validate URI scheme
     uri_lower = body.bundle_uri.lower()

@@ -16,6 +16,12 @@ class Settings(BaseRuntimeSettings):
         default="http://mcp-gateway.runtime.svc.cluster.local:8080",
         description="MCP gateway URL for internal tool calls",
     )
+    agent_gateway_url: str = Field(
+        default="",
+        description="Agent gateway URL for delegate calls. Falls back to MCP_GATEWAY_URL env.",
+    )
+    agent_delegate_timeout_sec: int = Field(default=60)
+    max_delegate_depth: int = Field(default=3)
     vfs_dsn: str = Field(
         default="",
         description="Postgres DSN for VFS tables (asyncpg). Empty = VFS disabled.",

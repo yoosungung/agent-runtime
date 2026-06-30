@@ -7,6 +7,7 @@ from typing import Any
 
 from deepagents import create_deep_agent
 
+from agent_base.agent_tools import build_agent_delegate_tools
 from agent_base.mcp_tools import build_mcp_tools
 from runtime_common.config_schema import GeneralAgentSourceConfig
 from runtime_common.knowledge import resolve_knowledge_bindings
@@ -83,6 +84,9 @@ def build_general_agent(
     user_store: UserVfsStore | None = None,
     vfs_pool: Any | None = None,
     mcp_gateway_url: str | None = None,
+    agent_gateway_url: str | None = None,
+    agent_delegate_timeout_sec: float = 60.0,
+    max_delegate_depth: int = 3,
     principal_tenant: str | None = None,
     path_graph_dsn: str | None = None,
     wiki_s3_bucket: str | None = None,
@@ -121,6 +125,17 @@ def build_general_agent(
         gateway_url=mcp_gateway_url,
         mcp_requires_knowledge=set(general.mcp_requires_knowledge),
     )
+    gateway = agent_gateway_url or mcp_gateway_url
+    if gateway and general.delegate_agents:
+        tools.extend(
+            build_agent_delegate_tools(
+                general.delegate_agents,
+                gateway_url=gateway,
+                allow_delegation=general.allow_agent_delegation,
+                max_depth=max_delegate_depth,
+                delegate_timeout_sec=agent_delegate_timeout_sec,
+            )
+        )
     checkpointer = build_checkpointer(cfg, secrets)
 
     return create_deep_agent(

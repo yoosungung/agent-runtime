@@ -6,7 +6,7 @@
 # - auth: agent-gateway + ext-authz + admin ingress
 # - pool egress: deploy-api, redis, postgres/pgbouncer (VFS), external
 # - envoy: external ingress via controller; routes pools directly.
-#   The /v1/mcp/invoke-internal path is exposed on the *same* listener; only
+#   The /v1/mcp/invoke-internal and /v1/agents/invoke-internal paths are exposed on the *same* listener; only
 #   agent-pod egress may reach Envoy on 8080, enforced below.
 # - ext-authz: only envoy may call on :8080; egress to auth/deploy-api/redis.
 
@@ -213,7 +213,7 @@ spec:
 ---
 # --- envoy (Phase 2) ---
 # Edge traffic from Ingress controller on 8080 is allowed (empty `from:`).
-# For the internal route /v1/mcp/invoke-internal, NetworkPolicy cannot match
+# For the internal routes /v1/mcp/invoke-internal and /v1/agents/invoke-internal, NetworkPolicy cannot match
 # on HTTP path — we guard at the caller level: agent-pool egress is the only
 # pod selector permitted to reach Envoy from within the cluster. External
 # clients (Ingress controller) can only reach edge paths because the Ingress

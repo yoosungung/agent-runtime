@@ -28,7 +28,9 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **`infra_meta` 및 `llm_presets`는 platform env registry**. LLM API key·Opik URL 등 플랫폼 공통 인프라. **write = admin backend**, **deploy-api `/v1/resolve`에 포함하지 않음**. secret plaintext는 Postgres에 저장하지 않고 K8s Secret에만 기록. pool pod container env(ConfigMap `runtime-infra` + Secret `runtime-infra-secrets`)로 전달 — factory cfg merge(source+user) 경로와 분리. 에이전트/MCP 번들은 `preset:NAME` 형식으로 등록된 LLM 프리셋을 참조하며, reconciler가 `LLM_PRESET_{NAME}_*` 환경 변수 및 시크릿으로 투영합니다. 프리셋 API key는 빌드(factory/build) 시점에 프로세스 환경변수(`os.environ`)에 바인딩(mutate)되므로, 동시 invoke 환경에서의 경합 방지를 위해 factory 호출 직후 즉시 클라이언트를 동기식으로 인스턴스화해야 합니다.
 - **LangGraph 체크포인터 기본은 Postgres** (`CHECKPOINTER_DSN`, VFS와 동일 DB). 대화 상태가 pod-local이 아니므로 session affinity 불필요. `checkpointer: none`/`redis` 등은 명시 override.
 - **데이터플레인은 Envoy(C++)**. ext-authz는 스케줄링·인가 결정만. 바디 릴레이·SSE 패스스루는 Envoy.
-- **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `/invoke-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
+- **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `*-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
+- **Agent delegate invoke (MCP internal 대칭)**: orchestrator agent-pool이 delegate agent를 호출할 때 `POST /v1/agents/invoke-internal` — payload는 엣지와 동일 `{agent, version?, input, session_id?, principal}`. 응답은 **동기 JSON** `{output}` (SSE 없음). delegate `session_id`는 부모 chat session과 분리(호출마다 ephemeral). ACL은 caller JWT `access[]` + orchestrator `config.delegate_agents[]` allowlist. 재귀 방지: `X-Runtime-Delegate-Depth` 헤더, 최대 깊이 3; depth ≥ 1이면 delegate tool 미노출.
+- **`source_meta.chat_selectable`**: Chat UI agent picker 노출 여부(기본 `true`). `false`여도 ACL에 있으면 invoke-internal delegate 호출 가능. visibility(누가 접근 가능)와 UI 노출을 분리한다. main/sub deploy_mode는 없다 — 동일 agent가 orchestrator·delegate 역할을 맥락에 따라 겸한다.
 - **scope 경계**: LLM/RAG는 scope 밖. **번들 object store 기본값은 in-cluster Garage(S3 호환)** — 배포 시 env/secret으로 외부 S3(NCP·AWS 등)로 대체 가능. 관리 콘솔 `frontend/`·`backend/`는 예외.
 
 ### 이것만은 하지 말 것
@@ -89,6 +91,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 [agent-pool pod] ──resolve──> [deploy-api]
      │ BundleLoader → factory(cfg, secrets) → runner
      │ (MCP tool 필요 시) ──> Envoy /v1/mcp/invoke-internal ──> [mcp-pool pod]
+     │ (delegate agent 필요 시) ──> Envoy /v1/agents/invoke-internal ──> [agent-pool pod]
      ▼
 [User/Chat UI]  ← SSE (agent-base emit; UI가 runtime_kind별 포맷 정규화)
 ```

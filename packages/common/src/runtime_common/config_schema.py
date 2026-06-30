@@ -373,6 +373,14 @@ class GeneralAgentSourceConfig(BaseModel):
         default=None,
         description="Optional deepagents subagent specs.",
     )
+    delegate_agents: list[str] = Field(
+        default_factory=list,
+        description="Platform agent names this orchestrator may invoke via invoke-internal.",
+    )
+    allow_agent_delegation: bool = Field(
+        default=True,
+        description="When false, delegate tools are not exposed at runtime.",
+    )
 
 
 class GeneralAgentUserConfig(BaseModel):
@@ -424,6 +432,14 @@ class SourceConfig(BaseModel):
 
     timeout_seconds: int = Field(default=60, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    delegate_agents: list[str] = Field(
+        default_factory=list,
+        description="Platform agent names this bundle may invoke via invoke-internal.",
+    )
+    allow_agent_delegation: bool = Field(
+        default=True,
+        description="When false, delegate tools are not exposed at runtime.",
+    )
 
     langgraph: LangGraphSourceConfig = Field(default_factory=LangGraphSourceConfig)
     adk: AdkSourceConfig = Field(default_factory=AdkSourceConfig)

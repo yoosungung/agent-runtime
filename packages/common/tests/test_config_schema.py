@@ -70,6 +70,21 @@ def test_general_agent_source_config_rejects_empty_mcp_servers():
         GeneralAgentSourceConfig(system_prompt="Hi", mcp_servers=[])
 
 
+def test_general_agent_source_config_delegate_agents():
+    cfg = GeneralAgentSourceConfig(
+        system_prompt="Hi",
+        mcp_servers=["x"],
+        delegate_agents=["researcher", "coder"],
+    )
+    assert cfg.delegate_agents == ["researcher", "coder"]
+    assert cfg.allow_agent_delegation is True
+
+
+def test_source_config_delegate_agents():
+    cfg = SourceConfig(delegate_agents=["helper"])
+    assert cfg.delegate_agents == ["helper"]
+
+
 def test_general_agent_source_config_knowledge_projects():
     cfg = GeneralAgentSourceConfig(
         system_prompt="Hi",

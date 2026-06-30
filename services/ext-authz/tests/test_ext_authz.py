@@ -179,7 +179,18 @@ def test_internal_path_uses_grace(client: TestClient) -> None:
         {"server": "rag", "tool": "t", "arguments": {}},
     )
     assert r.status_code == 200
-    assert fake_auth.last_grace_sec == 300  # default MCP_INTERNAL_GRACE_SEC
+    assert fake_auth.last_grace_sec == 300  # default INTERNAL_GRACE_SEC
+
+
+def test_agent_internal_path_uses_grace(client: TestClient) -> None:
+    fake_auth: _FakeAuth = app_module.app.state.auth
+    r = _post(
+        client,
+        "/v1/agents/invoke-internal",
+        {"agent": "hello", "input": {"message": "delegate task"}},
+    )
+    assert r.status_code == 200
+    assert fake_auth.last_grace_sec == 300
 
 
 def test_edge_path_no_grace(client: TestClient) -> None:
