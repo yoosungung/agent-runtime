@@ -20,6 +20,12 @@ vi.mock("../hooks/useMyApiKeys", () => ({
   }),
 }));
 
+const mockCopyToClipboard = vi.fn();
+
+vi.mock("../lib/copyToClipboard", () => ({
+  copyToClipboard: (...args: unknown[]) => mockCopyToClipboard(...args),
+}));
+
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -43,6 +49,7 @@ describe("MyApiKeysPanel", () => {
       key: "ak_1_secretvalue",
     });
     mockDisableMutateAsync.mockResolvedValue(undefined);
+    mockCopyToClipboard.mockResolvedValue(true);
   });
 
   it("shows empty state when no keys exist", () => {
@@ -65,8 +72,24 @@ describe("MyApiKeysPanel", () => {
       });
     });
 
-    expect(screen.getByText("ak_1_secretvalue")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("ak_1_secretvalue")).toBeInTheDocument();
     expect(screen.getByText(/copy this key now/i)).toBeInTheDocument();
+  });
+
+  it("copies created key via copyToClipboard helper", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole("button", { name: /create api key/i }));
+    await user.type(screen.getByLabelText(/name/i), "ci");
+    await user.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await user.click(screen.getByRole("button", { name: /^copy$/i }));
+
+    await waitFor(() => {
+      expect(mockCopyToClipboard).toHaveBeenCalledWith("ak_1_secretvalue");
+    });
+    expect(screen.getByRole("button", { name: /^copied$/i })).toBeInTheDocument();
   });
 
   it("revokes a key after confirmation", async () => {

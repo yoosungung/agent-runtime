@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { copyToClipboard } from "../lib/copyToClipboard";
 import {
   useCreateMyApiKey,
   useDisableMyApiKey,
@@ -50,6 +51,8 @@ export function MyApiKeysPanel() {
   const [revokeTarget, setRevokeTarget] = useState<ApiKeyListItem | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const keyInputRef = useRef<HTMLInputElement>(null);
 
   const items = data?.items ?? [];
 
@@ -98,6 +101,7 @@ export function MyApiKeysPanel() {
       setCreatedKeyName(created.name);
       setCreatedKey(created.key);
       setCopied(false);
+      setCopyError(false);
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : "Failed to create API key");
     }
@@ -116,12 +120,17 @@ export function MyApiKeysPanel() {
 
   async function handleCopy() {
     if (!createdKey) return;
-    try {
-      await navigator.clipboard.writeText(createdKey);
-      setCopied(true);
-    } catch {
-      setCopied(false);
+    const ok = await copyToClipboard(createdKey);
+    setCopied(ok);
+    setCopyError(!ok);
+    if (!ok) {
+      keyInputRef.current?.focus();
+      keyInputRef.current?.select();
     }
+  }
+
+  function handleKeyInputFocus() {
+    keyInputRef.current?.select();
   }
 
   return (
@@ -295,9 +304,15 @@ export function MyApiKeysPanel() {
             </p>
             <p className="text-xs text-gray-500 mb-1">{createdKeyName}</p>
             <div className="flex gap-2 items-stretch">
-              <code className="flex-1 text-sm bg-gray-100 border border-gray-200 rounded px-3 py-2 break-all">
-                {createdKey}
-              </code>
+              <input
+                ref={keyInputRef}
+                type="text"
+                readOnly
+                value={createdKey}
+                onFocus={handleKeyInputFocus}
+                className="flex-1 text-sm font-mono bg-gray-100 border border-gray-200 rounded px-3 py-2 break-all"
+                aria-label="API key"
+              />
               <button
                 type="button"
                 onClick={handleCopy}
@@ -306,6 +321,11 @@ export function MyApiKeysPanel() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
+            {copyError && (
+              <p className="text-xs text-amber-700 mt-2">
+                Automatic copy failed — key is selected; press Ctrl+C (Cmd+C on Mac).
+              </p>
+            )}
             <div className="flex justify-end mt-6">
               <button
                 type="button"
@@ -313,6 +333,7 @@ export function MyApiKeysPanel() {
                   setCreatedKey(null);
                   setCreatedKeyName("");
                   setCopied(false);
+                  setCopyError(false);
                 }}
                 className="px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
               >

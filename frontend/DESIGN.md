@@ -153,7 +153,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 **본인 프로필 (`/me`)**
 - Account Info + Change Password (2열) + **API Keys** + **Integrations** (전체 너비, 순서대로).
-- **API Keys** — `GET|POST|DELETE /api/me/api-keys`. 목록(이름·생성·만료·상태) + 발급 다이얼로그(`name`, 선택 `expires_in_days`) + 폐기(confirm). plain key(`ak_…`)는 **생성 응답 1회만** 표시·복사 UI; 이후 목록에는 해시·plaintext 없음. path-graph 등 장기 invoke용(`PIPELINE_AGENT_ACCESS_TOKEN`) — agent/MCP `user_resource_access`는 별도 grant.
+- **API Keys** — `GET|POST|DELETE /api/me/api-keys`. 목록(이름·생성·만료·상태) + 발급 다이얼로그(`name`, 선택 `expires_in_days`) + 폐기(confirm). plain key(`ak_…`)는 **생성 응답 1회만** 표시·복사 UI; 이후 목록에는 해시·plaintext 없음. 복사는 `lib/copyToClipboard.ts`(Clipboard API → `execCommand` fallback — dev HTTP Ingress 대응). path-graph 등 장기 invoke용(`PIPELINE_AGENT_ACCESS_TOKEN`) — agent/MCP `user_resource_access`는 별도 grant.
 - **Integrations** — Agent → MCP 탭. `user_meta_required`인 리소스만 표시.
 - `GET /api/me/access-resources?kind=` — JWT `Principal.access` 기준 목록.
 - user-meta 편집: `/me/user-meta/:kind/:name` — **모달**로 열림 (URL·뒤로가기 지원). template + 본인 config.
