@@ -594,6 +594,25 @@ class TestUserBoundApiKeys:
             session.add(UserResourceAccessRow(user_id=user_id, kind=kind, name=name))
             await session.commit()
 
+    async def test_admin_create_logs_with_info_level(self, db_client):
+        """Regression: LogRecord reserves 'name' — extra must not use it."""
+        import logging
+
+        from runtime_common.db.models import UserRow
+
+        client, sf = db_client
+        await _create_user_in_db(sf, "dave", "pass1234!")
+        async with sf() as session:
+            result = await session.execute(select(UserRow).where(UserRow.username == "dave"))
+            user = result.scalar_one()
+
+        logging.disable(logging.NOTSET)
+        create = await client.post(
+            "/v1/admin/api-keys",
+            json={"user_id": user.id, "name": "dev"},
+        )
+        assert create.status_code == 201
+
     async def test_admin_create_and_verify_returns_user_principal(self, db_client):
         from runtime_common.db.models import UserRow
 

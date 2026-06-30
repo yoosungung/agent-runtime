@@ -128,7 +128,7 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request) -> dict:
     plain_key = f"ak_{row_id}_{secret}"
     logger.info(
         "api_key_created",
-        extra={"name": req.name, "id": row_id, "user_id": req.user_id},
+        extra={"key_name": req.name, "key_id": row_id, "user_id": req.user_id},
     )
     return {"key": plain_key, "id": row_id, "name": req.name}
 
