@@ -3,6 +3,7 @@ import type { GeneralVisibility } from "./generalVisibility";
 interface GeneralConfig {
   system_prompt?: string;
   mcp_servers?: string[];
+  knowledge_project_ids?: string[];
 }
 
 export function readGeneralConfig(
@@ -18,6 +19,9 @@ export function readGeneralConfig(
       typeof g.system_prompt === "string" ? g.system_prompt : undefined,
     mcp_servers: Array.isArray(g.mcp_servers)
       ? g.mcp_servers.filter((s): s is string => typeof s === "string")
+      : undefined,
+    knowledge_project_ids: Array.isArray(g.knowledge_project_ids)
+      ? g.knowledge_project_ids.filter((s): s is string => typeof s === "string")
       : undefined,
   };
 }

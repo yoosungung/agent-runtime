@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent_base.general_agent import build_general_agent
+from agent_base.knowledge_context import reset_knowledge_bindings, setup_knowledge_bindings
 from runtime_common.factory import merge_configs
 from runtime_common.instance_builder import source_instance_key
 from runtime_common.instance_cache import InstanceCache, make_instance_key
@@ -23,12 +24,15 @@ async def get_or_build_general_agent(
     user_id: int,
     vfs_pool: Any,
     mcp_gateway_url: str | None,
+    principal_tenant: str | None = None,
+    path_graph_dsn: str | None = None,
+    wiki_s3_bucket: str | None = None,
 ) -> object:
     """Build or reuse a cached general-tier DeepAgents graph."""
     cfg = merge_configs(source.config, user.config if user else None)
     key = make_instance_key(
         source_instance_key(source),
-        str(user_id),
+        f"{user_id}:{principal_tenant or ''}",
         user.updated_at if user else None,
     )
 
@@ -41,6 +45,9 @@ async def get_or_build_general_agent(
             user_id=user_id,
             vfs_pool=vfs_pool,
             mcp_gateway_url=mcp_gateway_url,
+            principal_tenant=principal_tenant,
+            path_graph_dsn=path_graph_dsn,
+            wiki_s3_bucket=wiki_s3_bucket,
         )
 
     return await cache.get_or_build(key, builder)

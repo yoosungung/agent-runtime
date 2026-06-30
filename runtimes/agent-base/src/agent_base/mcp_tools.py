@@ -11,6 +11,12 @@ from pydantic import BaseModel, Field, create_model
 
 from agent_base.context import get_current_token
 from agent_base.http_client import get_mcp_http_client
+from agent_base.knowledge_context import get_current_bindings
+from runtime_common.knowledge import (
+    KnowledgeScopeError,
+    ensure_bindings_for_server,
+    invoke_scoped_retrieval,
+)
 
 
 async def _call_mcp(
@@ -58,9 +64,11 @@ def build_mcp_tools(
     mcp_tools: list[dict[str, str]],
     *,
     gateway_url: str | None = None,
+    mcp_requires_knowledge: set[str] | None = None,
 ) -> list[StructuredTool]:
     """Build LangChain tools from cached MCP tool manifest."""
     gateway = gateway_url or os.environ["MCP_GATEWAY_URL"]
+    requires_knowledge = mcp_requires_knowledge or set()
     tools: list[StructuredTool] = []
 
     for entry in mcp_tools:
@@ -68,15 +76,44 @@ def build_mcp_tools(
         name = entry["name"]
         description = entry.get("description") or f"MCP tool {name} on {server}"
         schema = _make_tool_schema(name)
+        server_requires = server in requires_knowledge
 
         async def _invoke(
             arguments: dict[str, Any] | None = None,
             *,
             _server: str = server,
             _name: str = name,
+            _requires: bool = server_requires,
         ) -> str:
             args = arguments or {}
-            result = await _call_mcp(gateway, _server, _name, args, get_current_token())
+            bindings = get_current_bindings()
+            try:
+                ensure_bindings_for_server(
+                    _server,
+                    requires_knowledge=_requires,
+                    bindings=bindings,
+                )
+            except KnowledgeScopeError as exc:
+                return _stringify({"error": str(exc)})
+
+            async def call_mcp(tool: str, scoped_args: dict[str, Any]) -> object:
+                return await _call_mcp(
+                    gateway,
+                    _server,
+                    tool,
+                    scoped_args,
+                    get_current_token(),
+                )
+
+            if bindings:
+                result = await invoke_scoped_retrieval(
+                    _name,
+                    args,
+                    bindings=bindings,
+                    call_mcp=call_mcp,
+                )
+            else:
+                result = await call_mcp(_name, args)
             return _stringify(result)
 
         tools.append(

@@ -226,7 +226,7 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 | ext-authz | envoy만 |
 | envoy | 모든 클러스터 내 (포트 8080) |
 | pool (`runtime/role: pool`) ingress | envoy만 (:8080) |
-| pool (`runtime/role: pool`) egress | kube-system DNS, deploy-api, redis, pgbouncer-rw, envoy, backend (:8000 bundles), garage (:3900), monitoring OTLP (:4317), 외부 HTTPS (:443) |
+| pool (`runtime/role: pool`) egress | kube-system DNS, deploy-api, redis, pgbouncer-rw, envoy, backend (:8000 bundles), garage (:3900), monitoring OTLP (:4317), `opik` namespace Opik frontend (:5173, `OPIK_URL` trace ingest), llm-serving (:30000), 외부 HTTPS (:443) |
 
 **`runtime/role: pool` 라벨**: 정적 bundle 모드 pool Deployment와 backend가 동적으로 생성하는 image 모드 pool pod 모두 이 라벨을 가진다. NetworkPolicy selector가 pod 이름 패턴이 아닌 라벨 기반이므로 신규 image pool 등록 시 NetworkPolicy 변경 불필요.
 

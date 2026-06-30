@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import JSZip from "jszip";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -9,7 +9,9 @@ import { getRuntimeKinds } from "../lib/enums";
 import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { useCreateSourceMeta, useUploadBundle } from "../hooks/useSourceMeta";
 import { JsonEditor } from "../components/JsonEditor";
+import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
 import { FileDropZone } from "../components/FileDropZone";
+import { withMcpKnowledgeRequiresProject } from "../lib/mcpKnowledgePolicy";
 import {
   FormActions,
   FormError,
@@ -65,6 +67,7 @@ export function SourceMetaNewPage({ kind }: Props) {
 
   const [tab, setTab] = useState<"uri" | "zip">("uri");
   const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
   const [configError, setConfigError] = useState<string | undefined>();
   const [globalError, setGlobalError] = useState<string | null>(null);
 
@@ -107,13 +110,28 @@ export function SourceMetaNewPage({ kind }: Props) {
   });
 
   const bundleUri = watch("bundle_uri");
+  const runtimePool = watch("runtime_pool");
   const requiresChecksum =
     bundleUri?.startsWith("s3://") || bundleUri?.startsWith("oci://");
+
+  function buildConfigPayload(): Record<string, unknown> {
+    const merged = { ...config };
+    if (kind === "mcp") {
+      return withMcpKnowledgeRequiresProject(merged, requiresKnowledgeProject);
+    }
+    return merged;
+  }
+
+  useEffect(() => {
+    if (kind === "mcp" && runtimePool === "mcp:didim_rag") {
+      setRequiresKnowledgeProject(true);
+    }
+  }, [kind, runtimePool]);
 
   async function onSubmitUri(values: FormValues) {
     setGlobalError(null);
     try {
-      const payload = { ...values, config };
+      const payload = { ...values, config: buildConfigPayload() };
       if (!requiresChecksum) delete payload.checksum;
       const result = await createMut.mutateAsync(payload);
       navigate(sourceMetaDetailPath(result));
@@ -142,7 +160,7 @@ export function SourceMetaNewPage({ kind }: Props) {
       version,
       runtime_pool,
       entrypoint,
-      config,
+      config: buildConfigPayload(),
     };
     fd.append("meta", JSON.stringify(meta));
 
@@ -286,6 +304,13 @@ export function SourceMetaNewPage({ kind }: Props) {
               </p>
             )}
           </div>
+
+          {kind === "mcp" && (
+            <McpKnowledgePolicyField
+              checked={requiresKnowledgeProject}
+              onChange={setRequiresKnowledgeProject}
+            />
+          )}
 
           {tab === "uri" && (
             <>

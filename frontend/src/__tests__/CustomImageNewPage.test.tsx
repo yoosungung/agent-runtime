@@ -29,4 +29,18 @@ describe("CustomImageNewPage", () => {
     expect(screen.getByText(/Environment variables/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ Add variable" })).toBeInTheDocument();
   });
+
+  it("renders MCP knowledge policy checkbox for container MCP image", () => {
+    renderPage("mcp");
+    expect(
+      screen.getByText("Pipeline project binding 필요 (general agent knowledge 경계)"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render MCP knowledge policy for agent image", () => {
+    renderPage("agent");
+    expect(
+      screen.queryByText("Pipeline project binding 필요 (general agent knowledge 경계)"),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -15,8 +15,10 @@ from pydantic import BaseModel
 from agent_base.context import reset_current_token, set_current_token
 from agent_base.general_cache import get_or_build_general_agent
 from agent_base.http_client import close_mcp_http_client
+from agent_base.knowledge_context import reset_knowledge_bindings, setup_knowledge_bindings
 from agent_base.runner import run, run_stream
 from agent_base.settings import Settings
+from runtime_common.config_schema import GeneralAgentSourceConfig
 from runtime_common.deploy_client import DeployApiClient
 from runtime_common.factory import merge_configs
 from runtime_common.instance_builder import build_secrets_resolver, get_or_build_cached_instance
@@ -190,6 +192,7 @@ async def invoke(
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
     tok_token = None
+    knowledge_token = None
     if not req.stream:
         tok_token = set_current_token(token)
 
@@ -223,6 +226,7 @@ async def invoke(
         adk_session_cache: dict = app.state.adk_session_services
 
         deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
+        knowledge_token = None
         if deploy_mode == "general":
             if not principal.user_id:
                 raise HTTPException(
@@ -235,6 +239,13 @@ async def invoke(
                     status_code=503,
                     detail="VFS pool not configured (set VFS_DSN)",
                 )
+            general_cfg = GeneralAgentSourceConfig.model_validate(cfg.get("general") or {})
+            pg_dsn = settings.path_graph_dsn or settings.vfs_dsn
+            knowledge_token = await setup_knowledge_bindings(
+                tenant=principal.tenant,
+                project_ids=general_cfg.knowledge_project_ids,
+                path_graph_dsn=pg_dsn,
+            )
             try:
                 instance = await get_or_build_general_agent(
                     cache,
@@ -246,6 +257,9 @@ async def invoke(
                     user_id=principal.user_id,
                     vfs_pool=vfs_pool,
                     mcp_gateway_url=settings.mcp_gateway_url,
+                    principal_tenant=principal.tenant,
+                    path_graph_dsn=pg_dsn,
+                    wiki_s3_bucket=settings.wiki_s3_bucket,
                 )
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(
@@ -323,6 +337,8 @@ async def invoke(
 
         return result
     finally:
+        if knowledge_token is not None:
+            reset_knowledge_bindings(knowledge_token)
         if tok_token is not None:
             reset_current_token(tok_token)
 

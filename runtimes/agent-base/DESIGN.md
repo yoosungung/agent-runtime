@@ -8,8 +8,8 @@ Agent-Pool의 베이스 이미지. AWS Lambda와 유사하게 **같은 이미지
 
 ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/invoke` 시 `source.deploy_mode == 'general'`이면 `BundleLoader`를 건너뛰고 `agent_base.general_agent.build_general_agent()`를 호출한다.
 
-- **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`)
-- **VFS**: `CompositeBackend` — `/` → `StateBackend`, `/agent/` → `vfs_agent_files` (`kind`,`name` 키), `/user/` → `vfs_user_files` (`user_id` 키). DSN: `VFS_DSN` env.
+- **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`). `config.general.knowledge_project_ids[]`가 있으면 invoke마다 path-graph binding resolve 후 retrieval tool args에 collection/nebula_space/project_id를 서버가 덮어씀. 복수 project `search`는 parallel + RRF.
+- **VFS**: `CompositeBackend` — `/` → `StateBackend`, `/agent/` → `vfs_agent_files`, `/user/` → `vfs_user_files`, 선택 project의 `wiki.vfs_mount` → S3 prefix read-only backend (`WIKI_S3_BUCKET`). DSN: `VFS_DSN` / `PATH_GRAPH_DSN`.
 
 ## 설계
 
@@ -50,7 +50,7 @@ factory가 리턴한 instance가 실행 중 Envoy `/v1/mcp/invoke-internal`로 t
 
 ### LLM 관찰가능성 (Opik)
 
-OTel(`telemetry.py`)은 **인프라 지표**만 담당한다. LLM call trace·토큰 사용량·프롬프트/응답은 **Opik SDK**로 분리해 Opik 백엔드(`opik.monitoring.svc.cluster.local:5173`)로 전송한다.
+OTel(`telemetry.py`)은 **인프라 지표**만 담당한다. LLM call trace·토큰 사용량·프롬프트/응답은 **Opik SDK**로 분리해 Opik frontend(`http://opik-frontend.opik.svc.cluster.local:5173/api`, `pool-egress`에서 `opik` ns :5173 허용)로 전송한다.
 
 #### 기동 시 초기화
 

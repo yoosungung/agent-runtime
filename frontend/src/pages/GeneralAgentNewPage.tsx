@@ -12,8 +12,10 @@ import {
   formPrimaryButtonClassName,
   formSecondaryButtonClassName,
 } from "../components/FormPageLayout";
+import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
 import type { GeneralVisibility } from "../lib/generalVisibility";
+import { mcpSelectionRequiresKnowledge } from "../lib/knowledgePolicy";
 import {
   createSubmitLabel,
   createSubmitPendingLabel,
@@ -29,6 +31,7 @@ interface FormValues {
 export function GeneralAgentNewPage() {
   const navigate = useNavigate();
   const [mcpServers, setMcpServers] = useState<string[]>([]);
+  const [knowledgeProjectIds, setKnowledgeProjectIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<GeneralVisibility>("private");
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -49,6 +52,7 @@ export function GeneralAgentNewPage() {
   });
 
   const availableMcp = mcpAccess?.items ?? [];
+  const knowledgeRequired = mcpSelectionRequiresKnowledge(mcpServers, availableMcp);
 
   function toggleMcp(name: string) {
     setMcpServers((prev) =>
@@ -62,12 +66,19 @@ export function GeneralAgentNewPage() {
       setGlobalError("MCP 서버를 하나 이상 선택하세요.");
       return;
     }
+    if (knowledgeRequired && knowledgeProjectIds.length === 0) {
+      setGlobalError(
+        "선택한 MCP 중 pipeline project binding이 필요한 서버가 있습니다. Project를 1개 이상 선택하세요.",
+      );
+      return;
+    }
     try {
       const result = await createMut.mutateAsync({
         name: values.name,
         version: values.version,
         system_prompt: values.system_prompt,
         mcp_servers: mcpServers,
+        knowledge_project_ids: knowledgeProjectIds,
         visibility,
         config,
       });
@@ -91,31 +102,35 @@ export function GeneralAgentNewPage() {
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Name
+          </label>
+          <input
+            {...register("name", {
+              required: "Required",
+              pattern: {
+                value: /^[a-z0-9][a-z0-9-]{0,127}$/,
+                message: "Lowercase alphanumeric and hyphens only",
+              },
+            })}
+            className={formInputClassName}
+          />
+          {errors.name && (
+            <p className="text-red-600 text-xs mt-1">{errors.name.message}</p>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Name
-            </label>
-            <input
-              {...register("name", {
-                required: "Required",
-                pattern: {
-                  value: /^[a-z0-9][a-z0-9-]{0,127}$/,
-                  message: "Lowercase alphanumeric and hyphens only",
-                },
-              })}
-              className={formInputClassName}
-            />
-            {errors.name && (
-              <p className="text-red-600 text-xs mt-1">{errors.name.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="general-agent-version"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Version
             </label>
             <input
+              id="general-agent-version"
               {...register("version", { required: "Required" })}
               className={formInputClassName}
             />
@@ -123,6 +138,11 @@ export function GeneralAgentNewPage() {
               <p className="text-red-600 text-xs mt-1">{errors.version.message}</p>
             )}
           </div>
+
+          <GeneralAgentVisibilityField
+            value={visibility}
+            onChange={setVisibility}
+          />
         </div>
 
         <div>
@@ -167,16 +187,24 @@ export function GeneralAgentNewPage() {
                   />
                   <span className="font-medium">{mcp.name}</span>
                   <span className="text-gray-400 text-xs">{mcp.version}</span>
+                  {mcp.requires_knowledge_project && (
+                    <span className="text-amber-600 text-xs">project 필요</span>
+                  )}
                 </label>
               ))}
             </div>
           )}
         </div>
 
-        <GeneralAgentVisibilityField
-          value={visibility}
-          onChange={setVisibility}
+        <GeneralAgentKnowledgeProjectsField
+          selectedIds={knowledgeProjectIds}
+          onChange={setKnowledgeProjectIds}
         />
+        {knowledgeRequired && knowledgeProjectIds.length === 0 && (
+          <p className="text-xs text-amber-600">
+            Retrieval MCP를 사용하려면 pipeline project를 1개 이상 선택하세요.
+          </p>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -310,6 +310,20 @@ class FetchSourceConfig(BaseModel):
     max_redirects: int = Field(default=5, ge=0, le=10)
 
 
+# ── Knowledge policy (MCP registration) ───────────────────────────────────────
+
+
+class KnowledgePolicyConfig(BaseModel):
+    """source_meta.config['knowledge'] — MCP knowledge binding policy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    requires_project: bool = Field(
+        default=False,
+        description="When true, general agents using this MCP must bind pipeline projects.",
+    )
+
+
 # ── General Agent (deploy_mode: general) ─────────────────────────────────────
 
 
@@ -319,6 +333,10 @@ class GeneralVfsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    wiki_enabled: bool = Field(
+        default=True,
+        description="Mount pipeline wiki prefixes when knowledge_project_ids is non-empty.",
+    )
 
 
 class McpToolManifestEntry(BaseModel):
@@ -343,6 +361,14 @@ class GeneralAgentSourceConfig(BaseModel):
         description="Populated at registration via MCP tool discovery.",
     )
     vfs: GeneralVfsConfig = Field(default_factory=GeneralVfsConfig)
+    knowledge_project_ids: list[str] = Field(
+        default_factory=list,
+        description="Pipeline project UUIDs — knowledge boundary for MCP retrieval and wiki VFS.",
+    )
+    mcp_requires_knowledge: list[str] = Field(
+        default_factory=list,
+        description="MCP server names that required knowledge projects at registration (cached).",
+    )
     subagents: list[dict] | None = Field(
         default=None,
         description="Optional deepagents subagent specs.",
@@ -411,6 +437,7 @@ class SourceConfig(BaseModel):
     search: SearchSourceConfig | None = None
     naver: NaverSourceConfig | None = None
     fetch: FetchSourceConfig | None = None
+    knowledge: KnowledgePolicyConfig = Field(default_factory=KnowledgePolicyConfig)
 
 
 class UserConfig(BaseModel):

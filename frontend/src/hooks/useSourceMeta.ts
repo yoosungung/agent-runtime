@@ -90,6 +90,7 @@ export function useCreateGeneralAgent() {
       version: string;
       system_prompt: string;
       mcp_servers: string[];
+      knowledge_project_ids?: string[];
       config?: Record<string, unknown>;
       visibility?: "private" | "tenant" | "public";
     }) =>
@@ -109,6 +110,7 @@ export function usePatchGeneralAgent(id: number) {
     mutationFn: (data: {
       system_prompt?: string;
       mcp_servers?: string[];
+      knowledge_project_ids?: string[];
       config?: Record<string, unknown>;
       visibility?: "private" | "tenant" | "public";
     }) =>

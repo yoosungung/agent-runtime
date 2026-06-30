@@ -10,6 +10,7 @@ export interface AccessResource {
   runtime_pool: string;
   has_user_meta: boolean;
   user_meta_required: boolean;
+  requires_knowledge_project?: boolean;
   template_description: string | null;
   template_field_count: number;
 }

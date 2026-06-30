@@ -24,6 +24,7 @@ name = "agent-base"
 version = "0.1.0"
 source = { editable = "runtimes/agent-base" }
 dependencies = [
+    { name = "boto3" },
     { name = "deepagents" },
     { name = "fastapi" },
     { name = "google-adk" },
@@ -32,6 +33,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "opik" },
+    { name = "path-graph" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "runtime-common" },
@@ -40,6 +42,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.40" },
     { name = "deepagents", specifier = ">=0.5" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-adk", marker = "python_full_version >= '3.12'", specifier = ">=0.1.0" },
@@ -48,6 +51,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "opik", specifier = ">=2.0" },
+    { name = "path-graph", editable = "../path-graph/pipeline" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "runtime-common", editable = "packages/common" },
@@ -3108,6 +3112,8 @@ requires-dist = [
     { name = "graspologic-native", specifier = ">=1.2" },
     { name = "hera", marker = "extra == 'dev'", specifier = ">=5.25" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "langchain-core", marker = "extra == 'dev'", specifier = ">=0.3" },
+    { name = "langgraph", marker = "extra == 'dev'", specifier = ">=0.2" },
     { name = "markitdown", extras = ["pdf", "docx", "xlsx", "xls"], specifier = ">=0.1.0" },
     { name = "msal", specifier = ">=1.28" },
     { name = "nebula3-python", specifier = ">=3.8" },

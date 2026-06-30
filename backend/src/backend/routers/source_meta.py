@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.audit import log_event, make_audit_row
 from backend.bundle_storage import BundleStorage, bundle_path
+from backend.knowledge_validation import validate_knowledge_projects
 from backend.deps import (
     check_csrf,
     get_db,
@@ -27,6 +28,7 @@ from backend.settings import Settings
 from runtime_common.config_schema import (
     GeneralAgentSourceConfig,
     HermesGeneralSourceConfig,
+    KnowledgePolicyConfig,
     McpToolManifestEntry,
     UserMetaFormTemplate,
 )
@@ -157,15 +159,27 @@ def _build_general_config(
     mcp_servers: list[str],
     mcp_tools: list[McpToolManifestEntry],
     extra_config: dict | None,
+    *,
+    knowledge_project_ids: list[str] | None = None,
+    mcp_requires_knowledge: list[str] | None = None,
 ) -> dict:
     general = GeneralAgentSourceConfig(
         system_prompt=system_prompt,
         mcp_servers=mcp_servers,
         mcp_tools=mcp_tools,
+        knowledge_project_ids=knowledge_project_ids or [],
+        mcp_requires_knowledge=mcp_requires_knowledge or [],
     )
     config = dict(extra_config or {})
     config["general"] = general.model_dump()
     return config
+
+
+def _pipeline_project_store(settings: Settings):
+    from backend.routers.pipeline import _path_graph_dsn
+    from path_graph.admin.projects import ProjectStore
+
+    return ProjectStore(_path_graph_dsn(settings))
 
 
 def _build_hermes_config(
@@ -294,6 +308,12 @@ def _validate_config(config: dict | None) -> None:
             status_code=413,
             detail="config exceeds 16KB limit (merged source+user config must fit in Envoy headers)",
         )
+    knowledge = config.get("knowledge")
+    if knowledge is not None:
+        try:
+            KnowledgePolicyConfig.model_validate(knowledge)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +582,7 @@ class GeneralAgentCreateRequest(BaseModel):
     version: str
     system_prompt: str
     mcp_servers: list[str]
+    knowledge_project_ids: list[str] = []
     config: dict = {}
     visibility: str = GeneralVisibility.PRIVATE
 
@@ -591,16 +612,29 @@ async def create_general_agent(
     owner_tenant = await _resolve_creator_tenant(db, principal)
     _validate_general_visibility(body.visibility, owner_tenant)
 
+    project_store = _pipeline_project_store(settings)
+    mcp_requires_knowledge = await validate_knowledge_projects(
+        db,
+        tenant=owner_tenant,
+        project_ids=body.knowledge_project_ids,
+        mcp_servers=body.mcp_servers,
+        project_store=project_store,
+    )
+
     access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
     if not access_token:
         raise HTTPException(status_code=401, detail="access token required for MCP discovery")
 
     mcp_tools = await _discover_mcp_tools(settings, access_token, body.mcp_servers)
+    extra = dict(body.config)
+    extra.pop("general", None)
     config = _build_general_config(
         body.system_prompt.strip(),
         body.mcp_servers,
         mcp_tools,
-        body.config,
+        extra,
+        knowledge_project_ids=body.knowledge_project_ids,
+        mcp_requires_knowledge=mcp_requires_knowledge,
     )
     _validate_config(config)
 
@@ -661,6 +695,7 @@ async def create_general_agent(
 class GeneralAgentPatchRequest(BaseModel):
     system_prompt: str | None = None
     mcp_servers: list[str] | None = None
+    knowledge_project_ids: list[str] | None = None
     config: dict | None = None
     visibility: str | None = None
 
@@ -704,9 +739,10 @@ async def patch_general_agent(
                 )
 
     needs_config_rebuild = any(
-        field in update_data for field in ("system_prompt", "mcp_servers", "config")
+        field in update_data
+        for field in ("system_prompt", "mcp_servers", "config", "knowledge_project_ids")
     )
-    if needs_config_rebuild:
+    if needs_config_rebuild or body.knowledge_project_ids is not None:
         general_cfg = row.config.get("general", {})
         system_prompt = (
             body.system_prompt.strip()
@@ -720,6 +756,21 @@ async def patch_general_agent(
         )
         if not mcp_servers:
             raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+        knowledge_project_ids = (
+            body.knowledge_project_ids
+            if body.knowledge_project_ids is not None
+            else general_cfg.get("knowledge_project_ids", [])
+        )
+
+        owner_tenant = await _resolve_creator_tenant(db, principal, fallback=row.owner_tenant)
+        project_store = _pipeline_project_store(settings)
+        mcp_requires_knowledge = await validate_knowledge_projects(
+            db,
+            tenant=owner_tenant,
+            project_ids=knowledge_project_ids,
+            mcp_servers=mcp_servers,
+            project_store=project_store,
+        )
 
         access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
         if not access_token:
@@ -729,7 +780,15 @@ async def patch_general_agent(
         extra_config = body.config if body.config is not None else {
             k: v for k, v in row.config.items() if k != "general"
         }
-        config = _build_general_config(system_prompt, mcp_servers, mcp_tools, extra_config)
+        extra_config.pop("general", None)
+        config = _build_general_config(
+            system_prompt,
+            mcp_servers,
+            mcp_tools,
+            extra_config,
+            knowledge_project_ids=knowledge_project_ids,
+            mcp_requires_knowledge=mcp_requires_knowledge,
+        )
         _validate_config(config)
         row.config = config
 

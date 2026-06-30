@@ -338,6 +338,13 @@ spec:
               kubernetes.io/metadata.name: llm-serving
       ports:
         - port: 30000
+    # Opik LLM observability (infra_meta OPIK_URL → opik-frontend /api proxy)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: opik
+      ports:
+        - port: 5173
     # External LLM APIs, presigned object-store URLs, etc.
     - to:
         - ipBlock:

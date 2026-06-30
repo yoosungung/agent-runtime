@@ -70,6 +70,30 @@ def test_general_agent_source_config_rejects_empty_mcp_servers():
         GeneralAgentSourceConfig(system_prompt="Hi", mcp_servers=[])
 
 
+def test_general_agent_source_config_knowledge_projects():
+    cfg = GeneralAgentSourceConfig(
+        system_prompt="Hi",
+        mcp_servers=["rag-server"],
+        knowledge_project_ids=["p1", "p2"],
+        mcp_requires_knowledge=["rag-server"],
+    )
+    assert cfg.knowledge_project_ids == ["p1", "p2"]
+    assert cfg.mcp_requires_knowledge == ["rag-server"]
+
+
+def test_knowledge_policy_config_default():
+    from runtime_common.config_schema import KnowledgePolicyConfig
+
+    assert KnowledgePolicyConfig().requires_project is False
+
+
+def test_source_config_includes_knowledge_policy():
+    from runtime_common.config_schema import KnowledgePolicyConfig
+
+    cfg = SourceConfig(knowledge=KnowledgePolicyConfig(requires_project=True))
+    assert cfg.knowledge.requires_project is True
+
+
 def test_general_vfs_config_disabled():
     cfg = GeneralVfsConfig(enabled=False)
     assert cfg.enabled is False

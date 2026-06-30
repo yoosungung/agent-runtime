@@ -71,7 +71,8 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /                                      로그인 필요, 대시보드 (admin만)
 /agents                                source_meta list (kind=agent)
 /agents/new                            생성 폼 (bundle_uri 입력 또는 zip 업로드)
-/agents/:id                            상세 + User Meta Template 탭 + access
+/agents/new/general                    general agent 생성 (config-only)
+/agents/:id                            상세 — bundle: User Meta Template 탭 + access; general: 편집 폼
 /mcp-servers/:id                       상세 + User Meta Template 탭 + access
 /me                                    본인 프로필 + integrations + 비번 변경
 /me/integrations                       → /me 리다이렉트
@@ -138,6 +139,18 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
      - 서버 에러 매핑: `413` "파일이 너무 큼", `400 "invalid zip"` → "zip이 손상됐습니다", `409` → "같은 `(kind, name, version)` 중복".
 - 공통 필드: `kind`(URL로 고정), `name`, `version`, `runtime_pool`(드롭다운 — enum은 `runtime_common.schemas` 또는 BFF 엔드포인트에서), `entrypoint`(`module.path:attr` regex 체크), **`config`** (JSON editor — 번들 기본값, 생략 시 `{}`).
 - 제출 시 `422`는 zod 스키마와 매핑해 필드별 에러 표시. `400`은 전역 toast.
+
+**general agent 생성·편집 (`/agents/new/general`, general `deploy_mode` 상세)**
+- 필드: `name`(전체 너비), `version` + **`사용 권한`**(`visibility` — `<select>`, 동일 행 반씩), `system_prompt`, MCP 서버(체크박스), **Pipeline projects**(복수 선택, binding 미리보기), `config` JSON.
+- MCP 중 `requires_knowledge_project=true`인 서버를 고르면 project 1개 이상 필수 (`access-resources.requires_knowledge_project`).
+- `tenant` 옵션은 세션에 `tenant`가 없으면 disabled + 안내 문구. 기본값 `private`.
+- 생성 `POST /api/source-meta/general`, 편집 `PATCH /api/source-meta/general/{id}`.
+
+**MCP bundle 등록 (`/bundle/mcp/new`)**
+- 체크박스 **Pipeline project binding 필요** → `config.knowledge.requires_project`. `runtime_pool=mcp:didim_rag` 선택 시 기본 checked.
+
+**MCP Image 등록·편집 (`/container/mcp/new`, `/container/mcp/:slug/edit`)**
+- 동일 체크박스 → `config.knowledge.requires_project` (MCP Image 기본 checked).
 
 **source_meta 상세 (`/agents/:id`)**
 - 메타 정보 + 현재 버전 + 같은 `(kind, name)`의 다른 버전 리스트.

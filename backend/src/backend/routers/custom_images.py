@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.audit import log_event, make_audit_row
 from backend.deps import check_csrf, get_db, get_settings, require_developer
 from backend.settings import Settings
+from runtime_common.config_schema import KnowledgePolicyConfig
 from runtime_common.db.models import SourceMetaRow
 from runtime_common.schemas import parse_runtime_pool
 
@@ -83,6 +84,12 @@ def _validate_config(config: dict) -> None:
             status_code=413,
             detail="config exceeds 16KB limit (must fit in Envoy x-runtime-cfg header)",
         )
+    knowledge = config.get("knowledge")
+    if knowledge is not None:
+        try:
+            KnowledgePolicyConfig.model_validate(knowledge)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _validate_env(env: dict[str, str] | None) -> dict[str, str]:

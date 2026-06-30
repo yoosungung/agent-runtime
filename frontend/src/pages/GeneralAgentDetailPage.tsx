@@ -8,6 +8,7 @@ import {
 } from "../hooks/useSourceMeta";
 import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { useSession } from "../hooks/useSession";
+import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { JsonEditor } from "../components/JsonEditor";
@@ -25,6 +26,7 @@ import {
   canManageGeneralAgent,
   readGeneralConfig,
 } from "../lib/generalAgent";
+import { mcpSelectionRequiresKnowledge } from "../lib/knowledgePolicy";
 import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { isAdminRole } from "../lib/roles";
 import { vfsAgentBrowserPath } from "../lib/vfsPaths";
@@ -42,6 +44,7 @@ export function GeneralAgentDetailPage() {
 
   const [systemPrompt, setSystemPrompt] = useState("");
   const [mcpServers, setMcpServers] = useState<string[]>([]);
+  const [knowledgeProjectIds, setKnowledgeProjectIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<GeneralVisibility>("private");
   const [extraConfig, setExtraConfig] = useState<Record<string, unknown>>({});
   const [editInit, setEditInit] = useState(false);
@@ -54,6 +57,7 @@ export function GeneralAgentDetailPage() {
     const general = readGeneralConfig(item.config);
     setSystemPrompt(general.system_prompt ?? "");
     setMcpServers(general.mcp_servers ?? []);
+    setKnowledgeProjectIds(general.knowledge_project_ids ?? []);
     setVisibility((item.visibility as GeneralVisibility) ?? "private");
     const { general: _g, ...rest } = item.config;
     setExtraConfig(rest);
@@ -63,6 +67,7 @@ export function GeneralAgentDetailPage() {
   const canManage = item ? canManageGeneralAgent(item, session) : false;
   const showVfsLink = isAdminRole(session?.role ?? "user");
   const availableMcp = mcpAccess?.items ?? [];
+  const knowledgeRequired = mcpSelectionRequiresKnowledge(mcpServers, availableMcp);
 
   function toggleMcp(name: string) {
     setMcpServers((prev) =>
@@ -82,10 +87,17 @@ export function GeneralAgentDetailPage() {
       setSaveError("MCP 서버를 하나 이상 선택하세요.");
       return;
     }
+    if (knowledgeRequired && knowledgeProjectIds.length === 0) {
+      setSaveError(
+        "선택한 MCP 중 pipeline project binding이 필요한 서버가 있습니다.",
+      );
+      return;
+    }
     try {
       await patchMut.mutateAsync({
         system_prompt: systemPrompt.trim(),
         mcp_servers: mcpServers,
+        knowledge_project_ids: knowledgeProjectIds,
         visibility,
         config: extraConfig,
       });
@@ -202,6 +214,12 @@ export function GeneralAgentDetailPage() {
             </div>
           )}
         </div>
+
+        <GeneralAgentKnowledgeProjectsField
+          selectedIds={knowledgeProjectIds}
+          onChange={setKnowledgeProjectIds}
+          disabled={!canManage}
+        />
 
         <GeneralAgentVisibilityField
           value={visibility}

@@ -41,3 +41,5 @@ def test_base_kustomize_includes_pool_network_policies() -> None:
     pool_egress = manifest.split("name: pool-egress")[1].split("---")[0]
     assert "kubernetes.io/metadata.name: llm-serving" in pool_egress
     assert "port: 30000" in pool_egress
+    assert "kubernetes.io/metadata.name: opik" in pool_egress
+    assert "port: 5173" in pool_egress

@@ -50,5 +50,12 @@ describe("GeneralAgentNewPage", () => {
     expect(screen.getByText("New Agent")).toBeInTheDocument();
     expect(screen.getByText("Name")).toBeInTheDocument();
     expect(screen.getByText("search-server")).toBeInTheDocument();
+
+    const versionInput = screen.getByLabelText("Version");
+    const visibilitySelect = screen.getByLabelText("사용 권한");
+    expect(versionInput.compareDocumentPosition(visibilitySelect)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(versionInput.closest(".grid")).toBe(visibilitySelect.closest(".grid"));
   });
 });

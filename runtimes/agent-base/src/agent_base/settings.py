@@ -36,6 +36,14 @@ class Settings(BaseRuntimeSettings):
         default_factory=list,
         description="Agent names to preload at startup (comma-separated via WARMUP_AGENTS env).",
     )
+    path_graph_dsn: str = Field(
+        default="",
+        description="Postgres DSN for path-graph binding resolve. Falls back to VFS_DSN.",
+    )
+    wiki_s3_bucket: str = Field(
+        default="",
+        description="S3 bucket for pipeline wiki mounts.",
+    )
 
     @field_validator("warmup_agents", mode="before")
     @classmethod

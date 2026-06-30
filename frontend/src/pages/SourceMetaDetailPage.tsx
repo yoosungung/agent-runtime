@@ -13,7 +13,12 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SignatureUploadDialog } from "../components/SignatureUploadDialog";
 import { AccessList } from "../components/AccessList";
 import { UserMetaTemplateTab } from "../components/UserMetaTemplateTab";
+import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
 import { sourceMetaListPath } from "../lib/sourceMetaPaths";
+import {
+  readMcpKnowledgeRequiresProject,
+  withMcpKnowledgeRequiresProject,
+} from "../lib/mcpKnowledgePolicy";
 import type { SourceMeta } from "../hooks/useSourceMeta";
 
 interface Props {
@@ -45,6 +50,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
   const [runtimePool, setRuntimePool] = useState("");
   const [sigUri, setSigUri] = useState("");
   const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
   const [editInit, setEditInit] = useState(false);
 
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -61,6 +67,9 @@ export function SourceMetaDetailPage({ kind }: Props) {
     setRuntimePool(item.runtime_pool);
     setSigUri(item.sig_uri ?? "");
     setConfig(item.config);
+    if (kind === "mcp") {
+      setRequiresKnowledgeProject(readMcpKnowledgeRequiresProject(item.config));
+    }
     setEditInit(true);
   }
 
@@ -72,7 +81,10 @@ export function SourceMetaDetailPage({ kind }: Props) {
         entrypoint,
         runtime_pool: runtimePool,
         sig_uri: sigUri || undefined,
-        config,
+        config:
+          kind === "mcp"
+            ? withMcpKnowledgeRequiresProject(config, requiresKnowledgeProject)
+            : config,
       } as Partial<SourceMeta>);
       setSaveSuccess(true);
     } catch (e: unknown) {
@@ -216,6 +228,12 @@ export function SourceMetaDetailPage({ kind }: Props) {
                 placeholder="s3://bucket/path/bundle.sig"
               />
             </div>
+            {kind === "mcp" && (
+              <McpKnowledgePolicyField
+                checked={requiresKnowledgeProject}
+                onChange={setRequiresKnowledgeProject}
+              />
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Config (JSON)

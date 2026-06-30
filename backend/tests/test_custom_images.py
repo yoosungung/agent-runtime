@@ -144,6 +144,55 @@ def test_validate_config_exceeds_16kb():
     assert exc_info.value.status_code == 413
 
 
+def test_validate_config_rejects_invalid_knowledge_policy():
+    from fastapi import HTTPException
+
+    from backend.routers.custom_images import _validate_config
+
+    with pytest.raises(HTTPException) as exc_info:
+        _validate_config({"knowledge": {"requires_project": "not-bool"}})
+    assert exc_info.value.status_code == 400
+
+
+async def test_create_custom_image_mcp_with_knowledge_policy(client: AsyncClient):
+    r = await client.post(
+        "/api/admin/custom-images",
+        json={
+            "kind": "mcp",
+            "name": "rag-image",
+            "version": "v1",
+            "image_uri": "registry.example.com/rag:v1",
+            "config": {"knowledge": {"requires_project": True}},
+        },
+        headers=_headers(),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["config"]["knowledge"]["requires_project"] is True
+
+
+async def test_patch_custom_image_mcp_knowledge_policy(client: AsyncClient):
+    created = await client.post(
+        "/api/admin/custom-images",
+        json={
+            "kind": "mcp",
+            "name": "rag-patch",
+            "version": "v1",
+            "image_uri": "registry.example.com/rag-patch:v1",
+        },
+        headers=_headers(),
+    )
+    assert created.status_code == 201
+    slug = created.json()["slug"]
+
+    patched = await client.patch(
+        f"/api/admin/custom-images/mcp/{slug}",
+        json={"config": {"knowledge": {"requires_project": True}}},
+        headers=_headers(),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["config"]["knowledge"]["requires_project"] is True
+
+
 # ---------------------------------------------------------------------------
 # POST /api/admin/custom-images
 # ---------------------------------------------------------------------------

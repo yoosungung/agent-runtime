@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.deps import check_csrf, get_db, get_principal
 from runtime_common.config_schema import UserConfig, UserMetaFormTemplate, is_user_meta_required, validate_template_required_fields
 from runtime_common.db.models import SourceMetaRow, UserMetaRow
+from runtime_common.knowledge import mcp_requires_knowledge_project
 from runtime_common.schemas import Principal, ResourceRef
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class AccessResourceResponse(BaseModel):
     runtime_pool: str
     has_user_meta: bool
     user_meta_required: bool = True
+    requires_knowledge_project: bool = False
     template_description: str | None = None
     template_field_count: int = 0
 
@@ -161,6 +163,7 @@ async def list_access_resources(
                 runtime_pool=source.runtime_pool,
                 has_user_meta=has_user_meta,
                 user_meta_required=user_meta_required,
+                requires_knowledge_project=mcp_requires_knowledge_project(source.config),
                 template_description=desc,
                 template_field_count=field_count,
             )

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreateCustomImage, type CustomImageCreateBody } from "../hooks/useCustomImages";
+import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
 import { JsonEditor } from "../components/JsonEditor";
 import { EnvVarEditor } from "../components/EnvVarEditor";
+import { withMcpKnowledgeRequiresProject } from "../lib/mcpKnowledgePolicy";
 import {
   FormActions,
   FormError,
@@ -38,6 +40,9 @@ export function CustomImageNewPage({ kind }: Props) {
     image_pull_secret: "",
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(
+    kind === "mcp",
+  );
 
   const backPath = kind === "agent" ? "/container/agents" : "/container/mcp";
   const title = newPageTitle("container", kind);
@@ -45,12 +50,18 @@ export function CustomImageNewPage({ kind }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const baseConfig = form.config ?? {};
+    const config =
+      kind === "mcp"
+        ? withMcpKnowledgeRequiresProject(baseConfig, requiresKnowledgeProject)
+        : baseConfig;
+
     const body: CustomImageCreateBody = {
       kind: form.kind,
       name: form.name.trim(),
       version: form.version.trim(),
       image_uri: form.image_uri.trim(),
-      config: form.config,
+      config,
     };
     if (form.env && Object.keys(form.env).length > 0) body.env = form.env;
     if (form.image_digest?.trim()) body.image_digest = form.image_digest.trim();
@@ -177,6 +188,13 @@ export function CustomImageNewPage({ kind }: Props) {
             x-runtime-cfg.
           </p>
         </div>
+
+        {kind === "mcp" && (
+          <McpKnowledgePolicyField
+            checked={requiresKnowledgeProject}
+            onChange={setRequiresKnowledgeProject}
+          />
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
