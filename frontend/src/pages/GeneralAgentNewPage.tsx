@@ -152,18 +152,6 @@ export function GeneralAgentNewPage() {
           />
         </div>
 
-        <GeneralAgentChatSelectableField
-          checked={chatSelectable}
-          onChange={setChatSelectable}
-        />
-
-        <GeneralAgentDelegateAgentsField
-          agents={agentAccess?.items ?? []}
-          selected={delegateAgents}
-          onChange={setDelegateAgents}
-          loading={agentLoading}
-        />
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             System prompt
@@ -224,6 +212,18 @@ export function GeneralAgentNewPage() {
             Retrieval MCP를 사용하려면 pipeline project를 1개 이상 선택하세요.
           </p>
         )}
+
+        <GeneralAgentChatSelectableField
+          checked={chatSelectable}
+          onChange={setChatSelectable}
+        />
+
+        <GeneralAgentDelegateAgentsField
+          agents={agentAccess?.items ?? []}
+          selected={delegateAgents}
+          onChange={setDelegateAgents}
+          loading={agentLoading}
+        />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

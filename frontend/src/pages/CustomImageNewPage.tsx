@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreateCustomImage, type CustomImageCreateBody } from "../hooks/useCustomImages";
 import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import { JsonEditor } from "../components/JsonEditor";
 import { EnvVarEditor } from "../components/EnvVarEditor";
 import { withMcpKnowledgeRequiresProject } from "../lib/mcpKnowledgePolicy";
@@ -40,6 +41,7 @@ export function CustomImageNewPage({ kind }: Props) {
     image_pull_secret: "",
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [chatSelectable, setChatSelectable] = useState(true);
   const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(
     kind === "mcp",
   );
@@ -68,6 +70,7 @@ export function CustomImageNewPage({ kind }: Props) {
     if (form.slug?.trim()) body.slug = form.slug.trim();
     if (form.replicas_max) body.replicas_max = form.replicas_max;
     if (form.image_pull_secret?.trim()) body.image_pull_secret = form.image_pull_secret.trim();
+    if (kind === "agent") body.chat_selectable = chatSelectable;
 
     try {
       setSubmitError(null);
@@ -193,6 +196,13 @@ export function CustomImageNewPage({ kind }: Props) {
           <McpKnowledgePolicyField
             checked={requiresKnowledgeProject}
             onChange={setRequiresKnowledgeProject}
+          />
+        )}
+
+        {kind === "agent" && (
+          <GeneralAgentChatSelectableField
+            checked={chatSelectable}
+            onChange={setChatSelectable}
           />
         )}
 

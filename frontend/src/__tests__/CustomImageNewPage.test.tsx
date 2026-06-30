@@ -37,6 +37,11 @@ describe("CustomImageNewPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows chat selectable for agent image", () => {
+    renderPage("agent");
+    expect(screen.getByText(/Chat에서 선택 가능/)).toBeInTheDocument();
+  });
+
   it("does not render MCP knowledge policy for agent image", () => {
     renderPage("agent");
     expect(

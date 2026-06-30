@@ -8,6 +8,7 @@ import {
 import { EnvVarEditor } from "../components/EnvVarEditor";
 import { JsonEditor } from "../components/JsonEditor";
 import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import {
   readMcpKnowledgeRequiresProject,
   withMcpKnowledgeRequiresProject,
@@ -36,6 +37,7 @@ export function CustomImageEditPage({ kind }: Props) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [env, setEnv] = useState<Record<string, string>>({});
   const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
+  const [chatSelectable, setChatSelectable] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const backPath = kind === "agent" ? "/container/agents" : "/container/mcp";
@@ -44,6 +46,7 @@ export function CustomImageEditPage({ kind }: Props) {
     if (!item) return;
     setConfig(item.config ?? {});
     setEnv(item.env ?? {});
+    setChatSelectable(item.chat_selectable ?? true);
     if (kind === "mcp") {
       setRequiresKnowledgeProject(readMcpKnowledgeRequiresProject(item.config ?? {}));
     }
@@ -58,7 +61,11 @@ export function CustomImageEditPage({ kind }: Props) {
         kind === "mcp"
           ? withMcpKnowledgeRequiresProject(config, requiresKnowledgeProject)
           : config;
-      await patchMut.mutateAsync({ config: patchConfig, env });
+      await patchMut.mutateAsync({
+        config: patchConfig,
+        env,
+        ...(kind === "agent" ? { chat_selectable: chatSelectable } : {}),
+      });
       await restartMut.mutateAsync({ kind: item.kind, slug: item.slug });
       navigate(backPath);
     } catch (err: unknown) {
@@ -113,6 +120,13 @@ export function CustomImageEditPage({ kind }: Props) {
           <McpKnowledgePolicyField
             checked={requiresKnowledgeProject}
             onChange={setRequiresKnowledgeProject}
+          />
+        )}
+
+        {kind === "agent" && (
+          <GeneralAgentChatSelectableField
+            checked={chatSelectable}
+            onChange={setChatSelectable}
           />
         )}
 

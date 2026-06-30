@@ -14,6 +14,7 @@ export interface CustomImage {
   env: Record<string, string>;
   status: "pending" | "active" | "failed" | "retired";
   deploy_mode: "image";
+  chat_selectable?: boolean;
   created_at: string;
 }
 
@@ -29,6 +30,7 @@ export interface CustomImageCreateBody {
   image_pull_secret?: string;
   env?: Record<string, string>;
   config?: Record<string, unknown>;
+  chat_selectable?: boolean;
 }
 
 export interface CustomImagePatchBody {
@@ -36,6 +38,7 @@ export interface CustomImagePatchBody {
   resources?: Record<string, unknown>;
   env?: Record<string, string>;
   config?: Record<string, unknown>;
+  chat_selectable?: boolean;
 }
 
 export function useCustomImageList(kind?: "agent" | "mcp") {

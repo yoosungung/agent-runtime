@@ -10,6 +10,7 @@ import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { useSession } from "../hooks/useSession";
 import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import {
@@ -46,6 +47,7 @@ export function GeneralAgentDetailPage() {
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const [knowledgeProjectIds, setKnowledgeProjectIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<GeneralVisibility>("private");
+  const [chatSelectable, setChatSelectable] = useState(true);
   const [extraConfig, setExtraConfig] = useState<Record<string, unknown>>({});
   const [editInit, setEditInit] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -59,6 +61,7 @@ export function GeneralAgentDetailPage() {
     setMcpServers(general.mcp_servers ?? []);
     setKnowledgeProjectIds(general.knowledge_project_ids ?? []);
     setVisibility((item.visibility as GeneralVisibility) ?? "private");
+    setChatSelectable(item.chat_selectable ?? true);
     const { general: _g, ...rest } = item.config;
     setExtraConfig(rest);
     setEditInit(true);
@@ -99,6 +102,7 @@ export function GeneralAgentDetailPage() {
         mcp_servers: mcpServers,
         knowledge_project_ids: knowledgeProjectIds,
         visibility,
+        chat_selectable: chatSelectable,
         config: extraConfig,
       });
       setSaveSuccess(true);
@@ -224,6 +228,12 @@ export function GeneralAgentDetailPage() {
         <GeneralAgentVisibilityField
           value={visibility}
           onChange={setVisibility}
+          disabled={!canManage}
+        />
+
+        <GeneralAgentChatSelectableField
+          checked={chatSelectable}
+          onChange={setChatSelectable}
           disabled={!canManage}
         />
 

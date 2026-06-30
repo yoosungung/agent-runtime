@@ -22,6 +22,7 @@ export interface SourceMeta {
   created_by_user_id?: number | null;
   owner_tenant?: string | null;
   visibility?: "private" | "tenant" | "public";
+  chat_selectable?: boolean;
   created_at: string;
   updated_at?: string;
 }

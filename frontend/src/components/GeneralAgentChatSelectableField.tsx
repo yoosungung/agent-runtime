@@ -1,17 +1,20 @@
 interface GeneralAgentChatSelectableFieldProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
 export function GeneralAgentChatSelectableField({
   checked,
   onChange,
+  disabled = false,
 }: GeneralAgentChatSelectableFieldProps) {
   return (
-    <label className="flex items-start gap-2 text-sm text-gray-700">
+    <label className={`flex items-start gap-2 text-sm text-gray-700 ${disabled ? "opacity-60" : ""}`}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5"
       />

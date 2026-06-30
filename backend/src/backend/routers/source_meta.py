@@ -519,6 +519,7 @@ async def upload_bundle(
     runtime_pool = meta_dict.get("runtime_pool", "")
     entrypoint = meta_dict.get("entrypoint", "")
     config = meta_dict.get("config", {})
+    chat_selectable = bool(meta_dict.get("chat_selectable", True))
 
     _validate_kind(kind)
     _validate_name(name)
@@ -552,6 +553,7 @@ async def upload_bundle(
         sig_uri=sig_uri,
         config=config or {},
         retired=False,
+        chat_selectable=chat_selectable if kind == "agent" else True,
     )
     db.add(row)
     db.add(
@@ -870,6 +872,7 @@ class SourceMetaCreateRequest(BaseModel):
     bundle_uri: str
     checksum: str | None = None
     config: dict = {}
+    chat_selectable: bool = True
 
 
 @router.post("", response_model=SourceMetaResponse, status_code=201)
@@ -962,6 +965,7 @@ async def create_source_meta(
         sig_uri=None,
         config=body.config or {},
         retired=False,
+        chat_selectable=body.chat_selectable if body.kind == "agent" else True,
     )
     db.add(row)
     db.add(
@@ -1054,6 +1058,7 @@ class SourceMetaPatchRequest(BaseModel):
     runtime_pool: str | None = None
     config: dict | None = None
     user_meta_template: dict | None = None
+    chat_selectable: bool | None = None
 
 
 @router.patch("/{id}", response_model=SourceMetaResponse)
@@ -1077,6 +1082,11 @@ async def patch_source_meta(
         _validate_runtime_pool(body.runtime_pool, row.kind)
     if body.config is not None:
         _validate_config(body.config)
+    if body.chat_selectable is not None and row.kind != "agent":
+        raise HTTPException(
+            status_code=400,
+            detail="chat_selectable applies to agent resources only",
+        )
     if body.user_meta_template is not None:
         try:
             UserMetaFormTemplate.model_validate(body.user_meta_template)

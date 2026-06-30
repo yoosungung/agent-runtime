@@ -121,6 +121,7 @@ class CustomImageCreateRequest(BaseModel):
     image_pull_secret: str | None = None
     env: dict[str, str] | None = None
     config: dict = Field(default_factory=dict, description="Source-level default config")
+    chat_selectable: bool = True
 
 
 class CustomImagePatchRequest(BaseModel):
@@ -130,6 +131,7 @@ class CustomImagePatchRequest(BaseModel):
     resources: dict | None = None
     env: dict[str, str] | None = None
     config: dict | None = None
+    chat_selectable: bool | None = None
 
 
 class CustomImageResponse(BaseModel):
@@ -146,6 +148,7 @@ class CustomImageResponse(BaseModel):
     status: str
     deploy_mode: str
     created_at: datetime
+    chat_selectable: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -230,6 +233,7 @@ async def create_custom_image(
         image_digest=body.image_digest,
         slug=slug,
         status="pending",
+        chat_selectable=body.chat_selectable if body.kind == "agent" else True,
     )
     db.add(row)
     db.add(
@@ -402,6 +406,14 @@ async def patch_custom_image(
 
     if body.env is not None:
         row.pool_env = _validate_env(body.env)
+
+    if body.chat_selectable is not None:
+        if kind != "agent":
+            raise HTTPException(
+                status_code=400,
+                detail="chat_selectable applies to agent resources only",
+            )
+        row.chat_selectable = body.chat_selectable
 
     db.add(
         make_audit_row(

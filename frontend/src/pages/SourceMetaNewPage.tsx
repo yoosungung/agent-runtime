@@ -10,6 +10,7 @@ import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { useCreateSourceMeta, useUploadBundle } from "../hooks/useSourceMeta";
 import { JsonEditor } from "../components/JsonEditor";
 import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import { FileDropZone } from "../components/FileDropZone";
 import { withMcpKnowledgeRequiresProject } from "../lib/mcpKnowledgePolicy";
 import {
@@ -67,6 +68,7 @@ export function SourceMetaNewPage({ kind }: Props) {
 
   const [tab, setTab] = useState<"uri" | "zip">("uri");
   const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [chatSelectable, setChatSelectable] = useState(true);
   const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
   const [configError, setConfigError] = useState<string | undefined>();
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -131,7 +133,11 @@ export function SourceMetaNewPage({ kind }: Props) {
   async function onSubmitUri(values: FormValues) {
     setGlobalError(null);
     try {
-      const payload = { ...values, config: buildConfigPayload() };
+      const payload = {
+        ...values,
+        config: buildConfigPayload(),
+        ...(kind === "agent" ? { chat_selectable: chatSelectable } : {}),
+      };
       if (!requiresChecksum) delete payload.checksum;
       const result = await createMut.mutateAsync(payload);
       navigate(sourceMetaDetailPath(result));
@@ -161,6 +167,7 @@ export function SourceMetaNewPage({ kind }: Props) {
       runtime_pool,
       entrypoint,
       config: buildConfigPayload(),
+      ...(kind === "agent" ? { chat_selectable: chatSelectable } : {}),
     };
     fd.append("meta", JSON.stringify(meta));
 
@@ -398,6 +405,13 @@ export function SourceMetaNewPage({ kind }: Props) {
                 />
               </div>
             </>
+          )}
+
+          {kind === "agent" && (
+            <GeneralAgentChatSelectableField
+              checked={chatSelectable}
+              onChange={setChatSelectable}
+            />
           )}
 
           <div>

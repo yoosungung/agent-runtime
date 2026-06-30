@@ -143,7 +143,7 @@ db-migrate: ## apply 0001_init.sql to dev postgres
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0001_init.sql
 
-db-migrate-all: db-migrate ## apply 0001 … 0009 for existing DBs
+db-migrate-all: db-migrate ## apply 0001 … 0011 for existing DBs
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0002_vfs.sql
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
@@ -160,6 +160,10 @@ db-migrate-all: db-migrate ## apply 0001 … 0009 for existing DBs
 		psql -U runtime -d runtime < backend/migrations/0008_chat_threads_agent_version.sql
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0009_users_tenant_not_null.sql
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0010_hermes_general.sql
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0011_chat_selectable.sql
 
 # --- docs -----------------------------------------------------------------
 

@@ -14,6 +14,7 @@ import { SignatureUploadDialog } from "../components/SignatureUploadDialog";
 import { AccessList } from "../components/AccessList";
 import { UserMetaTemplateTab } from "../components/UserMetaTemplateTab";
 import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
+import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import { sourceMetaListPath } from "../lib/sourceMetaPaths";
 import {
   readMcpKnowledgeRequiresProject,
@@ -50,6 +51,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
   const [runtimePool, setRuntimePool] = useState("");
   const [sigUri, setSigUri] = useState("");
   const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [chatSelectable, setChatSelectable] = useState(true);
   const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
   const [editInit, setEditInit] = useState(false);
 
@@ -67,6 +69,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
     setRuntimePool(item.runtime_pool);
     setSigUri(item.sig_uri ?? "");
     setConfig(item.config);
+    setChatSelectable(item.chat_selectable ?? true);
     if (kind === "mcp") {
       setRequiresKnowledgeProject(readMcpKnowledgeRequiresProject(item.config));
     }
@@ -85,6 +88,7 @@ export function SourceMetaDetailPage({ kind }: Props) {
           kind === "mcp"
             ? withMcpKnowledgeRequiresProject(config, requiresKnowledgeProject)
             : config,
+        ...(kind === "agent" ? { chat_selectable: chatSelectable } : {}),
       } as Partial<SourceMeta>);
       setSaveSuccess(true);
     } catch (e: unknown) {
@@ -232,6 +236,12 @@ export function SourceMetaDetailPage({ kind }: Props) {
               <McpKnowledgePolicyField
                 checked={requiresKnowledgeProject}
                 onChange={setRequiresKnowledgeProject}
+              />
+            )}
+            {kind === "agent" && (
+              <GeneralAgentChatSelectableField
+                checked={chatSelectable}
+                onChange={setChatSelectable}
               />
             )}
             <div>

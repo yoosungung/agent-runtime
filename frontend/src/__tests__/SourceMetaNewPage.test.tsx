@@ -52,6 +52,16 @@ describe("SourceMetaNewPage", () => {
     expect(screen.getByLabelText(/^Entrypoint/)).toHaveValue("module.path:factory");
   });
 
+  it("shows chat selectable for bundle agent", () => {
+    renderPage("agent");
+    expect(screen.getByText(/Chat에서 선택 가능/)).toBeInTheDocument();
+  });
+
+  it("hides chat selectable for bundle MCP", () => {
+    renderPage("mcp");
+    expect(screen.queryByText(/Chat에서 선택 가능/)).not.toBeInTheDocument();
+  });
+
   it("lists bundle MCP runtime pools without image-mode custom", () => {
     renderPage("mcp");
 
