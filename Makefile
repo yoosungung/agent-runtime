@@ -18,7 +18,7 @@ help:
 sync: ## uv sync with dev deps (includes editable path-graph from ../path-graph)
 	uv sync --all-packages
 
-sync-path-graph-docker: ## copy sibling path-graph into build context for backend Docker image
+sync-path-graph-docker: ## copy sibling path-graph into build context (backend / agent-base Docker)
 	mkdir -p path-graph
 	rm -rf path-graph/pipeline
 	cp -r ../path-graph/pipeline path-graph/pipeline

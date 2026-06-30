@@ -261,6 +261,8 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 
 빌드 대상(7종): `backend`, `agent-base`, `mcp-base`, `hermes-base`, `auth`, `deploy-api`, `ext-authz`
 
+`backend`·`agent-base`는 워크스페이스 의존 `path-graph` 패키지가 필요하다. GHA는 `yoosungung/path-graph`를 checkout해 빌드 컨텍스트 `path-graph/pipeline`으로 stage한 뒤 Docker build한다. 로컬 Docker: `make sync-path-graph-docker` 후 `docker build -f runtimes/agent-base/Dockerfile .` (backend 동일).
+
 태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)
 
 ```bash

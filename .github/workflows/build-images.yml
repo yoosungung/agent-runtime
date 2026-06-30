@@ -36,8 +36,8 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - name: Checkout path-graph for backend image
-        if: matrix.image == 'backend'
+      - name: Checkout path-graph for backend and agent-base images
+        if: matrix.image == 'backend' || matrix.image == 'agent-base'
         uses: actions/checkout@v4
         with:
           repository: yoosungung/path-graph
@@ -45,7 +45,7 @@ jobs:
           path: _path_graph
 
       - name: Stage path-graph package for Docker build
-        if: matrix.image == 'backend'
+        if: matrix.image == 'backend' || matrix.image == 'agent-base'
         run: rm -rf path-graph && mkdir -p path-graph && cp -r _path_graph/pipeline path-graph/
 
       - uses: docker/setup-buildx-action@v3

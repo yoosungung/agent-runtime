@@ -12,6 +12,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
 COPY runtimes/agent-base ./runtimes/agent-base
+# agent-base pyproject path: ../../../path-graph/pipeline → /path-graph/pipeline
+COPY path-graph/pipeline /path-graph/pipeline
 
 RUN uv sync --frozen --package agent-base --no-dev
 
