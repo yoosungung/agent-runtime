@@ -174,6 +174,98 @@ async def test_reconcile_project_cron_upsert(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_upsert_cron_workflow_sets_resource_version_on_replace(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.pipeline_cron import _upsert_cron_workflow
+    from backend.settings import Settings
+
+    body = build_cron_workflow_body(
+        name="pg-cron-dev-abc",
+        namespace="path-graph",
+        schedule="0 3 * * *",
+        template_name="pipeline-collect-ingest-rag",
+        tenant="dev",
+        source_id="11111111-1111-4111-8111-111111111111",
+    )
+    existing = {
+        "metadata": {
+            "name": "pg-cron-dev-abc",
+            "namespace": "path-graph",
+            "resourceVersion": "2453389",
+        }
+    }
+
+    custom = MagicMock()
+    custom.get_namespaced_custom_object = AsyncMock(return_value=existing)
+    custom.replace_namespaced_custom_object = AsyncMock()
+    custom.create_namespaced_custom_object = AsyncMock()
+
+    api_client = MagicMock()
+    api_client.close = AsyncMock()
+
+    monkeypatch.setattr(
+        "backend.pipeline_cron.make_api_client",
+        AsyncMock(return_value=api_client),
+    )
+    monkeypatch.setattr(
+        "backend.pipeline_cron.k8s_client.CustomObjectsApi",
+        lambda _client: custom,
+    )
+
+    settings = Settings(PATH_GRAPH_ARGO_NAMESPACE="path-graph")
+    await _upsert_cron_workflow(settings=settings, body=body)
+
+    replace_body = custom.replace_namespaced_custom_object.await_args.kwargs["body"]
+    assert replace_body["metadata"]["resourceVersion"] == "2453389"
+    custom.create_namespaced_custom_object.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upsert_cron_workflow_creates_when_missing(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.pipeline_cron import _upsert_cron_workflow
+    from backend.settings import Settings
+    from kubernetes_asyncio.client.exceptions import ApiException
+
+    body = build_cron_workflow_body(
+        name="pg-cron-dev-new",
+        namespace="path-graph",
+        schedule="0 3 * * *",
+        template_name="pipeline-collect-ingest-rag",
+        tenant="dev",
+        source_id="22222222-2222-4222-8222-222222222222",
+    )
+
+    custom = MagicMock()
+    custom.get_namespaced_custom_object = AsyncMock(
+        side_effect=ApiException(status=404)
+    )
+    custom.replace_namespaced_custom_object = AsyncMock()
+    custom.create_namespaced_custom_object = AsyncMock()
+
+    api_client = MagicMock()
+    api_client.close = AsyncMock()
+
+    monkeypatch.setattr(
+        "backend.pipeline_cron.make_api_client",
+        AsyncMock(return_value=api_client),
+    )
+    monkeypatch.setattr(
+        "backend.pipeline_cron.k8s_client.CustomObjectsApi",
+        lambda _client: custom,
+    )
+
+    settings = Settings(PATH_GRAPH_ARGO_NAMESPACE="path-graph")
+    await _upsert_cron_workflow(settings=settings, body=body)
+
+    custom.create_namespaced_custom_object.assert_awaited_once()
+    create_body = custom.create_namespaced_custom_object.await_args.kwargs["body"]
+    assert "resourceVersion" not in create_body["metadata"]
+
+
+@pytest.mark.asyncio
 async def test_delete_project_reconcile_cron(monkeypatch):
     from unittest.mock import AsyncMock
 

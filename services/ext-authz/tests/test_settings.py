@@ -28,3 +28,10 @@ def test_client_cache_from_env(monkeypatch):
     assert settings.auth_cache_max == 2048
     assert settings.deploy_cache_ttl_sec == 120.0
     assert settings.deploy_cache_max == 512
+
+
+def test_pool_hermes_url_from_env(monkeypatch):
+    monkeypatch.setenv("POOL_HERMES_URL", "http://hermes-pool.test:9090")
+    settings = Settings()
+    assert settings.pool_hermes_url == "http://hermes-pool.test:9090"
+    assert settings.agent_pool_url("hermes") == "http://hermes-pool.test:9090"

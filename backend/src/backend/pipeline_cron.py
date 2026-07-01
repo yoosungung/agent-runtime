@@ -156,7 +156,10 @@ async def _delete_cron_workflow(*, settings: Settings, name: str) -> None:
     except ApiException as exc:
         if exc.status == 404:
             return
-        logger.warning("cron delete failed", extra={"status": exc.status, "name": name})
+        logger.warning(
+            "cron delete failed",
+            extra={"status": exc.status, "cron_name": name},
+        )
         raise _argo_http_error(exc) from exc
     except Exception as exc:
         logger.warning("argo cron client unavailable: %s", exc)
@@ -177,13 +180,22 @@ async def _upsert_cron_workflow(*, settings: Settings, body: dict[str, Any]) -> 
         api_client = await make_api_client(settings)
         custom = k8s_client.CustomObjectsApi(api_client)
         try:
-            await custom.get_namespaced_custom_object(
+            existing = await custom.get_namespaced_custom_object(
                 group=_ARGO_GROUP,
                 version=_ARGO_VERSION,
                 namespace=namespace,
                 plural=_CRON_PLURAL,
                 name=name,
             )
+            resource_version = existing.get("metadata", {}).get("resourceVersion")
+            if resource_version:
+                body = {
+                    **body,
+                    "metadata": {
+                        **body["metadata"],
+                        "resourceVersion": resource_version,
+                    },
+                }
             await custom.replace_namespaced_custom_object(
                 group=_ARGO_GROUP,
                 version=_ARGO_VERSION,
@@ -203,7 +215,10 @@ async def _upsert_cron_workflow(*, settings: Settings, body: dict[str, Any]) -> 
                 body=body,
             )
     except ApiException as exc:
-        logger.warning("cron upsert failed", extra={"status": exc.status, "name": name})
+        logger.warning(
+            "cron upsert failed",
+            extra={"status": exc.status, "cron_name": name},
+        )
         raise _argo_http_error(exc) from exc
     except HTTPException:
         raise

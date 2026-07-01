@@ -38,9 +38,9 @@ from runtime_common.logging import configure_logging, make_request_id_middleware
 from runtime_common.ratelimit import RateLimiter
 from runtime_common.registry import RegistryQuery, RegistrySubscriber
 from runtime_common.resolve_context import encode_resolve_header
-from runtime_common.scheduling import Scheduler
+from runtime_common.scheduling import PickResult, Scheduler
 from runtime_common.schemas import Principal, parse_runtime_pool
-from runtime_common.telemetry import configure_metrics, configure_tracing
+from runtime_common.telemetry import configure_metrics, configure_tracing, get_meter
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("ext-authz")
@@ -114,15 +114,34 @@ async def _pick_pool_addr(
     checksum: str | None,
     ring_key: str,
     pool_url: str,
-) -> tuple[str, str]:
-    warm_url = await scheduler.pick(
+    kind: str,
+) -> tuple[str, str, PickResult]:
+    result = await scheduler.pick(
         runtime_kind=runtime_kind,
         checksum=checksum,
         ring_key=ring_key,
         pool_fallback_url=pool_url,
     )
+    warm_url = result.url
     addr = _strip_scheme(warm_url) if warm_url else _strip_scheme(pool_url)
-    return addr, _strip_scheme(pool_url)
+    return addr, _strip_scheme(pool_url), result
+
+
+def _record_pick_metrics(
+    *,
+    pick_counter: object,
+    warm_replicas_hist: object,
+    warm_util_hist: object,
+    kind: str,
+    runtime_kind: str,
+    result: PickResult,
+) -> None:
+    attrs = {"kind": kind, "runtime_kind": runtime_kind, "path": result.path}
+    pick_counter.add(1, attrs)  # type: ignore[union-attr]
+    if result.warm_replicas > 0:
+        dim = {"kind": kind, "runtime_kind": runtime_kind}
+        warm_replicas_hist.record(result.warm_replicas, dim)  # type: ignore[union-attr]
+        warm_util_hist.record(result.warm_util_max, dim)  # type: ignore[union-attr]
 
 
 def _deny(status_code: int, detail: str) -> Response:
@@ -158,11 +177,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind="agent",
         subscriber=agent_subscriber,
         query=query,
+        warm_util_threshold=settings.warm_util_threshold,
+        warm_target_replicas=settings.warm_target_replicas,
+        warm_spill_util=settings.warm_spill_util,
+        warm_spill_prob=settings.warm_spill_prob,
     )
     mcp_scheduler = Scheduler(
         kind="mcp",
         subscriber=mcp_subscriber,
         query=query,
+        warm_util_threshold=settings.warm_util_threshold,
+        warm_target_replicas=settings.warm_target_replicas,
+        warm_spill_util=settings.warm_spill_util,
+        warm_spill_prob=settings.warm_spill_prob,
+    )
+
+    meter = get_meter("ext_authz")
+    scheduler_pick_counter = meter.create_counter(
+        "scheduler_pick_total",
+        description="Scheduler pick outcomes by path",
+    )
+    scheduler_warm_replicas_hist = meter.create_histogram(
+        "scheduler_warm_replicas",
+        description="Warm pod count at pick time",
+    )
+    scheduler_warm_util_hist = meter.create_histogram(
+        "scheduler_warm_util_max",
+        description="Max warm pod utilization ratio at pick time",
     )
 
     app.state.settings = settings
@@ -181,6 +222,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.query = query
     app.state.agent_scheduler = agent_scheduler
     app.state.mcp_scheduler = mcp_scheduler
+    app.state.scheduler_pick_counter = scheduler_pick_counter
+    app.state.scheduler_warm_replicas_hist = scheduler_warm_replicas_hist
+    app.state.scheduler_warm_util_hist = scheduler_warm_util_hist
     app.state.principal_limiter = RateLimiter(
         max_calls=settings.rate_limit_per_principal, window_sec=60.0
     )
@@ -336,12 +380,22 @@ async def _check_mcp_named_server(
     with tracer.start_as_current_span("scheduler.pick") as span:
         span.set_attribute("kind", "mcp")
         span.set_attribute("runtime.pool", source.runtime_pool)
-        addr, fallback = await _pick_pool_addr(
+        addr, fallback, pick_result = await _pick_pool_addr(
             app.state.mcp_scheduler,
             runtime_kind=pool_id.runtime_kind,
             checksum=source.checksum,
             ring_key=ring_key,
             pool_url=pool_url,
+            kind="mcp",
+        )
+        span.set_attribute("scheduler.path", pick_result.path)
+        _record_pick_metrics(
+            pick_counter=app.state.scheduler_pick_counter,
+            warm_replicas_hist=app.state.scheduler_warm_replicas_hist,
+            warm_util_hist=app.state.scheduler_warm_util_hist,
+            kind="mcp",
+            runtime_kind=pool_id.runtime_kind,
+            result=pick_result,
         )
 
     return Response(
@@ -414,12 +468,21 @@ async def _check_mcp_stream(
 
     if handshake:
         pool_url = settings.pool_fastmcp_url
-        addr, fallback = await _pick_pool_addr(
+        addr, fallback, pick_result = await _pick_pool_addr(
             app.state.mcp_scheduler,
             runtime_kind="fastmcp",
             checksum=None,
             ring_key="__mcp_stream_handshake__",
             pool_url=pool_url,
+            kind="mcp",
+        )
+        _record_pick_metrics(
+            pick_counter=app.state.scheduler_pick_counter,
+            warm_replicas_hist=app.state.scheduler_warm_replicas_hist,
+            warm_util_hist=app.state.scheduler_warm_util_hist,
+            kind="mcp",
+            runtime_kind="fastmcp",
+            result=pick_result,
         )
         return Response(
             status_code=200,
@@ -597,22 +660,31 @@ async def check(path: str, request: Request) -> Response:
     with tracer.start_as_current_span("scheduler.pick") as span:
         span.set_attribute("kind", kind)
         span.set_attribute("runtime.pool", source.runtime_pool)
-        warm_url = await scheduler.pick(
+        addr, fallback_addr, pick_result = await _pick_pool_addr(
+            scheduler,
             runtime_kind=pool_id.runtime_kind,
             checksum=source.checksum,
             ring_key=ring_key,
-            pool_fallback_url=pool_url,
+            pool_url=pool_url,
+            kind=kind,
+        )
+        span.set_attribute("scheduler.path", pick_result.path)
+        _record_pick_metrics(
+            pick_counter=app.state.scheduler_pick_counter,
+            warm_replicas_hist=app.state.scheduler_warm_replicas_hist,
+            warm_util_hist=app.state.scheduler_warm_util_hist,
+            kind=kind,
+            runtime_kind=pool_id.runtime_kind,
+            result=pick_result,
         )
 
     # ext_authz returns only the host:port pair (no scheme). Envoy's Lua filter
     # replaces :authority with this value; the dynamic_forward_proxy cluster
     # then connects directly to host:port. On retry (x-envoy-attempt-count > 1)
     # the Lua filter switches to x-pod-fallback-addr (pool Service URL).
-    addr = _strip_scheme(warm_url) if warm_url else _strip_scheme(pool_url)
-
     resp_headers = {
         "x-pod-addr": addr,
-        "x-pod-fallback-addr": _strip_scheme(pool_url),
+        "x-pod-fallback-addr": fallback_addr,
         "x-principal": principal_b64,
         "x-source-checksum": source.checksum or "",
         "x-source-version": source.version,

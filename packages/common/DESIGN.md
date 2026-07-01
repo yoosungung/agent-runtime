@@ -118,10 +118,12 @@
       - 상태: `rt:warm:{agent,mcp}_{runtime_kind}:{checksum}` (SET, TTL 3s), `rt:load:{pod_id}` (HASH `{active, max, addr}`, TTL 3s).
       - 이벤트: `rt:events:{agent,mcp}_{runtime_kind}` (Pub/Sub, JSON payload).
     - `make_redis_saver(url)` 헬퍼: LangGraph `RedisSaver` 팩토리 — 번들 factory가 동일 구성을 반복하지 않도록. 체크포인터 key는 `rt:ckpt:*` prefix.
-  - **`scheduling.py`** — ext-authz 스케줄러. `Scheduler(subscriber, kind, query=None)`의 `pick(..., pool_fallback_url=)`:
-    1. `subscriber.healthy()` → `subscriber.snapshot()` 에서 warm pod 집합 + load 조회 → p2c.
-    2. subscriber unhealthy → `query` pull 폴백.
-    3. warm miss → `pool_fallback_url`(해당 runtime_kind의 ClusterIP Service). headless/EDS 미사용.
-    - ext-authz가 사용.
+  - **`scheduling.py`** — ext-authz 스케줄러. `Scheduler(subscriber, kind, query=None, warm_util_threshold=1.0, warm_target_replicas=3, warm_spill_util=0.5, warm_spill_prob=0.2)`의 `pick(..., pool_fallback_url=)` → `PickResult(url, path, warm_replicas, warm_util_max)`:
+    1. `subscriber.healthy()` → warm pod 집합 + load → soft spill(목표 replica 미만) → eligible warm p2c.
+    2. warm pod 전부 포화(`active/max >= warm_util_threshold`) → `pool_fallback_url` **spillover**.
+    3. subscriber unhealthy → `query` pull 폴백 (동일 로직).
+    4. warm miss → `pool_fallback_url` (**cold**).
+    - `PickPath`: `warm` | `cold` | `spillover` | `soft_spill`.
+    - ext-authz가 사용. `ring_key`는 trace용.
   - **`active_counter.py`** (또는 `registry.ActiveCounter`) — `asyncio.Semaphore`를 감싸 `active`/`max` 노출. warm-registry publisher가 읽고, pool 런타임이 진입/종료에서 갱신.
 

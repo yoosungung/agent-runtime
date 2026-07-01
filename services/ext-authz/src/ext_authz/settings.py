@@ -36,6 +36,12 @@ class Settings(BaseRuntimeSettings):
     rate_limit_per_principal: int = Field(default=60)
     rate_limit_per_resource: int = Field(default=120)
 
+    # Warm-aware scheduler tuning (bundle-mode pools).
+    warm_util_threshold: float = Field(default=1.0)
+    warm_target_replicas: int = Field(default=3)
+    warm_spill_util: float = Field(default=0.5)
+    warm_spill_prob: float = Field(default=0.2)
+
     # AuthClient / DeployApiClient in-process caches (ext-authz hot path).
     auth_cache_ttl_sec: float = Field(default=5.0)
     auth_cache_max: int = Field(default=1024)

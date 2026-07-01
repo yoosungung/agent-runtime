@@ -11,8 +11,8 @@
 #      direct scrape if using prometheus_exporter).
 #   3. PROMETHEUS_URL set to the Prometheus service within the cluster.
 #
-# The trigger fires when average active requests per pod >= threshold.
-# Formula: total_active / replicas >= threshold → scale up.
+# The trigger fires when max active requests on any pod >= threshold.
+# Hot-spot pods drive scale-up (pool average under-counts single busy pods).
 #
 # Tune `threshold` to match MAX_CONCURRENT * target_utilisation
 # (e.g. MAX_CONCURRENT=32, target 75% → threshold=24).
@@ -34,9 +34,7 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_compiled_graph
         query: >-
-          sum(pool_active_requests{service_name="agent-pool-compiled-graph"})
-          /
-          count(pool_active_requests{service_name="agent-pool-compiled-graph"})
+          max(pool_active_requests{service_name="agent-pool-compiled-graph"})
         threshold: "24"
 ---
 apiVersion: keda.sh/v1alpha1
@@ -56,9 +54,7 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_adk
         query: >-
-          sum(pool_active_requests{service_name="agent-pool-adk"})
-          /
-          count(pool_active_requests{service_name="agent-pool-adk"})
+          max(pool_active_requests{service_name="agent-pool-adk"})
         threshold: "24"
 ---
 apiVersion: keda.sh/v1alpha1
@@ -78,9 +74,7 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_custom
         query: >-
-          sum(pool_active_requests{service_name="agent-pool-custom"})
-          /
-          count(pool_active_requests{service_name="agent-pool-custom"})
+          max(pool_active_requests{service_name="agent-pool-custom"})
         threshold: "24"
 ---
 apiVersion: keda.sh/v1alpha1
@@ -100,9 +94,7 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_fastmcp
         query: >-
-          sum(pool_active_requests{service_name="mcp-pool-fastmcp"})
-          /
-          count(pool_active_requests{service_name="mcp-pool-fastmcp"})
+          max(pool_active_requests{service_name="mcp-pool-fastmcp"})
         threshold: "24"
 ---
 apiVersion: keda.sh/v1alpha1
@@ -122,9 +114,7 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_mcp_sdk
         query: >-
-          sum(pool_active_requests{service_name="mcp-pool-mcp-sdk"})
-          /
-          count(pool_active_requests{service_name="mcp-pool-mcp-sdk"})
+          max(pool_active_requests{service_name="mcp-pool-mcp-sdk"})
         threshold: "24"
 ---
 apiVersion: keda.sh/v1alpha1
@@ -144,7 +134,5 @@ spec:
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
         metricName: pool_active_requests_mcp_custom
         query: >-
-          sum(pool_active_requests{service_name="mcp-pool-custom"})
-          /
-          count(pool_active_requests{service_name="mcp-pool-custom"})
+          max(pool_active_requests{service_name="mcp-pool-custom"})
         threshold: "24"

@@ -198,6 +198,12 @@ ext-authz가 `x-pod-addr`(warm pod IP)과 함께 `x-pod-fallback-addr`(pool Serv
 
 향후 pool pod가 수백 개 이상이거나 Envoy data plane 자체를 수평 확장해야 할 때만 EDS·Envoy HPA를 별도 검토([ROADMAP.md](../ROADMAP.md)). warm 스케줄링은 ext-authz + Redis 유지.
 
+### KEDA pool autoscale (`keda.yaml`)
+
+- 신호: pool pod OTEL gauge `pool_active_requests` (Prometheus).
+- 트리거: **`max(pool_active_requests{service_name=...})`** ≥ threshold (기본 24 = `MAX_CONCURRENT=32` × 75%). pool **평균**이 아닌 **hot-spot pod** 기준 — 단일 busy pod만으로도 scale-up.
+- `minReplicaCount=2`, `maxReplicaCount=10` per pool. ext-authz **spillover/soft_spill**과 함께 쓰면 새 pod가 cold spill을 받아 warm 확장.
+
 ## env 배선
 
 - `POSTGRES_DSN`은 **auth / deploy-api에만** 주입. gateway·pool은 받지 않는다.

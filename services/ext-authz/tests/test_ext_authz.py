@@ -10,6 +10,7 @@ import respx
 from fastapi.testclient import TestClient
 
 from ext_authz import app as app_module
+from runtime_common.scheduling import PickPath, PickResult
 from runtime_common.schemas import Principal, ResolveResponse, ResourceRef, SourceMeta
 
 
@@ -84,7 +85,7 @@ class _FakeScheduler:
         ring_key: str,
         *,
         pool_fallback_url: str | None = None,
-    ) -> str | None:
+    ) -> PickResult:
         self.calls.append(
             {
                 "runtime_kind": runtime_kind,
@@ -93,7 +94,75 @@ class _FakeScheduler:
                 "pool_fallback_url": pool_fallback_url,
             }
         )
-        return self.addr
+        return PickResult(url=self.addr, path=PickPath.WARM)
+
+
+class _FakeDeployHermes(_FakeDeploy):
+    """Returns runtime_pool=agent:hermes for hermes_general agents."""
+
+    async def resolve(
+        self,
+        kind: str,
+        name: str,
+        version: str | None = None,
+        principal: str | None = None,
+    ) -> ResolveResponse:
+        self.calls.append({"kind": kind, "name": name, "version": version})
+        if name == "missing":
+            raise httpx.HTTPStatusError(
+                "not found",
+                request=httpx.Request("GET", "http://deploy/resolve"),
+                response=httpx.Response(404),
+            )
+        return ResolveResponse(
+            source=SourceMeta(
+                kind=kind,
+                name=name,
+                version=version or "v1",
+                runtime_pool="agent:hermes",
+                entrypoint=None,
+                bundle_uri=None,
+                checksum=None,
+                deploy_mode="hermes_general",
+                config={"hermes": {"soul": "test", "model": "test/model"}},
+            ),
+            user=None,
+        )
+
+
+class _FakeAuthHermes(_FakeAuth):
+    async def verify(self, token: str, grace_sec: int = 0) -> Principal:
+        self.last_grace_sec = grace_sec
+        if token == "bad":
+            raise ValueError("invalid")
+        return Principal(
+            sub="u_42",
+            user_id=42,
+            tenant=None,
+            access=[
+                ResourceRef(kind="agent", name="hermes-bot"),
+                ResourceRef(kind="mcp", name="rag"),
+            ],
+            grace_applied=grace_sec > 0 and token == "grace",
+        )
+
+
+@pytest.fixture
+def hermes_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    tc = TestClient(app_module.app)
+    tc.__enter__()
+
+    fake_auth = _FakeAuthHermes()
+    fake_deploy = _FakeDeployHermes()
+    fake_scheduler = _FakeScheduler(addr=None)
+
+    app_module.app.state.auth = fake_auth
+    app_module.app.state.deploy = fake_deploy
+    app_module.app.state.agent_scheduler = fake_scheduler
+    app_module.app.state.mcp_scheduler = fake_scheduler
+    app_module.app.state.http = httpx.AsyncClient()
+    yield tc
+    tc.__exit__(None, None, None)
 
 
 @pytest.fixture
@@ -696,3 +765,51 @@ def test_bundle_mode_cfg_header(client: TestClient) -> None:
     cfg_raw = base64.b64decode(r.headers["x-runtime-cfg"])
     cfg = json.loads(cfg_raw)
     assert isinstance(cfg, dict)
+
+
+# ---------------------------------------------------------------------------
+# Hermes pool routing (agent:hermes → POOL_HERMES_URL)
+# ---------------------------------------------------------------------------
+
+
+class TestHermesAgentInvoke:
+    """hermes_general agents route to agent-pool-hermes via ext-authz."""
+
+    BODY = {"agent": "hermes-bot", "input": {"message": "hi"}, "session_id": "s1"}
+
+    def _post(self, client: TestClient, *, token: str = "good") -> httpx.Response:
+        return client.post(
+            "/v1/agents/invoke",
+            content=json.dumps(self.BODY),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    def test_routes_to_hermes_pool_service(self, hermes_client: TestClient) -> None:
+        r = self._post(hermes_client)
+        assert r.status_code == 200, r.text
+        expected = "agent-pool-hermes.runtime.svc.cluster.local:8080"
+        assert r.headers["x-pod-addr"] == expected
+        assert r.headers["x-pod-fallback-addr"] == expected
+
+    def test_scheduler_receives_hermes_runtime_kind(self, hermes_client: TestClient) -> None:
+        fake_scheduler: _FakeScheduler = app_module.app.state.agent_scheduler
+        fake_scheduler.calls.clear()
+        r = self._post(hermes_client)
+        assert r.status_code == 200, r.text
+        assert len(fake_scheduler.calls) == 1
+        call = fake_scheduler.calls[0]
+        assert call["runtime_kind"] == "hermes"
+        assert call["checksum"] is None
+        assert (
+            call["pool_fallback_url"]
+            == "http://agent-pool-hermes.runtime.svc.cluster.local:8080"
+        )
+
+    def test_hermes_cfg_header_includes_hermes_block(self, hermes_client: TestClient) -> None:
+        r = self._post(hermes_client)
+        assert r.status_code == 200, r.text
+        cfg = json.loads(base64.b64decode(r.headers["x-runtime-cfg"]))
+        assert cfg["hermes"]["soul"] == "test"

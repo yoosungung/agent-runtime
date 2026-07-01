@@ -32,6 +32,15 @@ def test_parse_bundle_mode_agent():
     assert str(pid) == "agent:compiled_graph"
 
 
+def test_parse_bundle_mode_hermes():
+    pid = parse_runtime_pool("agent:hermes")
+    assert pid.kind == "agent"
+    assert pid.runtime_kind == "hermes"
+    assert pid.slug is None
+    assert not pid.is_image_mode
+    assert str(pid) == "agent:hermes"
+
+
 def test_parse_bundle_mode_mcp():
     pid = parse_runtime_pool("mcp:fastmcp")
     assert pid.kind == "mcp"
