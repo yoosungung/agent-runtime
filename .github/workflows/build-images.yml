@@ -24,7 +24,7 @@ jobs:
 
       - name: Hermes OCI unit tests
         run: |
-          uv sync --all-packages
+          uv sync --package hermes-base
           uv run pytest runtimes/hermes-base/tests/test_oci_runtime_slim.py \
             runtimes/hermes-base/tests/test_prune_hermes.py -q
 
@@ -49,14 +49,16 @@ jobs:
             image: backend
           - dockerfile: runtimes/hermes-base/Dockerfile
             image: hermes-base
+          - dockerfile: deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile
+            image: path-graph-rag-mcp
 
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - name: Checkout path-graph for backend and agent-base images
-        if: matrix.image == 'backend' || matrix.image == 'agent-base'
+      - name: Checkout path-graph for images that embed pipeline
+        if: contains(fromJSON('["backend", "agent-base", "path-graph-rag-mcp"]'), matrix.image)
         uses: actions/checkout@v4
         with:
           repository: yoosungung/path-graph
@@ -64,7 +66,7 @@ jobs:
           path: _path_graph
 
       - name: Stage path-graph package for Docker build
-        if: matrix.image == 'backend' || matrix.image == 'agent-base'
+        if: contains(fromJSON('["backend", "agent-base", "path-graph-rag-mcp"]'), matrix.image)
         run: rm -rf path-graph && mkdir -p path-graph && cp -r _path_graph/pipeline path-graph/
 
       - uses: docker/setup-buildx-action@v3

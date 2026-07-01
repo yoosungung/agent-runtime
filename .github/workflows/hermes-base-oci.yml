@@ -40,7 +40,7 @@ jobs:
 
       - name: OCI unit tests
         run: |
-          uv sync --all-packages
+          uv sync --package hermes-base
           uv run pytest runtimes/hermes-base/tests/test_oci_runtime_slim.py \
             runtimes/hermes-base/tests/test_prune_hermes.py -q
 

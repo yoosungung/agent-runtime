@@ -2,14 +2,25 @@
 
 path-graph `hybrid_search`(PG FTS + Qdrant RRF)를 **전용 OCI 이미지**로 제공한다. mcp-base pool·번들 zip 불필요.
 
-## Build
+## Build (GHA — 표준)
+
+`:latest` 배포 없음. 태그 = **git SHA** (`ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:<sha>`).
+
+```bash
+git push origin main
+make build-images
+make build-images-wait
+```
+
+워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp`. `yoosungung/path-graph` `main`의 `pipeline/`을 stage한 뒤 빌드한다.
+
+### 로컬 Docker (선택)
 
 ```bash
 # agents-runtime repo root
 make sync-path-graph-docker
 docker build -f deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile \
-  -t ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:v1 .
-docker push ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:v1
+  -t ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:local .
 ```
 
 ## Register (Admin API)
@@ -21,12 +32,12 @@ docker push ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:v1
   "kind": "mcp",
   "name": "path-graph-rag",
   "version": "v1",
-  "image_uri": "ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:v1",
+  "image_uri": "ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:<git-sha>",
   "config": {
     "knowledge": {"requires_project": true},
     "path_graph_rag": {"default_top_k": 10}
   },
-  "pool_env": {
+  "env": {
     "PATH_GRAPH_DSN": "postgresql://runtime:runtime@postgres.runtime.svc.cluster.local:5432/runtime",
     "QDRANT_URL": "http://qdrant.qdrant.svc.cluster.local:6333",
     "EMBEDDING_BASE_URL": "http://bge-m3-tei.llm-serving.svc.cluster.local:8080"
@@ -34,7 +45,7 @@ docker push ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:v1
 }
 ```
 
-backend가 `mcp-pool-custom-{slug}` Deployment·Service를 생성한다. `runtime_pool`은 `mcp:custom:path-graph-rag-v1` 형태.
+`image_uri`는 GHA가 push한 **현재 배포 SHA**를 쓴다 (`make build-images` 후 `git rev-parse HEAD`). backend가 `mcp-pool-custom-{slug}` Deployment·Service를 생성한다. `runtime_pool`은 `mcp:custom:path-graph-rag-v1` 형태.
 
 ## Tool
 
@@ -44,7 +55,7 @@ backend가 `mcp-pool-custom-{slug}` Deployment·Service를 생성한다. `runtim
 
 General agent에 `knowledge_project_ids` + 이 MCP server 연결. multi-project RRF는 agents-runtime `invoke_scoped_retrieval`이 담당.
 
-## Env (pool_env / infra)
+## Env (pool env / infra)
 
 | 변수 | 용도 |
 |------|------|
