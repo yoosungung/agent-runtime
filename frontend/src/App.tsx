@@ -73,6 +73,16 @@ const GeneralAgentNewPage = lazy(() =>
     default: m.GeneralAgentNewPage,
   })),
 );
+const HermesAgentNewPage = lazy(() =>
+  import("./pages/HermesAgentNewPage").then((m) => ({
+    default: m.HermesAgentNewPage,
+  })),
+);
+const HermesAgentDetailPage = lazy(() =>
+  import("./pages/HermesAgentDetailPage").then((m) => ({
+    default: m.HermesAgentDetailPage,
+  })),
+);
 const GeneralAgentDetailPage = lazy(() =>
   import("./pages/GeneralAgentDetailPage").then((m) => ({
     default: m.GeneralAgentDetailPage,
@@ -139,8 +149,22 @@ export function App() {
                     }
                   />
                   <Route
+                    path="/agents/hermes"
+                    element={
+                      <SourceMetaListPage kind="agent" deployMode="hermes_general" />
+                    }
+                  />
+                  <Route
                     path="/agents/new/general"
                     element={<GeneralAgentNewPage />}
+                  />
+                  <Route
+                    path="/agents/new/hermes"
+                    element={<HermesAgentNewPage />}
+                  />
+                  <Route
+                    path="/agents/hermes/:id"
+                    element={<HermesAgentDetailPage />}
                   />
                   <Route
                     path="/agents/new"

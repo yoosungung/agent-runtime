@@ -5,23 +5,26 @@ import { describe, expect, it, vi } from "vitest";
 import { GeneralAgentNewPage } from "../pages/GeneralAgentNewPage";
 
 vi.mock("../hooks/useMyUserMeta", () => ({
-  useMyAccessResources: () => ({
-    data: {
-      items: [
-        {
-          kind: "mcp",
-          name: "search-server",
-          version: "v1",
-          source_meta_id: 1,
-          runtime_pool: "mcp:fastmcp",
-          has_user_meta: false,
-          user_meta_required: false,
-          template_description: null,
-          template_field_count: 0,
-        },
-      ],
-      total: 1,
-    },
+  useMyAccessResources: (kind: string) => ({
+    data:
+      kind === "mcp"
+        ? {
+            items: [
+              {
+                kind: "mcp",
+                name: "search-server",
+                version: "v1",
+                source_meta_id: 1,
+                runtime_pool: "mcp:fastmcp",
+                has_user_meta: false,
+                user_meta_required: false,
+                template_description: null,
+                template_field_count: 0,
+              },
+            ],
+            total: 1,
+          }
+        : { items: [], total: 0 },
     isLoading: false,
   }),
 }));

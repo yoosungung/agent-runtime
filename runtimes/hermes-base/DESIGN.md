@@ -106,7 +106,7 @@ VFS fingerprint 변경 시 `InstanceCache.invalidate_checksum` 또는 config PAT
 ```bash
 ./scripts/wire-dev.sh up
 ./scripts/wire-dev.sh env
-uv run pytest runtimes/hermes-base/tests/test_vfs_profile_wire.py -m integration -v
+uv run pytest runtimes/hermes-base/tests/test_vfs_profile_wire.py runtimes/hermes-base/tests/test_multipod_wire.py -m integration -v
 ```
 
 풀 로컬 디버그: `./scripts/wire-dev.sh pool-isolate hermes` → cluster `agent-pool-hermes` scale 0, 로컬 `:8095/invoke`.

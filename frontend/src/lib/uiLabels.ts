@@ -13,12 +13,14 @@ export const listNewUserButtonLabel = "+ New User";
 
 /** Form page titles */
 export function newPageTitle(
-  tier: "agent" | "bundle" | "container",
+  tier: "agent" | "bundle" | "container" | "hermes",
   kind: SourceKind,
 ): string {
   switch (tier) {
     case "agent":
       return "New Agent";
+    case "hermes":
+      return "New Hermes Agent";
     case "bundle":
       return kind === "agent" ? "New Bundle Agent" : "New Bundle MCP";
     case "container":

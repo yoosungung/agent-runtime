@@ -14,7 +14,7 @@ export interface SourceMeta {
   config: Record<string, unknown>;
   user_meta_template?: Record<string, unknown>;
   retired: boolean;
-  deploy_mode: "general" | "bundle" | "image";
+  deploy_mode: "general" | "bundle" | "image" | "hermes_general";
   image_uri: string | null;
   image_digest: string | null;
   slug: string | null;
@@ -36,7 +36,7 @@ export interface AccessEntry {
 
 export interface SourceMetaListParams {
   kind?: "agent" | "mcp";
-  deploy_mode?: "general" | "bundle" | "image";
+  deploy_mode?: "general" | "bundle" | "image" | "hermes_general";
   name?: string;
   retired?: boolean;
   limit?: number;
@@ -80,6 +80,51 @@ export function useSourceMetaAccess(id: number | undefined, params?: { limit?: n
         `/api/source-meta/${id}/access${buildQuery((params ?? {}) as Record<string, unknown>)}`,
       ),
     enabled: id !== undefined,
+  });
+}
+
+export function useCreateHermesAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      version: string;
+      soul: string;
+      mcp_servers: string[];
+      skills?: string[];
+      model?: string;
+      config?: Record<string, unknown>;
+      visibility?: "private" | "tenant" | "public";
+    }) =>
+      apiJson<SourceMeta>("/api/source-meta/hermes-general", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["source-meta", "list"] });
+    },
+  });
+}
+
+export function usePatchHermesAgent(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      soul?: string;
+      mcp_servers?: string[];
+      skills?: string[];
+      model?: string;
+      config?: Record<string, unknown>;
+      visibility?: "private" | "tenant" | "public";
+    }) =>
+      apiJson<SourceMeta>(`/api/source-meta/hermes-general/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["source-meta", id] });
+      qc.invalidateQueries({ queryKey: ["source-meta", "list"] });
+    },
   });
 }
 

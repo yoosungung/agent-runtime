@@ -16,6 +16,7 @@ import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKn
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
 import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
 import { GeneralAgentDelegateAgentsField } from "../components/GeneralAgentDelegateAgentsField";
+import { AgentTierNav } from "../components/AgentTierNav";
 import type { GeneralVisibility } from "../lib/generalVisibility";
 import { mcpSelectionRequiresKnowledge } from "../lib/knowledgePolicy";
 import {
@@ -96,7 +97,9 @@ export function GeneralAgentNewPage() {
   }
 
   return (
-    <FormPageLayout
+    <>
+      <AgentTierNav />
+      <FormPageLayout
       title={newPageTitle("agent", "agent")}
       description={
         <>
@@ -254,5 +257,6 @@ export function GeneralAgentNewPage() {
         </FormActions>
       </form>
     </FormPageLayout>
+    </>
   );
 }

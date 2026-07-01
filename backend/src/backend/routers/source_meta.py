@@ -438,7 +438,9 @@ async def list_source_meta(
     limit = min(limit, 100)
     if deploy_mode is not None:
         _validate_deploy_mode(deploy_mode)
-        if deploy_mode != "general" and not role_at_least(principal.role, UserRole.DEVELOPER):
+        if deploy_mode not in ("general", "hermes_general") and not role_at_least(
+            principal.role, UserRole.DEVELOPER
+        ):
             raise HTTPException(status_code=403, detail="Developer access required")
     q = select(SourceMetaRow)
     count_q = select(func.count()).select_from(SourceMetaRow)
@@ -1449,5 +1451,132 @@ async def create_hermes_general_agent(
         name=body.name,
         version=body.version,
         mcp_tool_count=len(mcp_tools),
+    )
+    return _row_to_response(row)
+
+
+class HermesAgentPatchRequest(BaseModel):
+    soul: str | None = None
+    mcp_servers: list[str] | None = None
+    skills: list[str] | None = None
+    model: str | None = None
+    config: dict | None = None
+    visibility: str | None = None
+
+
+@router.patch("/hermes-general/{id}", response_model=SourceMetaResponse)
+async def patch_hermes_general_agent(
+    id: int,
+    request: Request,
+    body: HermesAgentPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(get_principal),
+) -> SourceMetaResponse:
+    result = await db.execute(select(SourceMetaRow).where(SourceMetaRow.id == id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="source_meta not found")
+    if row.deploy_mode != "hermes_general" or row.kind != "agent":
+        raise HTTPException(status_code=400, detail="Not a hermes general agent")
+    _ensure_can_write_source_meta(row, principal)
+
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if body.visibility is not None:
+        owner_tenant = await _resolve_creator_tenant(db, principal, fallback=row.owner_tenant)
+        _validate_general_visibility(body.visibility, owner_tenant)
+        row.visibility = body.visibility
+        if body.visibility == GeneralVisibility.TENANT:
+            row.owner_tenant = owner_tenant
+
+    if body.mcp_servers is not None:
+        if not body.mcp_servers:
+            raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+        for server in body.mcp_servers:
+            if not principal.can_access("mcp", server):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"No access to MCP server '{server}'",
+                )
+
+    needs_config_rebuild = any(
+        field in update_data
+        for field in ("soul", "mcp_servers", "skills", "model", "config")
+    )
+    if needs_config_rebuild:
+        hermes_cfg = row.config.get("hermes", {})
+        soul = body.soul.strip() if body.soul is not None else hermes_cfg.get("soul", "")
+        if not soul:
+            raise HTTPException(status_code=400, detail="soul is required")
+        mcp_servers = (
+            body.mcp_servers if body.mcp_servers is not None else hermes_cfg.get("mcp_servers", [])
+        )
+        if not mcp_servers:
+            raise HTTPException(status_code=400, detail="mcp_servers must not be empty")
+        skills = body.skills if body.skills is not None else hermes_cfg.get("skills", [])
+        model = body.model if body.model is not None else hermes_cfg.get("model", "")
+
+        access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE)
+        if not access_token:
+            raise HTTPException(status_code=401, detail="access token required for MCP discovery")
+
+        mcp_tools = await _discover_mcp_tools(settings, access_token, mcp_servers)
+        extra_config = body.config if body.config is not None else {
+            k: v for k, v in row.config.items() if k != "hermes"
+        }
+        extra_config.pop("hermes", None)
+        config = _build_hermes_config(
+            soul,
+            mcp_servers,
+            mcp_tools,
+            skills=skills,
+            model=model,
+            extra_config=extra_config,
+        )
+        _validate_config(config)
+        row.config = config
+
+    db.add(
+        make_audit_row(
+            "source_meta.patch_hermes_general",
+            principal.user_id,
+            principal.sub,
+            source_meta_id=id,
+            **audit_patch_details(update_data),
+        )
+    )
+    try:
+        await db.flush()
+        if needs_config_rebuild:
+            from hermes_base.vfs_profile import ProfileVfsSync
+
+            vfs_store = getattr(request.app.state, "vfs_agent_store", None)
+            if vfs_store is None:
+                raise HTTPException(status_code=503, detail="VFS store not configured (set VFS_DSN)")
+            vfs_sync = ProfileVfsSync(vfs_store)
+            session_dsn = (settings.VFS_DSN or settings.POSTGRES_DSN or "").replace(
+                "postgresql+asyncpg://", "postgresql://"
+            )
+            await vfs_sync.seed_from_config(
+                row.name,
+                row.config,
+                session_dsn=session_dsn or None,
+            )
+        await db.commit()
+        await db.refresh(row)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="update conflict") from exc
+
+    log_event(
+        "source_meta.patch_hermes_general",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        source_meta_id=row.id,
+        name=row.name,
+        version=row.version,
     )
     return _row_to_response(row)

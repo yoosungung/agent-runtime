@@ -7,11 +7,12 @@ import { sourceMetaDetailPath } from "../lib/sourceMetaPaths";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { PageHeader } from "../components/PageHeader";
 import { ChatSelectableBadge } from "../components/ChatSelectableBadge";
+import { AgentTierNav } from "../components/AgentTierNav";
 import { listNewButtonLabel } from "../lib/uiLabels";
 
 interface Props {
   kind: "agent" | "mcp";
-  deployMode: "general" | "bundle";
+  deployMode: "general" | "bundle" | "hermes_general";
   embedded?: boolean;
 }
 
@@ -52,30 +53,39 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
     offset,
   });
 
+  const isGeneralTier =
+    deployMode === "general" || deployMode === "hermes_general";
+
   const newPath =
     deployMode === "general"
       ? "/agents/new/general"
-      : kind === "agent"
-        ? "/bundle/agents/new"
-        : "/bundle/mcp/new";
+      : deployMode === "hermes_general"
+        ? "/agents/new/hermes"
+        : kind === "agent"
+          ? "/bundle/agents/new"
+          : "/bundle/mcp/new";
   const title =
     deployMode === "general"
       ? "Agent"
-      : kind === "agent"
-        ? "Bundle Agents"
-        : "Bundle MCP";
+      : deployMode === "hermes_general"
+        ? "Hermes Agent"
+        : kind === "agent"
+          ? "Bundle Agents"
+          : "Bundle MCP";
   const emptyLabel =
     deployMode === "general"
       ? "agents"
-      : kind === "agent"
-        ? "bundle agents"
-        : "bundle MCP servers";
-  const showChatable = kind === "agent";
-  const tableColSpan =
-    deployMode === "general" ? 6 : showChatable ? 7 : 6;
+      : deployMode === "hermes_general"
+        ? "Hermes agents"
+        : kind === "agent"
+          ? "bundle agents"
+          : "bundle MCP servers";
+  const showChatable = kind === "agent" && deployMode === "general";
+  const tableColSpan = isGeneralTier ? 6 : showChatable ? 7 : 6;
 
   return (
     <div>
+      {isGeneralTier && <AgentTierNav />}
       <PageHeader title={embedded ? undefined : title}>
         <button
           onClick={() => navigate(newPath)}
@@ -139,7 +149,7 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Version
                     </th>
-                    {deployMode === "general" ? (
+                    {isGeneralTier ? (
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         사용 권한
                       </th>
@@ -191,7 +201,7 @@ export function SourceMetaListPage({ kind, deployMode, embedded = false }: Props
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {item.version}
                       </td>
-                      {deployMode === "general" ? (
+                      {isGeneralTier ? (
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {generalVisibilityLabel(item.visibility)}
                         </td>

@@ -108,14 +108,7 @@ class ProfileVfsSync:
             build_config_yaml(cfg, session_dsn=session_dsn),
             overwrite=True,
         )
-        for skill_name in hermes.skills:
-            await self._store.write(
-                KIND,
-                agent_name,
-                vfs_path(f"skills/{skill_name}.enabled"),
-                "",
-                overwrite=True,
-            )
+        await self._sync_skill_markers(agent_name, hermes.skills)
         await self._store.write(
             KIND,
             agent_name,
@@ -123,3 +116,21 @@ class ProfileVfsSync:
             json.dumps({"fingerprint": fp, "agent": agent_name}, indent=2) + "\n",
             overwrite=True,
         )
+
+    async def _sync_skill_markers(self, agent_name: str, skills: list[str]) -> None:
+        desired = {f"skills/{name}.enabled" for name in skills}
+        pattern = f"{self._prefix}/skills/*"
+        existing = await self._store.glob(KIND, agent_name, pattern)
+        prefix_len = len(self._prefix) + 1
+        for vp in existing:
+            rel = vp[prefix_len:] if vp.startswith(f"{self._prefix}/") else vp
+            if rel.startswith("skills/") and rel.endswith(".enabled") and rel not in desired:
+                await self._store.delete(KIND, agent_name, vp)
+        for skill_name in skills:
+            await self._store.write(
+                KIND,
+                agent_name,
+                vfs_path(f"skills/{skill_name}.enabled"),
+                "",
+                overwrite=True,
+            )

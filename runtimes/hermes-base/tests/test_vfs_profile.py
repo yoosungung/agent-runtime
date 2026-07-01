@@ -47,6 +47,24 @@ async def test_seed_and_pull(sync: ProfileVfsSync, tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio()
+async def test_seed_syncs_skill_markers_on_update(sync: ProfileVfsSync, tmp_path: Path) -> None:
+    await sync.seed_from_config(AGENT, _sample_cfg())
+    updated = _sample_cfg()
+    updated["hermes"]["skills"] = ["search"]
+    await sync.seed_from_config(AGENT, updated)
+
+    plan = await sync._store.read(KIND, AGENT, vfs_path("skills/plan.enabled"))
+    search = await sync._store.read(KIND, AGENT, vfs_path("skills/search.enabled"))
+    assert plan is None
+    assert search is not None
+
+    scratch = tmp_path / "work"
+    await sync.pull(AGENT, scratch)
+    assert not (scratch / "skills" / "plan.enabled").exists()
+    assert (scratch / "skills" / "search.enabled").is_file()
+
+
+@pytest.mark.asyncio()
 async def test_push_writes_memory_changes(sync: ProfileVfsSync, tmp_path: Path) -> None:
     await sync.seed_from_config(AGENT, _sample_cfg())
     scratch = tmp_path / "work"

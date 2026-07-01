@@ -72,6 +72,9 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /agents                                source_meta list (kind=agent)
 /agents/new                            생성 폼 (bundle_uri 입력 또는 zip 업로드)
 /agents/new/general                    general agent 생성 (config-only)
+/agents/hermes                         Hermes profile agent 목록 (`deploy_mode=hermes_general`)
+/agents/new/hermes                     Hermes agent 생성 (`POST /api/source-meta/hermes-general`)
+/agents/hermes/:id                     Hermes agent 상세 (조회·retire·delete; PATCH는 P2 후속)
 /agents/:id                            상세 — bundle: User Meta Template 탭 + access; general: 편집 폼
 /mcp-servers/:id                       상세 + User Meta Template 탭 + access
 /me                                    본인 프로필 + integrations + 비번 변경
@@ -149,6 +152,13 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - MCP 중 `requires_knowledge_project=true`인 서버를 고르면 project 1개 이상 필수 (`access-resources.requires_knowledge_project`).
 - `tenant` 옵션은 세션에 `tenant`가 없으면 disabled + 안내 문구. 기본값 `private`.
 - 생성 `POST /api/source-meta/general`, 편집 `PATCH /api/source-meta/general/{id}`.
+
+**Hermes agent 생성·조회 (`/agents/new/hermes`, `/agents/hermes/:id`)**
+- Agent nav 하위 탭: **General** (`/agents`) · **Hermes** (`/agents/hermes`).
+- 필드: `name`, `version` + `visibility`, **`soul`**(SOUL.md), MCP 서버(체크박스, 필수), `skills`(쉼표 구분, optional), `model`(optional), `config` JSON(optional).
+- VFS seed: 등록 시 `/profile/SOUL.md`, `/profile/config.yaml`, `/profile/skills/{name}.enabled` — admin VFS UI에서 확인.
+- 생성 `POST /api/source-meta/hermes-general`. 편집 `PATCH /api/source-meta/hermes-general/{id}` + `usePatchHermesAgent`.
+- 목록 `GET /api/source-meta?kind=agent&deploy_mode=hermes_general` — general과 동일 visibility 필터(비-developer 허용).
 
 **MCP bundle 등록 (`/bundle/mcp/new`)**
 - 체크박스 **Pipeline project binding 필요** → `config.knowledge.requires_project`. `runtime_pool=mcp:didim_rag` 선택 시 기본 checked.
