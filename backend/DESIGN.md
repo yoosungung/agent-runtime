@@ -137,6 +137,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `POST` | `/api/pipeline/projects` | project 생성 |
 | `GET` | `/api/pipeline/projects/{id}` | project 상세 |
 | `GET` | `/api/pipeline/projects/{id}/binding` | `resolve_knowledge_binding` (RAG/graph/wiki) |
+| `GET` | `/api/pipeline/projects/{id}/search` | hybrid retrieval — `q`, `top_k` (기본 10) |
 | `GET` | `/api/pipeline/projects/{id}/documents` | project 문서 목록 (`?ingest_state=` `?source_id=` `?filename=` contains, 표준 페이지네이션) |
 | `GET` | `/api/pipeline/projects/{id}/tombstones` | tombstone 목록 |
 | `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |

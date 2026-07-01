@@ -642,6 +642,28 @@ async def test_get_project(pipeline_client):
 
 
 @pytest.mark.asyncio
+async def test_search_project(pipeline_client, monkeypatch):
+    client, _mock_store, _mock_project_store = pipeline_client
+    monkeypatch.setattr(
+        "backend.routers.pipeline.api_search_project",
+        lambda tenant, project_id, query, top_k=10: {
+            "query": query,
+            "project_id": project_id,
+            "project_slug": "default",
+            "results": [{"chunk_id": "c1", "text": "hit", "rrf_score": 0.01}],
+        },
+    )
+    resp = await client.get(
+        "/api/pipeline/projects/550e8400-e29b-41d4-a716-446655440000/search",
+        params={"q": "policy", "top_k": 5},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["query"] == "policy"
+    assert body["results"][0]["chunk_id"] == "c1"
+
+
+@pytest.mark.asyncio
 async def test_list_sources_filtered_by_project(pipeline_client):
     client, mock_store, _mock_project_store = pipeline_client
     resp = await client.get(

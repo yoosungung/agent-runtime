@@ -31,6 +31,7 @@ from path_graph.admin.downstream import (
     prepare_graphrag_submission,
 )
 from path_graph.admin.projects import ProjectStore
+from path_graph.admin.retrieval import api_search_project
 from path_graph.admin.runner import probe_source
 from path_graph.admin.sources import SourceStore
 from path_graph.admin.uploads import (
@@ -591,6 +592,27 @@ async def get_project_binding(
         return await asyncio.to_thread(api_get_binding, tenant, project_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/search", dependencies=[Depends(require_admin)])
+async def search_project(
+    project_id: str,
+    principal: Principal = Depends(require_admin),  # noqa: B008
+    store: ProjectStore = Depends(_project_store),  # noqa: B008
+    q: str = Query(..., min_length=1),
+    top_k: int = Query(10, ge=1, le=50),
+) -> dict[str, Any]:
+    tenant = _require_tenant(principal)
+    await _require_project(tenant, project_id, store)
+    try:
+        return await asyncio.to_thread(
+            api_search_project, tenant, project_id, q, top_k=top_k
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "project not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
 
 
 @router.get("/projects/{project_id}/documents", dependencies=[Depends(require_admin)])

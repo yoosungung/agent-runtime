@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     PATH_GRAPH_DSN: str = ""  # fallback: POSTGRES_DSN (psycopg postgresql://)
     PATH_GRAPH_ARGO_NAMESPACE: str = "path-graph"
     PATH_GRAPH_COLLECT_WF_TEMPLATE: str = "pipeline-collect-ingest-rag"
+    PATH_GRAPH_COLLECT_ONLY_WF_TEMPLATE: str = "pipeline-collect"
     PATH_GRAPH_INGEST_WF_TEMPLATE: str = "pipeline-ingest-rag"
     PATH_GRAPH_GRAPHRAG_WF_TEMPLATE: str = "pipeline-graphrag"
     PATH_GRAPH_PURGE_PROJECT_WF_TEMPLATE: str = "pipeline-purge-project"

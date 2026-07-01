@@ -77,6 +77,7 @@ def ingest_rag_parameters(
     tenant: str,
     batch_manifest_json: str = "",
     batch_manifest_key: str = "",
+    max_parallel: str = "10",
 ) -> list[dict[str, str]]:
     """Build pipeline-ingest-rag WF parameters.
 
@@ -89,6 +90,7 @@ def ingest_rag_parameters(
         {"name": "batch_manifest", "value": inline},
         {"name": "batch_manifest_key", "value": batch_manifest_key},
         {"name": "rag", "value": "true"},
+        {"name": "max_parallel", "value": max_parallel},
     ]
 
 
@@ -244,6 +246,7 @@ async def submit_collect_ingest_rag(
     source_name: str,
     credential_secret: str = "",
     sync_mode: str = "",
+    max_parallel: str = "10",
 ) -> dict[str, str]:
     """Submit pipeline-collect-ingest-rag Workflow (async Run now)."""
     parameters = [
@@ -253,6 +256,7 @@ async def submit_collect_ingest_rag(
         {"name": "credential_secret", "value": credential_secret},
         {"name": "rag", "value": "true"},
         {"name": "sync_mode", "value": sync_mode},
+        {"name": "max_parallel", "value": max_parallel},
     ]
     body = _workflow_body(
         settings=settings,
@@ -260,6 +264,35 @@ async def submit_collect_ingest_rag(
         template_name=settings.PATH_GRAPH_COLLECT_WF_TEMPLATE,
         source_name=source_name,
         parameters=parameters,
+    )
+    return await _submit_workflow(settings=settings, body=body)
+
+
+async def submit_collect_only(
+    *,
+    settings: Settings,
+    tenant: str,
+    source_id: str,
+    batch_id: str,
+    source_name: str,
+    credential_secret: str = "",
+    sync_mode: str = "",
+) -> dict[str, str]:
+    """Submit pipeline-collect Workflow (collect manifest only, no ingest)."""
+    parameters = [
+        {"name": "tenant", "value": tenant},
+        {"name": "source_id", "value": source_id},
+        {"name": "batch_id", "value": batch_id},
+        {"name": "credential_secret", "value": credential_secret},
+        {"name": "sync_mode", "value": sync_mode},
+    ]
+    body = _workflow_body(
+        settings=settings,
+        tenant=tenant,
+        template_name=settings.PATH_GRAPH_COLLECT_ONLY_WF_TEMPLATE,
+        source_name=source_name,
+        parameters=parameters,
+        generate_prefix=_collect_generate_prefix(source_name),
     )
     return await _submit_workflow(settings=settings, body=body)
 
