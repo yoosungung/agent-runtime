@@ -279,6 +279,19 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 
 PR/push: [`.github/workflows/hermes-base-oci.yml`](../.github/workflows/hermes-base-oci.yml) — policy + unit + local docker build (push 없음).
 
+**path-graph-rag-mcp** — PR/push 시 unit + docker build; `main` push·`workflow_dispatch` 시 GHCR push. 전체 8종과 함께 빌드할 때는 `build-images` matrix에도 포함.
+
+| 트리거 | 워크플로 | push |
+|--------|----------|------|
+| PR (path 필터) | [`path-graph-rag-mcp.yml`](../.github/workflows/path-graph-rag-mcp.yml) | 없음 (build 검증만) |
+| `main` push / `workflow_dispatch` | 동일 | `:<git-sha>` |
+| `workflow_dispatch` / Release | `build-images.yml` (8종 일괄) | `:<git-sha>` |
+
+```bash
+make build-path-graph-rag-mcp      # MCP 이미지만 빠르게 GHCR push
+make build-path-graph-rag-mcp-wait
+```
+
 `backend`·`agent-base`·`path-graph-rag-mcp`는 워크스페이스 의존 `path-graph` 패키지가 필요하다. GHA는 `yoosungung/path-graph`를 checkout해 빌드 컨텍스트 `path-graph/pipeline`으로 stage한 뒤 Docker build한다. 로컬 Docker: `make sync-path-graph-docker` 후 `docker build -f runtimes/agent-base/Dockerfile .` (backend·`path-graph-rag-mcp` 동일 패턴).
 
 태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)

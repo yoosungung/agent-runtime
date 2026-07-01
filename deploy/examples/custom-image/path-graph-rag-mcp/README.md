@@ -8,11 +8,14 @@ path-graph `hybrid_search`(PG FTS + Qdrant RRF)를 **전용 OCI 이미지**로 �
 
 ```bash
 git push origin main
-make build-images
+make build-images          # 8종 일괄
 make build-images-wait
+# 또는 MCP 이미지만:
+make build-path-graph-rag-mcp
+make build-path-graph-rag-mcp-wait
 ```
 
-워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp`. `yoosungung/path-graph` `main`의 `pipeline/`을 stage한 뒤 빌드한다.
+워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp` · 단독 [`path-graph-rag-mcp.yml`](../../../../.github/workflows/path-graph-rag-mcp.yml). `yoosungung/path-graph` `main`의 `pipeline/`을 stage한 뒤 빌드한다.
 
 ### 로컬 Docker (선택)
 

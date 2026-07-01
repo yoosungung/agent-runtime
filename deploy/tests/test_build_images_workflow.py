@@ -45,3 +45,11 @@ def test_agent_base_dockerfile_copies_path_graph_pipeline() -> None:
 def test_path_graph_rag_mcp_dockerfile_copies_path_graph_pipeline() -> None:
     text = RAG_MCP_DOCKERFILE.read_text()
     assert "COPY path-graph/pipeline /path-graph/pipeline" in text
+
+
+def test_path_graph_rag_mcp_workflow_exists() -> None:
+    workflow = REPO_ROOT / ".github/workflows/path-graph-rag-mcp.yml"
+    text = workflow.read_text()
+    assert "deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile" in text
+    assert "path-graph-rag-mcp/test_app.py" in text
+    assert "github.event_name != 'pull_request'" in text

@@ -9,6 +9,7 @@ IMAGE_TAG ?= $(shell git rev-parse HEAD)
         ncr-secret s3-secret jwt-secret ensure-jwt-secret ensure-namespace \
         k8s-apply-garage k8s-apply-dev k8s-apply-stage k8s-apply-prod k8s-delete-dev \
         k8s-rollout-restart k8s-redeploy-dev build-images build-images-wait \
+        build-path-graph-rag-mcp build-path-graph-rag-mcp-wait \
         db-migrate db-migrate-all \
         diagram diagram-png
 
@@ -135,6 +136,14 @@ build-images: ## trigger GHA build-images workflow (push REF first; tags GHCR wi
 
 build-images-wait: ## wait for the latest build-images workflow run to finish
 	@run_id=$$(gh run list --workflow=build-images.yml --limit=1 --json databaseId --jq '.[0].databaseId'); \
+	gh run watch "$$run_id"
+
+build-path-graph-rag-mcp: ## trigger GHA path-graph-rag-mcp only (faster than full build-images)
+	gh workflow run "path-graph-rag-mcp" --ref $(REF)
+	@echo "Triggered. Watch: gh run list --workflow=path-graph-rag-mcp.yml --limit=1"
+
+build-path-graph-rag-mcp-wait: ## wait for the latest path-graph-rag-mcp workflow run
+	@run_id=$$(gh run list --workflow=path-graph-rag-mcp.yml --limit=1 --json databaseId --jq '.[0].databaseId'); \
 	gh run watch "$$run_id"
 
 # --- db -------------------------------------------------------------------
