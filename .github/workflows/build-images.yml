@@ -10,7 +10,26 @@ permissions:
   packages: write
 
 jobs:
+  hermes-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Hermes install policy
+        run: bash scripts/hermes/check-hermes-install-policy.sh
+
+      - name: Hermes OCI unit tests
+        run: |
+          uv sync --all-packages
+          uv run pytest runtimes/hermes-base/tests/test_oci_runtime_slim.py \
+            runtimes/hermes-base/tests/test_prune_hermes.py -q
+
   build:
+    needs: hermes-gates
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -56,12 +75,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/agent-runtime/${{ matrix.image }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            HERMES_REVISION=${{ matrix.image == 'hermes-base' && 'ci' || 'n/a' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          load: ${{ matrix.image == 'hermes-base' }}
+
+      - name: Hermes image size gate
+        if: matrix.image == 'hermes-base'
+        env:
+          HERMES_IMAGE_MAX_MIB: "1200"
+        run: |
+          bash scripts/hermes/check-hermes-image-size.sh \
+            "ghcr.io/${{ github.repository_owner }}/agent-runtime/hermes-base:${{ github.sha }}"

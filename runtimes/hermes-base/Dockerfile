@@ -13,6 +13,9 @@ RUN ./scripts/prune-hermes-packages.sh /src/vendor/hermes-agent/src
 
 FROM python:3.12-slim AS base
 
+ARG GIT_SHA=dev
+ARG HERMES_REVISION=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -36,10 +39,16 @@ RUN uv pip install -e ./vendor/hermes-agent/src
 RUN ./scripts/prune-hermes-packages.sh /app/.venv/lib/python3.12/site-packages
 
 ENV PATH="/app/.venv/bin:${PATH}"
+
+RUN python -c "from run_agent import AIAgent; import hermes_base.app; assert AIAgent"
+
 ENV RUNTIME_KIND=hermes
 ENV HERMES_WORK_DIR=/var/cache/hermes-work
 
 RUN mkdir -p /var/cache/hermes-work
+
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL dev.hermes-agent.revision="${HERMES_REVISION}"
 
 EXPOSE 8080
 CMD ["uvicorn", "hermes_base.app:app", "--host", "0.0.0.0", "--port", "8080"]
