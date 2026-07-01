@@ -10,6 +10,7 @@ from pathlib import Path
 
 from hermes_base.profile_materializer import build_config_yaml, config_fingerprint
 from hermes_base.schemas import parse_hermes_cfg
+from hermes_base.vfs_errors import ProfileVfsConflictError
 from runtime_common.vfs.store import AgentVfsStore
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,17 @@ PROFILE_PREFIX = "/profile"
 KIND = "agent"
 
 
+@dataclass(frozen=True)
+class PullFileState:
+    scratch_mtime: datetime
+    vfs_modified_at: datetime | None
+
+
 @dataclass
 class PullManifest:
-    """VFS paths pulled into scratch — push uses file mtime vs this snapshot."""
+    """Per-path snapshot at pull — push detects local edits and VFS conflicts."""
 
-    files: dict[str, datetime] = field(default_factory=dict)
+    files: dict[str, PullFileState] = field(default_factory=dict)
 
 
 @dataclass
@@ -61,7 +68,11 @@ class ProfileVfsSync:
             out = scratch_file(dest, vp)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(record.content, encoding="utf-8")
-            manifest.files[vp] = datetime.fromtimestamp(out.stat().st_mtime, tz=UTC)
+            scratch_mtime = datetime.fromtimestamp(out.stat().st_mtime, tz=UTC)
+            manifest.files[vp] = PullFileState(
+                scratch_mtime=scratch_mtime,
+                vfs_modified_at=record.modified_at,
+            )
         logger.info("vfs_pull", extra={"agent": agent_name, "files": len(manifest.files)})
         return manifest
 
@@ -69,19 +80,42 @@ class ProfileVfsSync:
         stats = PushStats()
         if not src.is_dir():
             return stats
+
+        pending: list[tuple[str, str]] = []
+        conflicts: list[str] = []
+
         for path in sorted(src.rglob("*")):
             if not path.is_file():
                 continue
             rel = path.relative_to(src).as_posix()
             vp = vfs_path(rel)
             content = path.read_text(encoding="utf-8")
-            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
-            prev = manifest.files.get(vp)
-            if prev is not None and mtime <= prev:
+            local_mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            state = manifest.files.get(vp)
+            if state is not None and local_mtime <= state.scratch_mtime:
                 stats.skipped += 1
                 continue
+
+            if state is not None and state.vfs_modified_at is not None:
+                current = await self._store.read(KIND, agent_name, vp)
+                cur_at = current.modified_at if current else None
+                if cur_at != state.vfs_modified_at:
+                    conflicts.append(vp)
+                    continue
+
+            pending.append((vp, content))
+
+        if conflicts:
+            logger.warning(
+                "vfs_push_conflict",
+                extra={"agent": agent_name, "paths": conflicts, "count": len(conflicts)},
+            )
+            raise ProfileVfsConflictError(agent_name, conflicts)
+
+        for vp, content in pending:
             await self._store.write(KIND, agent_name, vp, content, overwrite=True)
             stats.written += 1
+
         logger.info(
             "vfs_push",
             extra={"agent": agent_name, "written": stats.written, "skipped": stats.skipped},

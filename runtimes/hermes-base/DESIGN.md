@@ -27,9 +27,11 @@ agents-runtime **Hermes Profile General** tier용 pool. Profile 정본은 **Post
 7. `await vfs_sync.seed_from_config(agent_name, merged_cfg)` — fingerprint 불일치 시
 8. `profile_runtime_scope(scratch)` 
 9. `instance = await get_or_build_hermes_agent(...)`
-10. `run_conversation(...)` (thread pool)
-11. `await vfs_sync.push(agent_name, scratch, manifest)`
+10. `run_conversation(...)` (thread pool) — `stream: true` 시 SSE (`hermes_stream.py`)
+11. `await vfs_sync.push(agent_name, scratch, manifest)` — VFS 충돌 시 409
 12. `profile_lock.release()`
+
+**P3** (완료): SSE (`stream_callback`, `None` delta 필터), Opik (`OPIK_URL`), push 충돌 (`PullFileState.vfs_modified_at` → 409 + `vfs_push_conflict` log).
 
 ### ProfileVfsSync
 
@@ -47,7 +49,7 @@ class ProfileVfsSync:
 ```
 
 - `pull`: `store.glob(kind, name, "/profile/**")` → scratch에 mirror
-- `push`: manifest 대비 mtime/size 변경 파일만 `store.write`
+- `push`: dirty 파일만 write; pull 시점 VFS `modified_at` 불일치 → `ProfileVfsConflictError`
 - `seed_from_config`: backend 등록 API와 동일 로직 (pool에서 config가 더 새일 때)
 
 ### ProfileMaterializer

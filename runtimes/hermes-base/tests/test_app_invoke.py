@@ -169,3 +169,37 @@ def test_invoke_rejects_non_hermes_deploy_mode(client, monkeypatch: pytest.Monke
         headers={"x-principal": _principal_b64()},
     )
     assert resp.status_code == 400
+
+
+def test_stream_invoke_returns_sse(client) -> None:
+    c, _, _, _ = client
+
+    def streaming_factory(**kwargs: object) -> MagicMock:
+        mock = MagicMock()
+
+        def run_conversation(**run_kw: object) -> dict:
+            cb = run_kw.get("stream_callback")
+            if cb:
+                cb("Hello")
+                cb(None)
+                cb("!")
+            return {"final_response": "Hello!"}
+
+        mock.run_conversation = MagicMock(side_effect=run_conversation)
+        return mock
+
+    c.app.state.agent_factory = streaming_factory
+    resp = c.post(
+        "/invoke",
+        json={
+            "agent": "my-bot",
+            "input": {"message": "hi"},
+            "session_id": "sess-stream",
+            "stream": True,
+        },
+        headers={"x-principal": _principal_b64()},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "text/event-stream" in resp.headers.get("content-type", "")
+    assert "Hello" in resp.text
+    assert "[DONE]" in resp.text

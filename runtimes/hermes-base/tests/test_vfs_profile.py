@@ -90,3 +90,25 @@ async def test_push_skips_unchanged(sync: ProfileVfsSync, tmp_path: Path) -> Non
     stats = await sync.push(AGENT, scratch, manifest)
     assert stats.written == 0
     assert stats.skipped >= 1
+
+
+@pytest.mark.asyncio()
+async def test_push_detects_vfs_conflict(sync: ProfileVfsSync, tmp_path: Path) -> None:
+    from hermes_base.vfs_errors import ProfileVfsConflictError
+
+    await sync.seed_from_config(AGENT, _sample_cfg())
+    scratch = tmp_path / "work"
+    manifest = await sync.pull(AGENT, scratch)
+
+    await sync._store.write(
+        KIND,
+        AGENT,
+        vfs_path("SOUL.md"),
+        "External writer changed this.\n",
+        overwrite=True,
+    )
+    (scratch / "SOUL.md").write_text("Local edit after external write.\n", encoding="utf-8")
+
+    with pytest.raises(ProfileVfsConflictError) as exc_info:
+        await sync.push(AGENT, scratch, manifest)
+    assert vfs_path("SOUL.md") in exc_info.value.paths
