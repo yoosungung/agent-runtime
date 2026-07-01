@@ -25,6 +25,12 @@ def test_build_images_workflow_stages_path_graph_for_embedded_images() -> None:
     )
 
 
+def test_build_images_workflow_stages_path_graph_for_uv_sibling() -> None:
+    text = WORKFLOW.read_text()
+    assert "mkdir -p ../path-graph" in text
+    assert "_path_graph_repo" in text
+
+
 def test_build_images_workflow_includes_path_graph_rag_mcp_matrix() -> None:
     text = WORKFLOW.read_text()
     assert "image: path-graph-rag-mcp" in text

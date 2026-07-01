@@ -31,6 +31,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout path-graph (uv workspace sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: yoosungung/path-graph
+          ref: main
+          path: _path_graph_repo
+
+      - name: Stage path-graph for uv editable sources
+        run: mkdir -p ../path-graph && cp -r _path_graph_repo/pipeline ../path-graph/
+
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -40,7 +50,7 @@ jobs:
 
       - name: OCI unit tests
         run: |
-          uv sync --package hermes-base
+          uv sync --all-packages
           uv run pytest runtimes/hermes-base/tests/test_oci_runtime_slim.py \
             runtimes/hermes-base/tests/test_prune_hermes.py -q
 
