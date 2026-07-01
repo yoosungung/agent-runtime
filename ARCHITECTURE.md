@@ -31,6 +31,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **내부 호출의 토큰 Grace Period**: 엣지(UI→Envoy)는 `grace_sec=0`(엄격). 런타임 내부(agent-pool→Envoy `*-internal`)는 **같은 JWT forward** + `exp`만 `grace_sec`(예: 300) 유예. 서명·issuer·`access[]`는 항상 현재 시각 기준 엄격. trust 경계는 NetworkPolicy로 강제. 세부 구현은 [services/auth/DESIGN.md](services/auth/DESIGN.md), [services/ext-authz/DESIGN.md](services/ext-authz/DESIGN.md).
 - **Agent delegate invoke (MCP internal 대칭)**: orchestrator agent-pool이 delegate agent를 호출할 때 `POST /v1/agents/invoke-internal` — payload는 엣지와 동일 `{agent, version?, input, session_id?, principal}`. 응답은 **동기 JSON** `{output}` (SSE 없음). delegate `session_id`는 부모 chat session과 분리(호출마다 ephemeral). ACL은 caller JWT `access[]` + orchestrator `config.delegate_agents[]` allowlist. 재귀 방지: `X-Runtime-Delegate-Depth` 헤더, 최대 깊이 3; depth ≥ 1이면 delegate tool 미노출.
 - **`source_meta.chat_selectable`**: Chat UI agent picker 노출 여부(기본 `true`). `false`여도 ACL에 있으면 invoke-internal delegate 호출 가능. visibility(누가 접근 가능)와 UI 노출을 분리한다. main/sub deploy_mode는 없다 — 동일 agent가 orchestrator·delegate 역할을 맥락에 따라 겸한다.
+- **Hermes Profile General tier (`hermes_general`)**: `deploy_mode='hermes_general'`, `runtime_pool='agent:hermes'`, pool `RUNTIME_KIND=hermes`, 이미지 `hermes-base`. General tier(`deploy_mode='general'`)와 **대칭 UX** — 번들 없이 Hermes profile 등록·lazy 활성화. Profile·공유 memory·skills 정본은 Postgres VFS (`vfs_agent_files`, 경로 `/profile/…`); per-user `USER.md`는 `vfs_user_files` (`/hermes/{agent}/memories/USER.md`). invoke는 VFS pull → emptyDir scratch → `AIAgent` → push. 세션은 Hermes SessionDB Postgres (`HERMES_SESSION_DSN`). **Chat UI only** — hermes-agent gateway/TUI/ACP는 pool OCI에 미포함. 상세: [docs/vfs-profile-design.md](docs/vfs-profile-design.md), [runtimes/hermes-base/DESIGN.md](runtimes/hermes-base/DESIGN.md).
 - **scope 경계**: LLM/RAG는 scope 밖. **번들 object store 기본값은 in-cluster Garage(S3 호환)** — 배포 시 env/secret으로 외부 S3(NCP·AWS 등)로 대체 가능. 관리 콘솔 `frontend/`·`backend/`는 예외.
 
 ### 이것만은 하지 말 것
@@ -57,6 +58,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 | 컴포넌트 | 역할 |
 |---|---|
 | [agent-base](runtimes/agent-base/DESIGN.md) | Agent-Pool 베이스. `RUNTIME_KIND ∈ {compiled_graph, adk}`. Bundle + General 모드 |
+| [hermes-base](runtimes/hermes-base/DESIGN.md) | Hermes Profile pool. `RUNTIME_KIND=hermes`, `deploy_mode=hermes_general`. VFS pull/scratch/push |
 | [mcp-base](runtimes/mcp-base/DESIGN.md) | MCP-Pool 베이스. `RUNTIME_KIND ∈ {fastmcp, mcp_sdk, ...}`. Bundle 모드 |
 
 Image 모드(`custom`) pool은 admin이 빌드한 OCI 이미지가 직접 운영되며 base-image와 무관. contract는 [backend/DESIGN.md](backend/DESIGN.md) "Custom Image 관리" 참조.

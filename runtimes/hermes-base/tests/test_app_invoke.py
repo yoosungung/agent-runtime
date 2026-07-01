@@ -13,9 +13,10 @@ from fastapi.testclient import TestClient
 from hermes_base.app import app
 from hermes_base.profile_lock import MemoryProfileLock
 from hermes_base.profile_materializer import profile_home
+from hermes_base.user_vfs_profile import UserProfileVfsSync, user_vfs_path
 from hermes_base.vfs_profile import ProfileVfsSync, vfs_path
 from runtime_common.schemas import Principal, ResolveResponse, SourceMeta, UserMeta
-from runtime_common.vfs.store import MemoryAgentVfsStore
+from runtime_common.vfs.store import MemoryAgentVfsStore, MemoryUserVfsStore
 
 
 def _sample_cfg() -> dict:
@@ -58,11 +59,12 @@ def _resolved() -> ResolveResponse:
 @pytest.fixture()
 def client(mock_agent_factory, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     store = MemoryAgentVfsStore()
+    user_store = MemoryUserVfsStore()
     profile_lock = MemoryProfileLock(ttl_sec=60)
     monkeypatch.setenv("HERMES_WORK_DIR", str(tmp_path))
 
     async def fake_open_vfs(settings):
-        return store, None
+        return store, user_store, None
 
     async def fake_resolve(*args, **kwargs):
         return _resolved()
@@ -74,7 +76,8 @@ def client(mock_agent_factory, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         c.app.state.profile_lock = profile_lock
         c.app.state.agent_factory = mock_agent_factory
         c.app.state.vfs_sync = ProfileVfsSync(store)
-        yield c, store, profile_lock, tmp_path
+        c.app.state.user_vfs_sync = UserProfileVfsSync(user_store)
+        yield c, store, user_store, profile_lock, tmp_path
 
 
 @pytest.fixture()
@@ -88,7 +91,7 @@ def mock_agent_factory():
 
 
 def test_invoke_pull_run_push(client) -> None:
-    c, store, _, tmp_path = client
+    c, _, _, _, tmp_path = client
     resp = c.post(
         "/invoke",
         json={
@@ -107,7 +110,7 @@ def test_invoke_pull_run_push(client) -> None:
 
 @pytest.mark.asyncio()
 async def test_invoke_pushes_memory_changes(client) -> None:
-    c, store, _, tmp_path = client
+    c, store, _, _, tmp_path = client
 
     def factory_with_memory(**kwargs: object) -> MagicMock:
         mock = MagicMock()
@@ -135,8 +138,38 @@ async def test_invoke_pushes_memory_changes(client) -> None:
     assert "fact" in record.content
 
 
+@pytest.mark.asyncio()
+async def test_invoke_pushes_user_md_to_user_vfs(client) -> None:
+    c, _, user_store, _, tmp_path = client
+
+    def factory_with_user_profile(**kwargs: object) -> MagicMock:
+        mock = MagicMock()
+
+        def run_conversation(**kw: object) -> dict:
+            scratch = profile_home(tmp_path, "my-bot")
+            mem = scratch / "memories"
+            mem.mkdir(parents=True, exist_ok=True)
+            (mem / "USER.md").write_text("# prefers concise answers\n", encoding="utf-8")
+            return {"final_response": "done"}
+
+        mock.run_conversation = MagicMock(side_effect=run_conversation)
+        return mock
+
+    c.app.state.agent_factory = factory_with_user_profile
+    resp = c.post(
+        "/invoke",
+        json={"agent": "my-bot", "input": {"message": "remember me"}},
+        headers={"x-principal": _principal_b64()},
+    )
+    assert resp.status_code == 200
+
+    record = await user_store.read(42, user_vfs_path("my-bot", "memories/USER.md"))
+    assert record is not None
+    assert "concise" in record.content
+
+
 def test_invoke_lock_contention_returns_429(client, monkeypatch: pytest.MonkeyPatch) -> None:
-    c, _, _, _ = client
+    c, _, _, _, _ = client
 
     class Locked(MemoryProfileLock):
         async def try_acquire(self, agent_name: str):
@@ -153,7 +186,7 @@ def test_invoke_lock_contention_returns_429(client, monkeypatch: pytest.MonkeyPa
 
 
 def test_invoke_rejects_non_hermes_deploy_mode(client, monkeypatch: pytest.MonkeyPatch) -> None:
-    c, _, _, _ = client
+    c, _, _, _, _ = client
 
     async def bad_resolve(*args, **kwargs):
         r = _resolved()
@@ -172,7 +205,7 @@ def test_invoke_rejects_non_hermes_deploy_mode(client, monkeypatch: pytest.Monke
 
 
 def test_stream_invoke_returns_sse(client) -> None:
-    c, _, _, _ = client
+    c, _, _, _, _ = client
 
     def streaming_factory(**kwargs: object) -> MagicMock:
         mock = MagicMock()

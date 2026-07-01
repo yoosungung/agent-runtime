@@ -19,6 +19,15 @@ WIRE_DEV_ENV = REPO_ROOT / ".env.dev.local"
 KIND = "agent"
 
 
+def _wire_dev_env_paths() -> list[Path]:
+    explicit = os.environ.get("HERMES_WIRE_DEV_ENV")
+    paths: list[Path] = []
+    if explicit:
+        paths.append(Path(explicit).expanduser())
+    paths.append(WIRE_DEV_ENV)
+    return paths
+
+
 def _parse_env_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
@@ -40,17 +49,25 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _merged_wire_env() -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for path in _wire_dev_env_paths():
+        merged.update(_parse_env_file(path))
+    merged.update(os.environ)
+    return merged
+
+
 def _wire_dev_dsn() -> str | None:
-    env = {**_parse_env_file(WIRE_DEV_ENV), **os.environ}
-    dsn = env.get("VFS_DSN") or env.get("POSTGRES_DSN", "")
+    merged = _merged_wire_env()
+    dsn = merged.get("VFS_DSN") or merged.get("POSTGRES_DSN", "")
     if not dsn:
         return None
     return dsn.replace("postgresql+asyncpg://", "postgresql://")
 
 
 def _wire_dev_session_dsn() -> str | None:
-    env = {**_parse_env_file(WIRE_DEV_ENV), **os.environ}
-    dsn = env.get("HERMES_SESSION_DSN") or env.get("VFS_DSN") or env.get("POSTGRES_DSN", "")
+    merged = _merged_wire_env()
+    dsn = merged.get("HERMES_SESSION_DSN") or merged.get("VFS_DSN") or merged.get("POSTGRES_DSN", "")
     if not dsn:
         return None
     return dsn.replace("postgresql+asyncpg://", "postgresql://")
@@ -58,8 +75,10 @@ def _wire_dev_session_dsn() -> str | None:
 
 @pytest.fixture(scope="session")
 def wire_dev_env() -> dict[str, str]:
-    """Merge `.env.dev.local` into os.environ for the test session."""
-    loaded = _parse_env_file(WIRE_DEV_ENV)
+    """Merge wire-dev `.env.dev.local` into os.environ for the test session."""
+    loaded: dict[str, str] = {}
+    for path in _wire_dev_env_paths():
+        loaded.update(_parse_env_file(path))
     if loaded:
         os.environ.update(loaded)
     return loaded

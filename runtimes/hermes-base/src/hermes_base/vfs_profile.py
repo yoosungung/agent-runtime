@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 PROFILE_PREFIX = "/profile"
 KIND = "agent"
+USER_SCOPED_SCRATCH_REL = "memories/USER.md"
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,9 @@ class ProfileVfsSync:
             if not path.is_file():
                 continue
             rel = path.relative_to(src).as_posix()
+            if rel == USER_SCOPED_SCRATCH_REL:
+                stats.skipped += 1
+                continue
             vp = vfs_path(rel)
             content = path.read_text(encoding="utf-8")
             local_mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)

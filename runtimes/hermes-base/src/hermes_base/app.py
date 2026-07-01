@@ -21,6 +21,7 @@ from hermes_base.http_client import close_mcp_http_client
 from hermes_base.profile_lock import ProfileLockContended, build_profile_lock
 from hermes_base.profile_materializer import ProfileMaterializer, config_needs_reconcile
 from hermes_base.settings import Settings
+from hermes_base.user_vfs_profile import UserProfileVfsSync
 from hermes_base.vfs_errors import ProfileVfsConflictError
 from hermes_base.vfs_profile import ProfileVfsSync, PullManifest
 from runtime_common.deploy_client import DeployApiClient
@@ -32,7 +33,14 @@ from runtime_common.opik_tracing import configure_opik, opik_trace_context
 from runtime_common.pool_resolve import ResolveHeaderMismatchError, resolve_for_invoke
 from runtime_common.registry import ActiveCounter
 from runtime_common.schemas import Principal, ResolveResponse
-from runtime_common.vfs.store import AgentVfsStore, AsyncpgAgentVfsStore, MemoryAgentVfsStore
+from runtime_common.vfs.store import (
+    AgentVfsStore,
+    AsyncpgAgentVfsStore,
+    AsyncpgUserVfsStore,
+    MemoryAgentVfsStore,
+    MemoryUserVfsStore,
+    UserVfsStore,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +67,17 @@ def _principal_from_header(header_b64: str | None) -> Principal | None:
         return None
 
 
-async def _open_vfs_store(settings: Settings) -> tuple[AgentVfsStore, object | None]:
+async def _open_vfs_store(
+    settings: Settings,
+) -> tuple[AgentVfsStore, UserVfsStore, object | None]:
     if settings.vfs_dsn:
         from runtime_common.vfs.store import create_asyncpg_pool
 
         dsn = settings.vfs_dsn.replace("postgresql+asyncpg://", "postgresql://")
         pool = await create_asyncpg_pool(dsn, pgbouncer=settings.vfs_pgbouncer)
-        return AsyncpgAgentVfsStore(pool), pool
+        return AsyncpgAgentVfsStore(pool), AsyncpgUserVfsStore(pool), pool
     logger.warning("vfs_memory_fallback", extra={"reason": "VFS_DSN unset"})
-    return MemoryAgentVfsStore(), None
+    return MemoryAgentVfsStore(), MemoryUserVfsStore(), None
 
 
 @asynccontextmanager
@@ -81,8 +91,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     work_root = Path(settings.hermes_work_dir)
     work_root.mkdir(parents=True, exist_ok=True)
     materializer = ProfileMaterializer(work_root)
-    vfs_store, vfs_pool = await _open_vfs_store(settings)
+    vfs_store, user_vfs_store, vfs_pool = await _open_vfs_store(settings)
     vfs_sync = ProfileVfsSync(vfs_store)
+    user_vfs_sync = UserProfileVfsSync(user_vfs_store)
     profile_lock = build_profile_lock(settings.redis_url, ttl_sec=settings.lock_ttl_sec)
 
     app.state.settings = settings
@@ -91,6 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.deploy_client = deploy_client
     app.state.materializer = materializer
     app.state.vfs_sync = vfs_sync
+    app.state.user_vfs_sync = user_vfs_sync
     app.state.profile_lock = profile_lock
     app.state.vfs_pool = vfs_pool
 
@@ -157,19 +169,36 @@ def _validate_hermes_source(source, agent: str) -> None:
 async def _prepare_scratch(
     *,
     agent: str,
+    user_id: int,
     cfg: dict,
     session_dsn: str | None,
     vfs_sync: ProfileVfsSync,
+    user_vfs_sync: UserProfileVfsSync,
     materializer: ProfileMaterializer,
     scratch: Path,
-) -> PullManifest:
+) -> tuple[PullManifest, PullManifest]:
     manifest = await vfs_sync.pull(agent, scratch)
     if config_needs_reconcile(scratch, cfg):
         materializer.ensure(agent, cfg, session_dsn=session_dsn, force=True)
     elif not (scratch / "SOUL.md").is_file():
         await vfs_sync.seed_from_config(agent, cfg, session_dsn=session_dsn)
         manifest = await vfs_sync.pull(agent, scratch)
-    return manifest
+    user_manifest = await user_vfs_sync.pull_overlay(user_id, agent, scratch)
+    return manifest, user_manifest
+
+
+async def _push_scratch(
+    *,
+    agent: str,
+    user_id: int,
+    scratch: Path,
+    vfs_sync: ProfileVfsSync,
+    user_vfs_sync: UserProfileVfsSync,
+    manifest: PullManifest,
+    user_manifest: PullManifest,
+) -> None:
+    await vfs_sync.push(agent, scratch, manifest)
+    await user_vfs_sync.push(user_id, agent, scratch, user_manifest)
 
 
 def _invoke_result_payload(
@@ -227,6 +256,7 @@ async def invoke(
         cfg = merge_configs(source.config, user.config if user else None)
         session_dsn = settings.hermes_session_dsn or None
         vfs_sync: ProfileVfsSync = app.state.vfs_sync
+        user_vfs_sync: UserProfileVfsSync = app.state.user_vfs_sync
         materializer: ProfileMaterializer = app.state.materializer
         profile_lock = app.state.profile_lock
         scratch = materializer.home_for(req.agent)
@@ -248,11 +278,13 @@ async def invoke(
                 ):
                     try:
                         async with profile_lock.hold(req.agent):
-                            manifest = await _prepare_scratch(
+                            manifest, user_manifest = await _prepare_scratch(
                                 agent=req.agent,
+                                user_id=principal.user_id,
                                 cfg=cfg,
                                 session_dsn=session_dsn,
                                 vfs_sync=vfs_sync,
+                                user_vfs_sync=user_vfs_sync,
                                 materializer=materializer,
                                 scratch=scratch,
                             )
@@ -285,7 +317,15 @@ async def invoke(
                                 ):
                                     yield chunk
 
-                            await vfs_sync.push(req.agent, scratch, manifest)
+                            await _push_scratch(
+                                agent=req.agent,
+                                user_id=principal.user_id,
+                                scratch=scratch,
+                                vfs_sync=vfs_sync,
+                                user_vfs_sync=user_vfs_sync,
+                                manifest=manifest,
+                                user_manifest=user_manifest,
+                            )
                     except ProfileLockContended as exc:
                         yield f'data: {{"error": "profile lock contended for {exc.agent_name}"}}\n\n'
                     except ProfileVfsConflictError as exc:
@@ -308,11 +348,13 @@ async def invoke(
         ):
             try:
                 async with profile_lock.hold(req.agent):
-                    manifest = await _prepare_scratch(
+                    manifest, user_manifest = await _prepare_scratch(
                         agent=req.agent,
+                        user_id=principal.user_id,
                         cfg=cfg,
                         session_dsn=session_dsn,
                         vfs_sync=vfs_sync,
+                        user_vfs_sync=user_vfs_sync,
                         materializer=materializer,
                         scratch=scratch,
                     )
@@ -349,7 +391,15 @@ async def invoke(
                             logger.exception("hermes_invoke_failed", extra={"agent": req.agent})
                             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-                    await vfs_sync.push(req.agent, scratch, manifest)
+                    await _push_scratch(
+                        agent=req.agent,
+                        user_id=principal.user_id,
+                        scratch=scratch,
+                        vfs_sync=vfs_sync,
+                        user_vfs_sync=user_vfs_sync,
+                        manifest=manifest,
+                        user_manifest=user_manifest,
+                    )
             except ProfileLockContended as exc:
                 return JSONResponse(
                     status_code=429,
