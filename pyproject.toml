@@ -70,4 +70,7 @@ exclude = ["(?:^|/)tests/", "(?:^|/)examples/"]
 asyncio_mode = "auto"
 testpaths = ["tests", "services", "packages", "runtimes", "backend", "deploy/examples/tests"]
 addopts = "--import-mode=importlib"
-markers = ["e2e: end-to-end tests requiring Docker"]
+markers = [
+    "e2e: end-to-end tests requiring Docker",
+    "integration: tests requiring wire-dev Postgres/Redis (see scripts/wire-dev.sh)",
+]

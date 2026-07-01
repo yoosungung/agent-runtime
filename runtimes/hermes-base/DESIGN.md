@@ -91,10 +91,30 @@ VFS fingerprint 변경 시 `InstanceCache.invalidate_checksum` 또는 config PAT
 - multi-stage Dockerfile + (선택) site-packages prune
 - 장기: `hermes-agent[runtime]` optional-extra 또는 upstream 기여
 
+## wire-dev E2E (VFS + SessionDB)
+
+로컬 Mac 프로세스를 dev k8s `runtime` 네임스페이스 Postgres/Redis에 연결한다 (`scripts/wire-dev.sh`).
+
+| 변수 | wire-dev 값 |
+|------|-------------|
+| `VFS_DSN` | `postgresql://runtime:runtime@127.0.0.1:5432/runtime?sslmode=disable` |
+| `HERMES_SESSION_DSN` | 동일 (Hermes `sessions.state_backend=postgres`) |
+| `HERMES_WORK_DIR` | `.wire-dev/hermes-work` |
+| `REDIS_URL` | `redis://127.0.0.1:6379` |
+| `MCP_GATEWAY_URL` | `http://127.0.0.1:8084` |
+
+```bash
+./scripts/wire-dev.sh up
+./scripts/wire-dev.sh env
+uv run pytest runtimes/hermes-base/tests/test_vfs_profile_wire.py -m integration -v
+```
+
+풀 로컬 디버그: `./scripts/wire-dev.sh pool-isolate hermes` → cluster `agent-pool-hermes` scale 0, 로컬 `:8095/invoke`.
+
 ## Commands
 
 ```bash
 uv sync --all-packages
-uv run pytest runtimes/hermes-base/tests -q
-uv run uvicorn hermes_base.app:app --reload --port 8081
+uv run pytest runtimes/hermes-base/tests -q -m "not integration"
+uv run uvicorn hermes_base.app:app --reload --port 8095
 ```

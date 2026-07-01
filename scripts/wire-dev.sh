@@ -10,7 +10,7 @@
 #   ./scripts/wire-dev.sh pool-restore <runtime_kind>
 #   ./scripts/wire-dev.sh pool-restore-all
 #
-#   runtime_kind: compiled_graph | adk | fastmcp | mcp_sdk
+#   runtime_kind: compiled_graph | adk | hermes | fastmcp | mcp_sdk
 #
 # Local port map (cluster Service → Mac):
 #   postgres:5432, redis:6379, auth:8081, deploy-api:8082, ext-authz:8083,
@@ -48,6 +48,7 @@ usage() {
   echo
   echo "Pool debug (launch.json pre/post tasks):"
   echo "  pool-isolate <runtime_kind>  scale cluster pool→0, pf backend bundles :8010"
+  echo "  runtime_kind hermes → local pool :8095/invoke"
   echo "  pool-restore <runtime_kind>  restore saved replica count"
   echo "  pool-restore-all             restore every isolated pool"
   echo
@@ -59,10 +60,11 @@ pool_deployment() {
   case "$1" in
     compiled_graph) echo "agent-pool-compiled-graph" ;;
     adk) echo "agent-pool-adk" ;;
+    hermes) echo "agent-pool-hermes" ;;
     fastmcp) echo "mcp-pool-fastmcp" ;;
     mcp_sdk) echo "mcp-pool-mcp-sdk" ;;
     *)
-      echo "error: unknown runtime_kind '$1' (compiled_graph|adk|fastmcp|mcp_sdk)" >&2
+      echo "error: unknown runtime_kind '$1' (compiled_graph|adk|hermes|fastmcp|mcp_sdk)" >&2
       return 1
       ;;
   esac
@@ -343,6 +345,10 @@ BUNDLE_STORAGE_BACKEND=local
 BUNDLE_STORAGE_DIR=${bundle_dir}
 BUNDLE_PUBLIC_BASE_URL=http://127.0.0.1:8000/bundles
 
+# hermes-base pool (ProfileVfsSync + SessionDB)
+HERMES_WORK_DIR=${STATE_DIR}/hermes-work
+HERMES_SESSION_DSN=postgresql://runtime:runtime@127.0.0.1:5432/runtime?sslmode=disable
+
 # Pool local debug — scale cluster pool to 0 before debugging to avoid Redis registry clashes
 POD_NAME=local-dev
 POD_IP=127.0.0.1${s3_block}
@@ -411,6 +417,7 @@ cmd_pool_isolate() {
   case "$kind" in
     compiled_graph) local_port=8091 ;;
     adk) local_port=8092 ;;
+    hermes) local_port=8095 ;;
     fastmcp) local_port=8093 ;;
     mcp_sdk) local_port=8094 ;;
     *) local_port="?" ;;
@@ -464,6 +471,7 @@ cmd_pool_restore_all() {
     case "$deploy" in
       agent-pool-compiled-graph) kind="compiled_graph" ;;
       agent-pool-adk) kind="adk" ;;
+      agent-pool-hermes) kind="hermes" ;;
       mcp-pool-fastmcp) kind="fastmcp" ;;
       mcp-pool-mcp-sdk) kind="mcp_sdk" ;;
       *)
