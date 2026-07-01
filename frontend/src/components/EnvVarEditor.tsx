@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 interface Props {
   value: Record<string, string>;
   onChange: (value: Record<string, string>) => void;
@@ -25,20 +27,37 @@ function fromRows(rows: Row[]): Record<string, string> {
 }
 
 export function EnvVarEditor({ value, onChange, readOnly = false }: Props) {
-  const rows = toRows(value);
+  const [rows, setRows] = useState<Row[]>(() => toRows(value));
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const valueKey = JSON.stringify(value);
+
+  useEffect(() => {
+    const rowsEnv = JSON.stringify(fromRows(rowsRef.current));
+    if (valueKey !== rowsEnv) {
+      setRows(toRows(value));
+    }
+  }, [valueKey, value]);
 
   function updateRow(index: number, patch: Partial<Row>) {
-    const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row));
-    onChange(fromRows(next));
+    setRows((prev) => {
+      const next = prev.map((row, i) => (i === index ? { ...row, ...patch } : row));
+      onChange(fromRows(next));
+      return next;
+    });
   }
 
   function addRow() {
-    onChange(fromRows([...rows, { key: "", value: "" }]));
+    setRows((prev) => [...prev, { key: "", value: "" }]);
   }
 
   function removeRow(index: number) {
-    const next = rows.filter((_, i) => i !== index);
-    onChange(fromRows(next.length ? next : [{ key: "", value: "" }]));
+    setRows((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      const final = next.length ? next : [{ key: "", value: "" }];
+      onChange(fromRows(final));
+      return final;
+    });
   }
 
   return (
