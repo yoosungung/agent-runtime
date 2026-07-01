@@ -72,3 +72,22 @@ LLM 키가 빠지면 등록·resolve·factory build 까지는 통과하지만 st
 ## 산출물
 
 `work/` 아래에 zip · cookie jar · state 파일이 떨어진다 (gitignore 처리).
+
+## Wiki VFS (PG-3)
+
+General agent가 pipeline wiki S3 prefix를 `/wiki/{project_slug}/` VFS mount로 읽는지 검증한다.
+
+```bash
+export ADMIN_PASSWORD='<initial admin password>'
+./test_wiki_vfs.sh
+```
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `TENANT` | `didim` | admin user tenant (`path_graph.projects.tenant`) |
+| `PROJECT_ID` | (auto) | 미설정 시 DB에서 slug로 조회 |
+| `PROJECT_SLUG` | `default` | binding `wiki.vfs_mount` = `/wiki/{slug}/` |
+| `AGENT_NAME` | `wiki-vfs-e2e` | general agent name |
+| `LLM_MODEL` | cluster sglang gemma preset | `config.langgraph.model` |
+
+전제: `agent-pool-compiled-graph`에 `s3-creds` + `WIKI_S3_BUCKET` env ([deploy/DESIGN.md](../../../../deploy/DESIGN.md) env 배선). `utility-server` MCP 미등록 시 스크립트가 등록한다.

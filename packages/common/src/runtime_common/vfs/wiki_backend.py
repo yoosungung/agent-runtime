@@ -15,7 +15,6 @@ from deepagents.backends.protocol import (
     ReadResult,
     WriteResult,
 )
-from deepagents.backends.utils import perform_string_replacement
 
 from runtime_common.vfs.paths import format_read_content, normalize_dir, normalize_path, utc_now_iso
 
@@ -80,7 +79,8 @@ class WikiS3ReadBackend:
         content = await asyncio.to_thread(self._read_sync, file_path)
         if content is None:
             return ReadResult(error=f"Error: File '{file_path}' not found")
-        return ReadResult(content=format_read_content(content, offset=offset, limit=limit))
+        formatted = format_read_content(content, offset=offset, limit=limit)
+        return ReadResult(file_data=FileData(content=formatted, encoding="utf-8"))
 
     async def awrite(self, file_path: str, content: str) -> WriteResult:
         return WriteResult(error="wiki mount is read-only")

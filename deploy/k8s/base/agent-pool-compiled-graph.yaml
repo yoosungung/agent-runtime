@@ -38,6 +38,8 @@ spec:
             - secretRef:
                 name: runtime-infra-secrets
                 optional: true
+            - secretRef:
+                name: s3-creds
           env:
             - name: SERVICE_NAME
               value: agent-pool-compiled-graph
@@ -80,6 +82,16 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: VFS_DSN
+            - name: PATH_GRAPH_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+            - name: WIKI_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: S3_BUCKET
           volumeMounts:
             - name: bundles
               mountPath: /var/cache/agent-bundles
