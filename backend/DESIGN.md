@@ -82,6 +82,8 @@
 | `GET` | `/api/me/api-keys` | 본인 API key 목록 (plaintext 없음) | auth admin bridge |
 | `POST` | `/api/me/api-keys` | 본인 API key 발급 — plain key **1회** | `{name, expires_in_days?}` |
 | `DELETE` | `/api/me/api-keys/{id}` | 본인 key 폐기 (`disabled`) | |
+| `GET` | `/api/me/knowledge-projects` | tenant 소속 pipeline project 목록 (read-only) — general agent `knowledge_project_ids` 선택용 | `role` 무관, `principal.tenant` 필수 |
+| `GET` | `/api/me/knowledge-projects/{id}/binding` | `resolve_knowledge_binding` 미리보기 (collection/space/wiki prefix) | 동일 tenant project만 |
 | `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | admin only |
 | `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | admin break-glass / e2e |
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
@@ -193,7 +195,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 세 체계는 `source_meta` 테이블에 공존 — `deploy_mode ∈ {bundle, general, image}`.
 
-**General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/catalog`로 tool manifest(`tools` 키)를 조회해 `config.general.mcp_tools`에 캐시. `config.general.knowledge_project_ids[]`로 pipeline project knowledge 경계 저장. MCP `config.knowledge.requires_project=true`이면 general agent 생성 시 project 1개 이상 필수.
+**General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/catalog`로 tool manifest(`tools` 키)를 조회해 `config.general.mcp_tools`에 캐시. `config.general.knowledge_project_ids[]`로 pipeline project knowledge 경계 저장. MCP `config.knowledge.requires_project=true`이면 general agent 생성 시 project 1개 이상 필수. project 목록·binding 미리보기는 **`GET /api/me/knowledge-projects*`** (tenant read-only). invoke 시 agent-pool이 binding resolve 후 MCP retrieval args를 덮어씀 — **per-project user ACL 없음**, tenant 경계 + agent `visibility`로 접근 제어.
 
 **MCP bundle 등록**: `config.knowledge.requires_project` (bool, 기본 `false`) — pipeline project binding 필요 여부. `runtime_pool=mcp:didim_rag` 등 retrieval MCP에 사용.
 

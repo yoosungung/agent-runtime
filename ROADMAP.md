@@ -6,17 +6,19 @@
 
 ## path-graph · Knowledge Pipeline
 
-Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream·runtime 소비는 미착수.
+Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream 완료. **runtime Knowledge Binding(PG-2·PG-4) 코드 완료** — wiki VFS 클러스터 E2E(PG-3) 잔여.
 
 | # | 작업 | 상태 | path-graph ROADMAP |
 |---|---|---|---|
 | PG-1 | Console GraphRAG BFF + UI | [x] | path-graph 4.5.1–4.5.3 |
-| PG-2 | `config.general.knowledge_project_ids[]` + invoke 시 Knowledge Binding resolve | [ ] | 3.2.0 |
-| PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [ ] | 3.2.1 |
-| PG-4 | retrieval — Qdrant `rag.qdrant_collection` + `project_id` filter; 복수 project parallel + RRF | [ ] | 3.2.0 |
+| PG-2 | `config.general.knowledge_project_ids[]` + invoke 시 Knowledge Binding resolve | [x] | 3.2.0 |
+| PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [~] | 3.2.1 — 코드 [x]; 클러스터 E2E §관리자 검증 |
+| PG-4 | retrieval — Qdrant `rag.qdrant_collection` + `project_id` filter; 복수 project parallel + RRF | [x] | 3.2.0 — `invoke_scoped_retrieval` |
 | PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [x] | 4.4.4 — BFF `pg-reconcile-{tenant}-{project}` 일 1회 upsert; create/delete + startup bootstrap |
 
-**권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 → PG-4 (Console에서 end-to-end 확인 후 agent 소비).
+**권장 순서**: PG-1 → PG-5 → PG-2 → **PG-3 (클러스터 E2E)**. SharePoint Cron delta E2E는 path-graph ROADMAP §관리자 검증 체크리스트.
+
+**D5 수집 동기화** (path-graph 4.1.3·4.1.7): BFF `sync_mode` UI · reconciler `delta_link` persist **코드 완료**. 클러스터 E2E(2.1.7)는 관리자 요청 일괄 처리 시 수행.
 
 ## Agent delegate invoke
 

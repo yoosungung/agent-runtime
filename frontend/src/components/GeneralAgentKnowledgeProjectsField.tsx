@@ -1,5 +1,8 @@
 import type { KnowledgeBinding } from "../pipeline/hooks/usePipeline";
-import { usePipelineProjectBinding, usePipelineProjects } from "../pipeline/hooks/usePipeline";
+import {
+  useKnowledgeProjectBinding,
+  useKnowledgeProjects,
+} from "../hooks/useKnowledgeProjects";
 
 interface Props {
   selectedIds: string[];
@@ -8,7 +11,7 @@ interface Props {
 }
 
 function BindingPreview({ projectId }: { projectId: string }) {
-  const { data: binding } = usePipelineProjectBinding(projectId);
+  const { data: binding } = useKnowledgeProjectBinding(projectId);
   if (!binding) return null;
   return (
     <dl className="text-xs text-gray-600 mt-1 ml-6 space-y-1">
@@ -33,7 +36,7 @@ export function GeneralAgentKnowledgeProjectsField({
   onChange,
   disabled = false,
 }: Props) {
-  const { data, isLoading, isError } = usePipelineProjects();
+  const { data, isLoading, isError } = useKnowledgeProjects();
   const projects = data?.items ?? [];
 
   function toggle(id: string) {

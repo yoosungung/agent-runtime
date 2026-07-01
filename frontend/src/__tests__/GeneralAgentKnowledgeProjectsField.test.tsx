@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 
-vi.mock("../pipeline/hooks/usePipeline", () => ({
-  usePipelineProjects: () => ({
+vi.mock("../hooks/useKnowledgeProjects", () => ({
+  useKnowledgeProjects: () => ({
     data: {
       items: [
         {
@@ -19,7 +19,7 @@ vi.mock("../pipeline/hooks/usePipeline", () => ({
     isLoading: false,
     isError: false,
   }),
-  usePipelineProjectBinding: () => ({
+  useKnowledgeProjectBinding: () => ({
     data: {
       tenant: "acme",
       project_id: "p1",

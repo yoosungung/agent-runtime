@@ -6,8 +6,10 @@ import pytest
 
 from runtime_common.knowledge.models import KnowledgeBinding
 from runtime_common.knowledge.policy import mcp_requires_knowledge_project
+from runtime_common.knowledge.resolve import resolve_knowledge_bindings
 from runtime_common.knowledge.rrf import reciprocal_rank_fusion
 from runtime_common.knowledge.scope import invoke_scoped_retrieval, scope_search_arguments
+from runtime_common.vfs.composite import wiki_routes_from_bindings
 
 
 def test_mcp_requires_knowledge_project():
@@ -82,3 +84,61 @@ async def test_invoke_scoped_retrieval_parallel_search():
     assert out["project_count"] == 2
     assert len(out["results"]) == 2
     assert {c["project_id"] for c in calls} == {"p1", "p2"}
+
+
+def test_resolve_knowledge_bindings_uses_fetcher():
+    seen: list[tuple[str, str]] = []
+
+    def fetch(tenant: str, project_id: str) -> dict:
+        seen.append((tenant, project_id))
+        return {
+            "tenant": tenant,
+            "project_id": project_id,
+            "rag": {"qdrant_collection": f"col-{project_id}", "filter": {}},
+            "graph": {"nebula_space": f"g-{project_id}"},
+            "wiki": {"s3_prefix": f"w/{project_id}", "vfs_mount": f"/wiki/{project_id}/"},
+        }
+
+    bindings = resolve_knowledge_bindings("acme", ["p1", "p2"], fetch_binding=fetch)
+    assert len(bindings) == 2
+    assert seen == [("acme", "p1"), ("acme", "p2")]
+    assert bindings[0].rag.qdrant_collection == "col-p1"
+
+
+def test_resolve_knowledge_bindings_rejects_tenant_mismatch():
+    def fetch(_tenant: str, project_id: str) -> dict:
+        return {
+            "tenant": "other",
+            "project_id": project_id,
+            "rag": {"qdrant_collection": "c", "filter": {}},
+            "graph": {"nebula_space": "g"},
+            "wiki": {"s3_prefix": "w", "vfs_mount": "/wiki/"},
+        }
+
+    with pytest.raises(ValueError, match="tenant mismatch"):
+        resolve_knowledge_bindings("acme", ["p1"], fetch_binding=fetch)
+
+
+def test_wiki_routes_from_bindings_distinct_mounts():
+    bindings = [
+        KnowledgeBinding.from_api_dict(
+            {
+                "tenant": "t",
+                "project_id": "p1",
+                "rag": {"qdrant_collection": "c1", "filter": {}},
+                "graph": {"nebula_space": "g1"},
+                "wiki": {"s3_prefix": "wiki/p1/", "vfs_mount": "/wiki/a/"},
+            }
+        ),
+        KnowledgeBinding.from_api_dict(
+            {
+                "tenant": "t",
+                "project_id": "p2",
+                "rag": {"qdrant_collection": "c2", "filter": {}},
+                "graph": {"nebula_space": "g2"},
+                "wiki": {"s3_prefix": "wiki/p2/", "vfs_mount": "/wiki/b/"},
+            }
+        ),
+    ]
+    routes = wiki_routes_from_bindings(bindings, s3_client=object(), bucket="wiki-bucket")
+    assert set(routes) == {"/wiki/a/", "/wiki/b/"}

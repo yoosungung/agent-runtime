@@ -33,6 +33,7 @@ from backend.routers import dashboard as dashboard_router_module
 from backend.routers import infra_meta as infra_meta_router_module
 from backend.routers import llm_presets as llm_presets_router_module
 from backend.routers import me_api_keys as me_api_keys_router_module
+from backend.routers import me_knowledge_projects as me_knowledge_projects_router_module
 from backend.routers import me_user_meta as me_user_meta_router_module
 from backend.routers import pipeline as pipeline_router_module
 from backend.routers import pipeline_credentials as pipeline_credentials_router_module
@@ -310,6 +311,7 @@ app.add_middleware(
 app.include_router(auth_router_module.router)  # /api/auth/*
 app.include_router(auth_router_module.me_router)  # /api/me
 app.include_router(me_user_meta_router_module.router)  # /api/me/user-meta, /api/me/access-resources
+app.include_router(me_knowledge_projects_router_module.router)  # /api/me/knowledge-projects
 app.include_router(me_api_keys_router_module.router)  # /api/me/api-keys
 app.include_router(dashboard_router_module.router)  # /api/dashboard/*
 app.include_router(source_meta_router_module.router)  # /api/source-meta/*
