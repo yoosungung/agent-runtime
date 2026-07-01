@@ -2,11 +2,11 @@
 
 MCP-Pool의 베이스 이미지. 구조는 agent-base와 평행 — 같은 Lambda 스타일 동적 로딩, 다만 호스팅하는 대상이 MCP 서버(FastMCP / MCP SDK / DidimRAG / T2SQL).
 
-> **범위**: `RUNTIME_KIND ∈ {fastmcp, mcp_sdk, didim_rag, t2sql}` — **Bundle 모드 전용**. Image 모드(`custom`) MCP pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 mcp-base와 무관. Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
+> **범위**: `RUNTIME_KIND ∈ {fastmcp, mcp_sdk}` — **Bundle 모드 전용**. Image 모드(`custom`) MCP pool은 admin이 빌드한 별도 OCI 이미지가 직접 운영되며 mcp-base와 무관 — path-graph hybrid search는 [deploy/examples/custom-image/path-graph-rag-mcp/](../../deploy/examples/custom-image/path-graph-rag-mcp/). Image 모드 contract는 [backend/DESIGN.md](../../backend/DESIGN.md)의 "Custom Image 관리" 참조.
 
 ## 설계
 
-- `RUNTIME_KIND` env가 pod 정체성을 정함: `fastmcp` / `mcp_sdk` / `didim_rag` / `t2sql`.
+- `RUNTIME_KIND` env가 pod 정체성을 정함: `fastmcp` / `mcp_sdk`.
 - **요청 처리** (`POST /invoke`)
   - payload: `{server, version?, tool, arguments, principal}` — 식별자만.
   1. **`DeployApiClient.resolve(kind='mcp', name=server, version=version, principal=principal.id)`** → `{source, user}`.
@@ -16,7 +16,6 @@ MCP-Pool의 베이스 이미지. 구조는 agent-base와 평행 — 같은 Lambd
   5. `runner.run(kind, instance, tool, arguments)` — kind별 툴 호출 어댑터.
      - `fastmcp` → `instance.call_tool(tool, arguments)`
      - `mcp_sdk` → `instance.dispatch(tool, arguments)` 또는 `request_handlers[tool](arguments)`
-     - `didim_rag` / `t2sql` → 자체 프로토콜 `instance.call(tool, arguments)` (duck-typed)
 - **Postgres 직결 없음**. `DEPLOY_API_URL`만 사용.
 - **번들 캐시**: agent-base와 동일 — `BUNDLE_CACHE_MAX` LRU, checksum namespace import. [packages/common/DESIGN.md](../../packages/common/DESIGN.md) `loader.py` 참조.
 - DidimRAG/T2SQL은 MCP 표준 위가 아닌 **내부 convention**으로 취급. 외부 infra(DidimRAG 스토리지, postgres pgvector)에 붙을 때 클라이언트 코드가 번들 안에 들어간다.

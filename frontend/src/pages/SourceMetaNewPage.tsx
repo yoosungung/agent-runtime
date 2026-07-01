@@ -125,7 +125,7 @@ export function SourceMetaNewPage({ kind }: Props) {
   }
 
   useEffect(() => {
-    if (kind === "mcp" && runtimePool === "mcp:didim_rag") {
+    if (kind === "mcp" && runtimePool.startsWith("mcp:custom:")) {
       setRequiresKnowledgeProject(true);
     }
   }, [kind, runtimePool]);

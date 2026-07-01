@@ -37,7 +37,9 @@ def scope_search_arguments(
     filters = dict(binding.rag.filter)
     filters.setdefault("project_id", binding.project_id)
     scoped["filter"] = filters
+    scoped["tenant"] = binding.tenant
     scoped["project_id"] = binding.project_id
+    scoped["project_slug"] = binding.project_slug
     scoped["nebula_space"] = binding.graph.nebula_space
     return scoped
 

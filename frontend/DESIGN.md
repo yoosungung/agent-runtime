@@ -161,7 +161,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - 목록 `GET /api/source-meta?kind=agent&deploy_mode=hermes_general` — general과 동일 visibility 필터(비-developer 허용).
 
 **MCP bundle 등록 (`/bundle/mcp/new`)**
-- 체크박스 **Pipeline project binding 필요** → `config.knowledge.requires_project`. `runtime_pool=mcp:didim_rag` 선택 시 기본 checked.
+- 체크박스 **Pipeline project binding 필요** → `config.knowledge.requires_project`. path-graph retrieval MCP(image) 등에서 사용.
 
 **MCP Image 등록·편집 (`/container/mcp/new`, `/container/mcp/:slug/edit`)**
 - 동일 체크박스 → `config.knowledge.requires_project` (MCP Image 기본 checked).

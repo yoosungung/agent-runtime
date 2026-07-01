@@ -22,6 +22,7 @@ def test_scope_search_arguments_overwrites_collection():
         {
             "tenant": "acme",
             "project_id": "p1",
+            "project_slug": "default",
             "rag": {"qdrant_collection": "col-a", "filter": {"project_id": "p1"}},
             "graph": {"nebula_space": "space-a"},
             "wiki": {"s3_prefix": "wiki/a", "vfs_mount": "/wiki/a/"},
@@ -30,6 +31,8 @@ def test_scope_search_arguments_overwrites_collection():
     scoped = scope_search_arguments({"query": "x", "collection": "evil"}, binding)
     assert scoped["collection"] == "col-a"
     assert scoped["project_id"] == "p1"
+    assert scoped["tenant"] == "acme"
+    assert scoped["project_slug"] == "default"
     assert scoped["nebula_space"] == "space-a"
 
 

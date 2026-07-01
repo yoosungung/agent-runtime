@@ -84,8 +84,6 @@ Lua 필터: `x-envoy-attempt-count > 1`이면 `:authority`를 `x-pod-fallback-ad
 | `pool_adk_url` | `http://agent-pool-adk.runtime.svc.cluster.local:8080` | |
 | `pool_fastmcp_url` | `http://mcp-pool-fastmcp.runtime.svc.cluster.local:8080` | |
 | `pool_mcp_sdk_url` | `http://mcp-pool-mcp-sdk.runtime.svc.cluster.local:8080` | |
-| `pool_didim_rag_url` | `http://mcp-pool-didim-rag.runtime.svc.cluster.local:8080` | |
-| `pool_t2sql_url` | `http://mcp-pool-t2sql.runtime.svc.cluster.local:8080` | |
 | `runtime_namespace` | `runtime` | image 모드 Service DNS 생성 시 네임스페이스 |
 | `cluster_domain` | `cluster.local` | image 모드 Service DNS 클러스터 도메인 |
 | `internal_grace_sec` | `300` | `/v1/mcp/invoke-internal`, `/v1/agents/invoke-internal` grace 기간 |

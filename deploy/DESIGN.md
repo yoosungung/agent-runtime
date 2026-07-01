@@ -247,6 +247,7 @@ backend SA는 `automountServiceAccountToken: true` (in-cluster K8s API 접근용
 
 - `python-agent/` — FastAPI + `POST /invoke` + `/healthz` + `/readyz`
 - `python-mcp/` — 동일 구조, MCP 서버 역할
+- `path-graph-rag-mcp/` — path-graph hybrid search (`search` tool). Image 모드 등록 — [README](custom-image/path-graph-rag-mcp/README.md)
 - `go-agent/` — Go `net/http` 구현 예제 (멀티스테이지 빌드, alpine 최종 이미지)
 
 ## Commands

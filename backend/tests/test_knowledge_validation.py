@@ -19,12 +19,12 @@ def _mcp_row(*, name: str, requires: bool) -> SourceMetaRow:
         kind="mcp",
         name=name,
         version="v1",
-        runtime_pool="mcp:didim_rag",
-        entrypoint="app:factory",
-        bundle_uri="file:///tmp/x.zip",
+        runtime_pool="mcp:custom:path-graph-rag-v1",
+        entrypoint="",
+        bundle_uri="",
         checksum="sha256:" + "a" * 64,
         config={"knowledge": {"requires_project": requires}},
-        deploy_mode="bundle",
+        deploy_mode="image",
         status="active",
     )
 

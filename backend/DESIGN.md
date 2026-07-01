@@ -129,7 +129,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 **Sources** — `credential_id` 필수 권장. Test/Run은 credential Secret에서 토큰 resolve. `schedule_cron` 설정 시 BFF가 Argo `CronWorkflow` `pg-cron-{tenant}-{source}` reconcile.
 
-**Projects** — 생성 시 BFF가 Argo `CronWorkflow` `pg-reconcile-{tenant}-{project}` upsert (`pipeline-reconcile-index`, 기본 `PATH_GRAPH_RECONCILE_CRON_SCHEDULE=0 3 * * *` UTC). 삭제 제출 시 cron 삭제. backend startup bootstrap은 `ProjectStore.list_all_projects()`로 기존 project cron drift 보정.
+**Projects** — 생성 시 BFF가 Argo `CronWorkflow` `pg-reconcile-{tenant}-{project}` upsert (`pipeline-reconcile-index`, 기본 `PATH_GRAPH_RECONCILE_CRON_SCHEDULE=0 3 * * *` UTC). 삭제 제출 시 cron 삭제. backend startup bootstrap은 `ProjectStore.list_all_projects()`로 기존 project cron drift 보정. 기존 CronWorkflow update 시 k8s `metadata.resourceVersion`을 GET 응답에서 복사해 `replace` body에 포함한다(누락 시 422).
 
 | Method | Path | 동작 |
 |--------|------|------|
@@ -197,7 +197,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 
 **General 모드**: `runtime_pool='agent:compiled_graph'` 고정. 등록 시 Envoy `GET /v1/mcp/servers/{name}/catalog`로 tool manifest(`tools` 키)를 조회해 `config.general.mcp_tools`에 캐시. `config.general.knowledge_project_ids[]`로 pipeline project knowledge 경계 저장. MCP `config.knowledge.requires_project=true`이면 general agent 생성 시 project 1개 이상 필수. project 목록·binding 미리보기는 **`GET /api/me/knowledge-projects*`** (tenant read-only). invoke 시 agent-pool이 binding resolve 후 MCP retrieval args를 덮어씀 — **per-project user ACL 없음**, tenant 경계 + agent `visibility`로 접근 제어.
 
-**MCP bundle 등록**: `config.knowledge.requires_project` (bool, 기본 `false`) — pipeline project binding 필요 여부. `runtime_pool=mcp:didim_rag` 등 retrieval MCP에 사용.
+**MCP 등록**: `config.knowledge.requires_project` (bool, 기본 `false`) — pipeline project binding 필요 여부. path-graph hybrid search 등 retrieval MCP(image·bundle 공통)에 사용.
 
 **불변 필드 방침**: `source_meta.(kind, name, version, checksum, bundle_uri)`는 생성 후 변경 금지 — 버전 새로 찍는 게 정답. `PATCH`는 `entrypoint`/`sig_uri`/`runtime_pool`/`config`/`user_meta_template` 오기재 수정만 허용(감사 로그에 before/after 기록).
 
@@ -421,7 +421,7 @@ general-tier agent의 Postgres VFS(`vfs_agent_files`)를 admin SPA에서 직접 
 | 필드 | 규칙 | 실패 시 |
 |---|---|---|
 | `kind` | ∈ `{"agent", "mcp"}` | 400 |
-| `runtime_pool` | Bundle 모드: ∈ `{"agent:compiled_graph", "agent:adk", "mcp:fastmcp", "mcp:mcp_sdk", "mcp:didim_rag", "mcp:t2sql"}` + `kind` prefix 일치. Image 모드: `parse_runtime_pool()` 통과 + slug 규칙 준수 | 400 |
+| `runtime_pool` | Bundle 모드: ∈ `{"agent:compiled_graph", "agent:adk", "mcp:fastmcp", "mcp:mcp_sdk"}` + `kind` prefix 일치. Image 모드: `parse_runtime_pool()` 통과 + slug 규칙 준수 | 400 |
 | `name` | `^[a-z0-9][a-z0-9-]{0,127}$` | 400 |
 | `version` | `^[a-zA-Z0-9._-]{1,64}$` | 400 |
 | `entrypoint` | `^[\w.]+:[\w]+$` | 400 |

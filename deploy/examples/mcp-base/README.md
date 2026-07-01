@@ -127,6 +127,8 @@ VALUES (
 
 ---
 
-## didim_rag / t2sql
+## path-graph hybrid search (Container MCP)
 
-내부 인프라(DidimRAG 스토리지, PostgreSQL pgvector) 에 직접 연결하는 서버. runner 가 `await instance.call(tool, args)` 호출. 번들에 클라이언트 코드 포함, 접속 정보는 `secrets_ref`. 별도 운영 문서 참조.
+path-graph RAG는 **Image 모드** 전용 — [custom-image/path-graph-rag-mcp/](../custom-image/path-graph-rag-mcp/README.md). mcp-base 번들 pool과 분리.
+
+외부 DidimRAG 등 HTTP 백엔드는 `runtime_common.didim_client.DidimRagClient`를 fastmcp/mcp_sdk 번들에서 사용 (선택).
