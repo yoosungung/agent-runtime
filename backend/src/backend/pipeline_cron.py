@@ -92,6 +92,7 @@ def build_cron_workflow_body(
                         {"name": "batch_id", "value": ""},
                         {"name": "credential_secret", "value": credential_secret},
                         {"name": "rag", "value": "true"},
+                        {"name": "sync_mode", "value": ""},
                     ]
                 },
             },

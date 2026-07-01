@@ -243,6 +243,7 @@ async def submit_collect_ingest_rag(
     batch_id: str,
     source_name: str,
     credential_secret: str = "",
+    sync_mode: str = "",
 ) -> dict[str, str]:
     """Submit pipeline-collect-ingest-rag Workflow (async Run now)."""
     parameters = [
@@ -251,6 +252,7 @@ async def submit_collect_ingest_rag(
         {"name": "batch_id", "value": batch_id},
         {"name": "credential_secret", "value": credential_secret},
         {"name": "rag", "value": "true"},
+        {"name": "sync_mode", "value": sync_mode},
     ]
     body = _workflow_body(
         settings=settings,

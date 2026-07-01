@@ -58,8 +58,14 @@ export function PipelineSourceDetailPage() {
   const [workflowStarted, setWorkflowStarted] = useState<WorkflowStartedInfo | null>(
     null,
   );
+  const [runSyncMode, setRunSyncMode] = useState<"delta" | "full">("full");
+  const [configSyncModeDraft, setConfigSyncModeDraft] = useState<"delta" | "full" | null>(
+    null,
+  );
+  const [syncSaved, setSyncSaved] = useState<string | null>(null);
 
   const isManual = source?.driver === "manual";
+  const isSharePoint = source?.driver === "sharepoint";
   const documentCount = documentsData?.total ?? 0;
   const pendingCount = pendingDocsData?.total ?? 0;
 
@@ -76,6 +82,24 @@ export function PipelineSourceDetailPage() {
   }
 
   const scheduleInput = scheduleCron || source.schedule_cron || "";
+  const storedSyncMode =
+    source.config.sync_mode === "full" ? "full" : "delta";
+  const deltaLink =
+    typeof source.config.delta_link === "string" ? source.config.delta_link : "";
+  const syncModeInput = configSyncModeDraft ?? storedSyncMode;
+
+  async function saveSyncSettings() {
+    if (!source) return;
+    setActionError(null);
+    setSyncSaved(null);
+    try {
+      const nextConfig = { ...source.config, sync_mode: syncModeInput };
+      await updateMut.mutateAsync({ config: nextConfig });
+      setSyncSaved(`Scheduled sync mode: ${syncModeInput}`);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Sync settings update failed");
+    }
+  }
 
   async function saveSchedule() {
     setActionError(null);
@@ -119,7 +143,7 @@ export function PipelineSourceDetailPage() {
     setActionError(null);
     setWorkflowStarted(null);
     try {
-      const res = await runMut.mutateAsync();
+      const res = await runMut.mutateAsync({ sync_mode: runSyncMode });
       if (res.file_count === 0) {
         setActionError("No files collected — workflow not submitted.");
         return;
@@ -262,6 +286,14 @@ export function PipelineSourceDetailPage() {
               <span className="font-mono text-xs">{source.schedule_cron ?? "—"}</span>
             </>
           )}
+          {isSharePoint && (
+            <>
+              <span className="text-gray-500">Scheduled sync</span>
+              <span className="font-mono text-xs">{storedSyncMode}</span>
+              <span className="text-gray-500">Delta cursor</span>
+              <span className="text-xs">{deltaLink ? "configured" : "none"}</span>
+            </>
+          )}
         </div>
 
         <div>
@@ -302,6 +334,46 @@ export function PipelineSourceDetailPage() {
           {scheduleSaved && (
             <p className="mt-2 text-sm text-green-700">{scheduleSaved}</p>
           )}
+        </div>
+      )}
+
+      {isSharePoint && (
+        <div className="bg-white shadow rounded-lg p-6 mb-4 max-w-2xl">
+          <h3 className="text-sm font-medium text-gray-900 mb-2">SharePoint sync</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Cron 수집은 아래 모드를 사용합니다. Run now는 기본적으로 전체 재수집(full)이며,
+            다이얼로그에서 delta를 선택할 수 있습니다. delta 성공 시 Graph delta 커서가
+            자동 저장됩니다.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <label className="text-sm text-gray-700" htmlFor="scheduled-sync-mode">
+              Scheduled sync mode
+            </label>
+            <select
+              id="scheduled-sync-mode"
+              value={syncModeInput}
+              onChange={(e) => {
+                setConfigSyncModeDraft(e.target.value as "delta" | "full");
+                setSyncSaved(null);
+              }}
+              className="border border-gray-300 rounded px-3 py-2 text-sm"
+            >
+              <option value="delta">delta (incremental)</option>
+              <option value="full">full (entire folder)</option>
+            </select>
+            <button
+              type="button"
+              onClick={saveSyncSettings}
+              disabled={updateMut.isPending}
+              className="text-sm border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {updateMut.isPending ? "Saving…" : "Save sync mode"}
+            </button>
+          </div>
+          {syncSaved && <p className="text-sm text-green-700">{syncSaved}</p>}
+          <p className="text-xs text-gray-500 mt-2">
+            Delta cursor: {deltaLink ? "stored (hidden)" : "not set — next delta run starts fresh"}
+          </p>
         </div>
       )}
 
@@ -419,6 +491,9 @@ export function PipelineSourceDetailPage() {
         idleDescription="원격 source에서 파일을 수집하고 RAG ingest workflow를 시작합니다."
         confirmLabel="Start workflow"
         isSubmitting={runMut.isPending}
+        showSyncMode={isSharePoint}
+        syncMode={runSyncMode}
+        onSyncModeChange={setRunSyncMode}
         onConfirm={confirmWorkflowStart}
         onCancel={() => setPendingWorkflowAction(null)}
       />

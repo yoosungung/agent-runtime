@@ -7,6 +7,9 @@ interface Props {
   idleDescription: string;
   confirmLabel: string;
   isSubmitting?: boolean;
+  showSyncMode?: boolean;
+  syncMode?: "delta" | "full";
+  onSyncModeChange?: (mode: "delta" | "full") => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,6 +21,9 @@ export function WorkflowStartDialog({
   idleDescription,
   confirmLabel,
   isSubmitting = false,
+  showSyncMode = false,
+  syncMode = "full",
+  onSyncModeChange,
   onConfirm,
   onCancel,
 }: Props) {
@@ -58,6 +64,29 @@ export function WorkflowStartDialog({
           </div>
         )}
         <p className="text-sm text-gray-600 mb-6">{description}</p>
+        {showSyncMode && onSyncModeChange && (
+          <div className="mb-4 rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
+            <p className="font-medium text-gray-900 mb-2">Collect mode</p>
+            <label className="flex items-center gap-2 mb-1">
+              <input
+                type="radio"
+                name="run-sync-mode"
+                checked={syncMode === "full"}
+                onChange={() => onSyncModeChange("full")}
+              />
+              Full resync (entire folder)
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="run-sync-mode"
+                checked={syncMode === "delta"}
+                onChange={() => onSyncModeChange("delta")}
+              />
+              Delta (incremental, uses stored cursor)
+            </label>
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <button
             type="button"

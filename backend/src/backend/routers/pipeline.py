@@ -198,6 +198,11 @@ class RunSourceResponse(BaseModel):
     argo_uid: str
 
 
+class RunSourceRequest(BaseModel):
+    sync_mode: str = Field(
+        default="full",
+        description="Collect override: full (Run now default) or delta",
+    )
 class SourceWorkflowStatusResponse(BaseModel):
     active: bool
     workflow_name: str | None = None
@@ -944,6 +949,7 @@ async def source_workflow_status(
 async def run_source(
     source_id: str,
     request: Request,
+    body: RunSourceRequest | None = None,
     principal: Principal = Depends(require_admin),  # noqa: B008
     store: SourceStore = Depends(_store),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
@@ -959,6 +965,10 @@ async def run_source(
             status_code=409,
             detail="manual sources use upload and ingest endpoints, not run",
         )
+
+    sync_mode = (body.sync_mode if body is not None else "full").strip().lower()
+    if sync_mode not in ("delta", "full"):
+        raise HTTPException(status_code=400, detail="sync_mode must be delta or full")
 
     await assert_source_workflow_idle(
         settings=settings,
@@ -984,6 +994,7 @@ async def run_source(
         batch_id=batch_id,
         source_name=profile.name,
         credential_secret=credential_secret,
+        sync_mode=sync_mode,
     )
     run_id = str(uuid4())
     await asyncio.to_thread(

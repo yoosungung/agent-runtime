@@ -59,6 +59,7 @@ def test_build_cron_workflow_body():
     assert params["source_id"] == "11111111-1111-4111-8111-111111111111"
     assert params["batch_id"] == ""
     assert params["credential_secret"] == "path-graph-cred-dev-abc"
+    assert params["sync_mode"] == ""
 
 
 @pytest.mark.asyncio

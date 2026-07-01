@@ -300,9 +300,10 @@ async def test_test_source(pipeline_client, monkeypatch):
 @pytest.mark.asyncio
 async def test_run_source(pipeline_client, monkeypatch):
     client, mock_store, _mock_project_store = pipeline_client
+    submit_mock = AsyncMock(return_value={"workflow_name": "collect-kms-abc", "argo_uid": "uid-1"})
     monkeypatch.setattr(
         "backend.routers.pipeline.submit_collect_ingest_rag",
-        AsyncMock(return_value={"workflow_name": "collect-kms-abc", "argo_uid": "uid-1"}),
+        submit_mock,
     )
     resp = await client.post(
         "/api/pipeline/sources/11111111-1111-4111-8111-111111111111/run",
@@ -313,8 +314,38 @@ async def test_run_source(pipeline_client, monkeypatch):
     assert data["workflow_name"] == "collect-kms-abc"
     assert data["batch_id"]
     assert data["file_count"] is None
+    submit_mock.assert_awaited_once()
+    assert submit_mock.await_args.kwargs["sync_mode"] == "full"
     mock_store.record_run.assert_called_once()
     mock_store.insert_pipeline_run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_source_delta_override(pipeline_client, monkeypatch):
+    client, mock_store, _mock_project_store = pipeline_client
+    submit_mock = AsyncMock(return_value={"workflow_name": "collect-kms-abc", "argo_uid": "uid-1"})
+    monkeypatch.setattr(
+        "backend.routers.pipeline.submit_collect_ingest_rag",
+        submit_mock,
+    )
+    resp = await client.post(
+        "/api/pipeline/sources/11111111-1111-4111-8111-111111111111/run",
+        headers={**_csrf_headers(), "Content-Type": "application/json"},
+        json={"sync_mode": "delta"},
+    )
+    assert resp.status_code == 202
+    assert submit_mock.await_args.kwargs["sync_mode"] == "delta"
+
+
+@pytest.mark.asyncio
+async def test_run_source_rejects_invalid_sync_mode(pipeline_client):
+    client, _, _ = pipeline_client
+    resp = await client.post(
+        "/api/pipeline/sources/11111111-1111-4111-8111-111111111111/run",
+        headers={**_csrf_headers(), "Content-Type": "application/json"},
+        json={"sync_mode": "bogus"},
+    )
+    assert resp.status_code == 400
 
 
 @pytest.mark.asyncio

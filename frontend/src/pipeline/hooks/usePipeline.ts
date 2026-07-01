@@ -235,14 +235,17 @@ export function useTestPipelineSource(id: string) {
 export function useRunPipelineSource(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (opts?: { sync_mode?: "delta" | "full" }) =>
       apiJson<{
         batch_id: string;
         manifest_key: string;
         file_count: number | null;
         workflow_name: string;
         argo_uid: string;
-      }>(`/api/pipeline/sources/${id}/run`, { method: "POST" }),
+      }>(`/api/pipeline/sources/${id}/run`, {
+        method: "POST",
+        body: JSON.stringify(opts ?? { sync_mode: "full" }),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pipeline", "sources", id] });
       qc.invalidateQueries({ queryKey: ["pipeline", "runs"] });

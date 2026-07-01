@@ -148,7 +148,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `PATCH` | `/api/pipeline/sources/{id}` | `config`/`enabled`/`schedule_cron`/`credential_id` |
 | `DELETE` | `/api/pipeline/sources/{id}` | 삭제 |
 | `POST` | `/api/pipeline/sources/{id}/test` | collector dry-run |
-| `POST` | `/api/pipeline/sources/{id}/run` | **202** — collect+ingest WF |
+| `POST` | `/api/pipeline/sources/{id}/run` | **202** — collect+ingest WF. body `{sync_mode?: "delta"\|"full"}` — 기본 **`full`** (Run now 전체 재수집). Cron은 `sync_mode=""` → source `config.sync_mode` 또는 delta. collect 성공 시 reconciler가 `config.delta_link` persist (SharePoint delta) 또는 full 시 커서 제거 |
 | `POST` | `/api/pipeline/sources/{id}/purge` | source purge |
 | `POST` | `/api/pipeline/sources/{id}/upload` | manual raw upload |
 | `POST` | `/api/pipeline/sources/{id}/ingest` | manual ingest WF |
