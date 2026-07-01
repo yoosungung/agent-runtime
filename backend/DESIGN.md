@@ -249,7 +249,7 @@ backend가 `kubernetes-asyncio` 클라이언트로 `runtime` 네임스페이스 
 |---|---|
 | `Deployment` | 이미지 워크로드. `replicas=1` 시작, KEDA가 auto-scale |
 | `Service` | ClusterIP. `{kind}-pool-custom-{slug}:8080` — ext-authz가 DNS로 접근 |
-| `ScaledObject` | KEDA. `minReplicaCount=1`, `maxReplicaCount=replicas_max`. Prometheus 트리거 |
+| `ScaledObject` | KEDA CRD(`scaledobjects.keda.sh`) 있을 때만 생성. dev overlay(KEDA 미설치)는 Deployment `replicas` 고정 |
 | `PodDisruptionBudget` | `minAvailable=1` — 롤링 업데이트 중 가용성 보장 |
 
 모든 pod에 `runtime/role: pool` 라벨 부착 → NetworkPolicy가 일반화된 selector로 처리.

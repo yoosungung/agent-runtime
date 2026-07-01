@@ -55,6 +55,19 @@ async def make_api_client(settings: Settings) -> ApiClient:
     return ApiClient()
 
 
+async def keda_crd_available(ext_api: k8s_client.ApiextensionsV1Api) -> bool:
+    """Return True when KEDA ScaledObject CRD is registered in the cluster."""
+    from kubernetes_asyncio.client.exceptions import ApiException
+
+    try:
+        await ext_api.read_custom_resource_definition("scaledobjects.keda.sh")
+        return True
+    except ApiException as exc:
+        if exc.status == 404:
+            return False
+        raise
+
+
 _RESERVED_POOL_ENV = frozenset({"RUNTIME_POOL", "DEPLOY_API_URL", "POD_NAME", "POD_IP", "POD_PORT"})
 
 
@@ -215,6 +228,15 @@ class K8sPoolManager:
         self._core = k8s_client.CoreV1Api(api_client)
         self._custom = k8s_client.CustomObjectsApi(api_client)
         self._policy = k8s_client.PolicyV1Api(api_client)
+        self._ext = k8s_client.ApiextensionsV1Api(api_client)
+        self._keda_available: bool | None = None
+
+    async def _is_keda_available(self) -> bool:
+        if self._keda_available is None:
+            self._keda_available = await keda_crd_available(self._ext)
+            if not self._keda_available:
+                logger.info("k8s.keda_absent — ScaledObject create/patch/delete skipped")
+        return self._keda_available
 
     async def create_pool(
         self,
@@ -250,13 +272,14 @@ class K8sPoolManager:
 
         await self._apps.create_namespaced_deployment(self._ns, dep)
         await self._core.create_namespaced_service(self._ns, svc)
-        await self._custom.create_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=self._ns,
-            plural="scaledobjects",
-            body=so,
-        )
+        if await self._is_keda_available():
+            await self._custom.create_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=self._ns,
+                plural="scaledobjects",
+                body=so,
+            )
         await self._policy.create_namespaced_pod_disruption_budget(self._ns, pdb)
         logger.info("k8s.create_pool done", extra={"pool": name})
 
@@ -314,6 +337,9 @@ class K8sPoolManager:
 
     async def _delete_scaled_object(self, name: str) -> None:
         from kubernetes_asyncio.client.exceptions import ApiException
+
+        if not await self._is_keda_available():
+            return
 
         try:
             await self._custom.delete_namespaced_custom_object(
@@ -375,7 +401,7 @@ class K8sPoolManager:
                 _content_type="application/json-patch+json",
             )
 
-        if replicas_max is not None:
+        if replicas_max is not None and await self._is_keda_available():
             so_patch = [{"op": "replace", "path": "/spec/maxReplicaCount", "value": replicas_max}]
             await self._custom.patch_namespaced_custom_object(
                 group="keda.sh",
