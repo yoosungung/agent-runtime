@@ -129,6 +129,16 @@ data:
                         - name: agents_runtime
                           domains: ["*"]
                           routes:
+                            - match: { prefix: "/v1/agents/jobs" }
+                              route:
+                                cluster: pool_dfp
+                                timeout: 30s
+                                regex_rewrite:
+                                  pattern: { google_re2: {}, regex: "^/v1/agents(/jobs.*)$" }
+                                  substitution: "\\1"
+                                retry_policy:
+                                  retry_on: connect-failure,refused-stream
+                                  num_retries: 1
                             - match: { prefix: "/v1/agents/" }
                               route:
                                 cluster: pool_dfp

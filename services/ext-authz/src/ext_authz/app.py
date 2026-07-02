@@ -49,13 +49,14 @@ tracer = trace.get_tracer("ext-authz")
 class _RouteMatch(NamedTuple):
     kind: str
     grace_sec: int
-    mode: str  # "invoke" | "stream"
+    mode: str  # "invoke" | "stream" | "catalog" | "jobs"
 
 
 # Path → (kind, grace_mode, mode). Order matters: specific paths before prefixes.
 _ROUTE_TABLE: list[tuple[str, str, str, str]] = [
     # grace_mode: "edge" → 0, "internal" → settings.internal_grace_sec
     ("/v1/agents/invoke-internal", "agent", "internal", "invoke"),
+    ("/v1/agents/jobs", "agent", "edge", "jobs"),
     ("/v1/agents/invoke", "agent", "edge", "invoke"),
     ("/v1/mcp/invoke-internal", "mcp", "internal", "invoke"),
     ("/v1/mcp/stream", "mcp", "edge", "stream"),
@@ -511,6 +512,99 @@ def _pool_url(kind: str, runtime_kind: str, settings: Settings) -> str | None:
     return settings.mcp_pool_url(runtime_kind)
 
 
+async def _check_agent_jobs(
+    request: Request,
+    *,
+    grace_sec: int,
+    token: str,
+    settings: Settings,
+    full_path: str,
+) -> Response:
+    name = request.headers.get("x-runtime-name") or request.query_params.get("agent")
+    version: str | None = request.headers.get("x-runtime-version") or None
+
+    if request.method.upper() == "POST" and not name:
+        raw = await request.body()
+        if not raw:
+            return _deny(400, "missing request body or x-runtime-name header")
+        try:
+            body_json = json.loads(raw)
+        except Exception:
+            return _deny(400, "invalid JSON body")
+        name, version = _extract_identifier(body_json, "agent")
+        if not name:
+            return _deny(400, "missing agent field in body")
+
+    if request.method.upper() == "GET" and not name:
+        return _deny(400, "missing agent query param or x-runtime-name header")
+
+    with tracer.start_as_current_span("auth.verify") as span:
+        span.set_attribute("kind", "agent")
+        span.set_attribute("grace_sec", grace_sec)
+        try:
+            principal = await app.state.auth.verify(token, grace_sec=grace_sec)
+        except Exception as exc:
+            span.set_attribute("error", str(exc))
+            return _deny(401, "invalid token")
+
+    if name and not principal.can_access("agent", name):
+        return _deny(403, f"access denied to agent {name!r}")
+
+    if not app.state.principal_limiter.allow(principal.sub):
+        return _deny(429, "rate limit exceeded for principal")
+    if name and not app.state.resource_limiter.allow(f"agent:{name}"):
+        return _deny(429, "rate limit exceeded for agent")
+
+    checksum = None
+    runtime_kind = "compiled_graph"
+    if name:
+        try:
+            resolved = await app.state.deploy.resolve(
+                kind="agent", name=name, version=version, principal=principal.sub
+            )
+            pool_id = parse_runtime_pool(resolved.source.runtime_pool)
+            runtime_kind = pool_id.runtime_kind
+            checksum = resolved.source.checksum
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return _deny(404, f"agent not found: {name}")
+            return _deny(502, "deploy-api error")
+        except Exception:
+            return _deny(502, "deploy-api error")
+
+    pool_url = _pool_url("agent", runtime_kind, settings)
+    if not pool_url:
+        return _deny(502, f"no pool for runtime_kind: {runtime_kind}")
+
+    ring_key = f"agent:{name or 'jobs'}:{version or ''}:{checksum or ''}:{full_path}"
+    addr, fallback, pick_result = await _pick_pool_addr(
+        app.state.agent_scheduler,
+        runtime_kind=runtime_kind,
+        checksum=checksum,
+        ring_key=ring_key,
+        pool_url=pool_url,
+        kind="agent",
+    )
+    _record_pick_metrics(
+        pick_counter=app.state.scheduler_pick_counter,
+        warm_replicas_hist=app.state.scheduler_warm_replicas_hist,
+        warm_util_hist=app.state.scheduler_warm_util_hist,
+        kind="agent",
+        runtime_kind=runtime_kind,
+        result=pick_result,
+    )
+
+    principal_b64 = base64.b64encode(principal.model_dump_json().encode("utf-8")).decode("ascii")
+    headers = {
+        "x-pod-addr": addr,
+        "x-pod-fallback-addr": fallback,
+        "x-principal": principal_b64,
+    }
+    if grace_sec > 0 and principal.grace_applied:
+        headers["x-grace-applied"] = "1"
+    return Response(status_code=200, headers=headers)
+
+
 @app.api_route(
     "/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
@@ -548,6 +642,15 @@ async def check(path: str, request: Request) -> Response:
             token=token,
             grace_sec=route.grace_sec,
             settings=settings,
+        )
+
+    if route.mode == "jobs":
+        return await _check_agent_jobs(
+            request,
+            grace_sec=route.grace_sec,
+            token=token,
+            settings=settings,
+            full_path=full_path,
         )
 
     kind, grace_sec = route.kind, route.grace_sec

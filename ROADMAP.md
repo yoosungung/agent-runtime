@@ -15,8 +15,9 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream 완료. **Knowledge
 | PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [x] | 3.2.1 — [`test_wiki_vfs.sh`](deploy/examples/tests/e2e/test_wiki_vfs.sh) 클러스터 E2E 통과 (2026-07) |
 | PG-4 | retrieval — Qdrant `rag.qdrant_collection` + `project_id` filter; 복수 project parallel + RRF | [x] | 3.2.0 — `invoke_scoped_retrieval` |
 | PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [x] | 4.4.4 — BFF `pg-reconcile-{tenant}-{project}` 일 1회 upsert; create/delete + startup bootstrap |
+| PG-6 | Async agent job API + Argo resume callback | [x] | path-graph 3.2.2 — `POST/GET /v1/agents/jobs`, pool `/jobs` |
 
-**권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 [x]. SharePoint Cron delta E2E는 path-graph ROADMAP §관리자 검증 체크리스트.
+**권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 [x] → PG-6. SharePoint Cron delta E2E는 path-graph ROADMAP §관리자 검증 체크리스트.
 
 **D5 수집 동기화** (path-graph 4.1.3·4.1.7): BFF `sync_mode` UI · reconciler `delta_link` persist **코드 완료**. 클러스터 E2E(2.1.7)는 관리자 요청 일괄 처리 시 수행.
 

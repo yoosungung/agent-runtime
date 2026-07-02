@@ -7,17 +7,22 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import StreamingResponse
+import redis.asyncio as aioredis
+from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry.metrics import Observation
 from pydantic import BaseModel
 
 from agent_base.context import reset_current_token, reset_delegate_depth, set_current_token, set_delegate_depth
 from agent_base.general_cache import get_or_build_general_agent
 from agent_base.http_client import close_mcp_http_client
+from agent_base.invoke_handler import InvokeContext, execute_invoke
+from agent_base.jobs import JobService, JobSubmitRequest
 from agent_base.knowledge_context import reset_knowledge_bindings, setup_knowledge_bindings
-from agent_base.runner import run, run_stream
+from agent_base.runner import run_stream
 from agent_base.settings import Settings
+from runtime_common.agent_jobs import JobStatus
+from runtime_common.agent_jobs import JobStore
 from runtime_common.config_schema import GeneralAgentSourceConfig
 from runtime_common.deploy_client import DeployApiClient
 from runtime_common.factory import merge_configs
@@ -40,10 +45,8 @@ class InvokeRequest(BaseModel):
     version: str | None = None
     input: dict
     session_id: str | None = None
-    # Phase 1 callers (agent-gateway) embed Principal in the body.
-    # Phase 2 callers (Envoy + ext-authz) pass it as the `x-principal` header.
     principal: Principal | None = None
-    stream: bool = False  # client opt-in for SSE streaming
+    stream: bool = False
 
 
 def _principal_from_header(header_b64: str | None) -> Principal | None:
@@ -54,6 +57,32 @@ def _principal_from_header(header_b64: str | None) -> Principal | None:
     except Exception as exc:
         logger.warning("x_principal_decode_failed", extra={"error": str(exc)})
         return None
+
+
+def _invoke_context(app: FastAPI) -> InvokeContext:
+    return InvokeContext(
+        settings=app.state.settings,
+        counter=app.state.counter,
+        deploy=app.state.deploy,
+        loader=app.state.loader,
+        cache=app.state.instance_cache,
+        vfs_pool=app.state.vfs_pool,
+        adk_session_services=app.state.adk_session_services,
+    )
+
+
+def _job_public_view(record) -> dict:
+    body = {
+        "job_id": record.job_id,
+        "agent": record.agent,
+        "session_id": record.session_id,
+        "status": record.status.value,
+    }
+    if record.status == JobStatus.succeeded and record.output is not None:
+        body["output"] = record.output
+    if record.status == JobStatus.failed and record.error:
+        body["error"] = record.error
+    return body
 
 
 @asynccontextmanager
@@ -96,7 +125,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     adk_session_services: dict = {}
 
-    # Expose active_requests as an OTEL gauge so Prometheus/KEDA can scale on it.
     meter = get_meter("agent_base")
     meter.create_observable_gauge(
         "pool_active_requests",
@@ -117,6 +145,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ttl_sec=settings.registry_ttl_sec,
     )
 
+    redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+    job_store = JobStore(redis_client, ttl_sec=settings.agent_job_ttl_sec)
+    invoke_ctx = InvokeContext(
+        settings=settings,
+        counter=counter,
+        deploy=deploy_client,
+        loader=loader,
+        cache=instance_cache,
+        vfs_pool=vfs_pool,
+        adk_session_services=adk_session_services,
+    )
+    job_service = JobService(job_store, invoke_ctx, settings)
+
     app.state.settings = settings
     app.state.loader = loader
     app.state.instance_cache = instance_cache
@@ -125,10 +166,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.publisher = publisher
     app.state.vfs_pool = vfs_pool
     app.state.adk_session_services = adk_session_services
+    app.state.redis = redis_client
+    app.state.job_service = job_service
 
     await publisher.start()
 
-    # Warmup: preload frequently-used bundles
     for agent_name in settings.warmup_agents:
         try:
             resolved = await deploy_client.resolve(kind="agent", name=agent_name)
@@ -141,6 +183,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await publisher.stop()
+        await job_service.aclose()
+        await redis_client.aclose()
         await close_checkpointer()
         await instance_cache.clear()
         await deploy_client.aclose()
@@ -165,6 +209,48 @@ async def readyz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/jobs", status_code=202)
+async def submit_job(
+    req: JobSubmitRequest,
+    authorization: Annotated[str | None, Header()] = None,
+    x_principal: Annotated[str | None, Header()] = None,
+    x_resolve: Annotated[str | None, Header()] = None,
+) -> JSONResponse:
+    principal = _principal_from_header(x_principal) or req.principal
+    if principal is None:
+        raise HTTPException(status_code=401, detail="missing principal")
+
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    job_service: JobService = app.state.job_service
+    record = await job_service.submit(
+        req,
+        principal=principal,
+        auth_token=token,
+        x_resolve=x_resolve,
+    )
+    return JSONResponse(status_code=202, content=_job_public_view(record))
+
+
+@app.get("/jobs/{job_id}")
+async def get_job(
+    job_id: str,
+    agent: Annotated[str | None, Query()] = None,
+    x_principal: Annotated[str | None, Header()] = None,
+) -> dict:
+    principal = _principal_from_header(x_principal)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="missing principal")
+
+    job_service: JobService = app.state.job_service
+    record = await job_service.get_for_principal(job_id, principal=principal)
+    if agent and record.agent != agent:
+        raise HTTPException(status_code=404, detail="job not found")
+    return _job_public_view(record)
+
+
 @app.post("/invoke", response_model=None)
 async def invoke(
     req: InvokeRequest,
@@ -181,14 +267,10 @@ async def invoke(
 
     expected_pool = f"agent:{settings.runtime_kind}"
 
-    # Phase 2 (Envoy + ext-authz) delivers Principal via header.
-    # Phase 1 (agent-gateway) delivers it in the request body. Header wins when both present.
     principal = _principal_from_header(x_principal) or req.principal
     if principal is None:
         raise HTTPException(status_code=401, detail="missing principal")
 
-    # Store JWT for MCP forwarding within this request scope.
-    # Streaming sets the token inside the generator (same asyncio context as run_stream).
     token = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
@@ -206,7 +288,6 @@ async def invoke(
         depth_token = set_delegate_depth(delegate_depth)
 
     try:
-        # Re-resolve: pool fetches meta itself (trust boundary at deploy-api)
         principal_id = str(principal.user_id) if principal.user_id else principal.sub
         try:
             resolved = await resolve_for_invoke(
@@ -226,7 +307,7 @@ async def invoke(
         if source.runtime_pool != expected_pool:
             raise HTTPException(
                 status_code=400,
-                detail=f"pool mismatch: pod hosts {expected_pool}, bundle targets {source.runtime_pool}",  # noqa: E501
+                detail=f"pool mismatch: pod hosts {expected_pool}, bundle targets {source.runtime_pool}",
             )
 
         user = resolved.user
@@ -235,7 +316,6 @@ async def invoke(
         adk_session_cache: dict = app.state.adk_session_services
 
         deploy_mode = getattr(source, "deploy_mode", None) or "bundle"
-        knowledge_token = None
         if deploy_mode == "general":
             if not principal.user_id:
                 raise HTTPException(
@@ -248,48 +328,51 @@ async def invoke(
                     status_code=503,
                     detail="VFS pool not configured (set VFS_DSN)",
                 )
-            general_cfg = GeneralAgentSourceConfig.model_validate(cfg.get("general") or {})
-            pg_dsn = settings.path_graph_dsn or settings.vfs_dsn
-            knowledge_token = await setup_knowledge_bindings(
-                tenant=principal.tenant,
-                project_ids=general_cfg.knowledge_project_ids,
-                path_graph_dsn=pg_dsn,
-            )
-            try:
-                instance = await get_or_build_general_agent(
-                    cache,
-                    source,
-                    user,
-                    secrets,
-                    kind=source.kind,
-                    agent_name=source.name,
-                    user_id=principal.user_id,
-                    vfs_pool=vfs_pool,
-                    mcp_gateway_url=settings.mcp_gateway_url,
-                    agent_gateway_url=settings.agent_gateway_url or settings.mcp_gateway_url,
-                    agent_delegate_timeout_sec=float(settings.agent_delegate_timeout_sec),
-                    max_delegate_depth=settings.max_delegate_depth,
-                    principal_tenant=principal.tenant,
-                    path_graph_dsn=pg_dsn,
-                    wiki_s3_bucket=settings.wiki_s3_bucket,
-                )
-            except (ValueError, RuntimeError) as exc:
-                raise HTTPException(
-                    status_code=500, detail=f"general agent build failed: {exc}"
-                ) from exc
-        else:
-            try:
-                instance = await get_or_build_cached_instance(cache, source, user, loader, secrets)
-            except BundleFetchError as exc:
-                raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
-            except BundleImportError as exc:
-                logger.error("bundle_import_failed", extra={"agent": req.agent, "error": str(exc)})
-                raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
-
-        user_id = str(principal.user_id) if principal.user_id else principal.sub
-        opik_meta = {"version": req.version or "latest", "runtime_kind": settings.runtime_kind}
 
         if req.stream:
+            knowledge_token = None
+            if deploy_mode == "general":
+                general_cfg = GeneralAgentSourceConfig.model_validate(cfg.get("general") or {})
+                pg_dsn = settings.path_graph_dsn or settings.vfs_dsn
+                knowledge_token = await setup_knowledge_bindings(
+                    tenant=principal.tenant,
+                    project_ids=general_cfg.knowledge_project_ids,
+                    path_graph_dsn=pg_dsn,
+                )
+                try:
+                    instance = await get_or_build_general_agent(
+                        cache,
+                        source,
+                        user,
+                        secrets,
+                        kind=source.kind,
+                        agent_name=source.name,
+                        user_id=principal.user_id,
+                        vfs_pool=vfs_pool,
+                        mcp_gateway_url=settings.mcp_gateway_url,
+                        agent_gateway_url=settings.agent_gateway_url or settings.mcp_gateway_url,
+                        agent_delegate_timeout_sec=float(settings.agent_delegate_timeout_sec),
+                        max_delegate_depth=settings.max_delegate_depth,
+                        principal_tenant=principal.tenant,
+                        path_graph_dsn=pg_dsn,
+                        wiki_s3_bucket=settings.wiki_s3_bucket,
+                    )
+                except (ValueError, RuntimeError) as exc:
+                    raise HTTPException(
+                        status_code=500, detail=f"general agent build failed: {exc}"
+                    ) from exc
+            else:
+                try:
+                    instance = await get_or_build_cached_instance(cache, source, user, loader, secrets)
+                except BundleFetchError as exc:
+                    raise HTTPException(status_code=500, detail=f"bundle load failed: {exc}") from exc
+                except BundleImportError as exc:
+                    logger.error("bundle_import_failed", extra={"agent": req.agent, "error": str(exc)})
+                    raise HTTPException(status_code=500, detail=f"bundle import failed: {exc}") from exc
+
+            user_id = str(principal.user_id) if principal.user_id else principal.sub
+            opik_meta = {"version": req.version or "latest", "runtime_kind": settings.runtime_kind}
+
             async def _stream_with_counter():
                 set_current_token(token)
                 set_delegate_depth(delegate_depth)
@@ -319,36 +402,17 @@ async def invoke(
                 media_type="text/event-stream",
             )
 
-        try:
-            with opik_trace_context(
-                name=f"agent:{req.agent}",
-                project_name=req.agent,
-                session_id=req.session_id,
-                user_id=user_id,
-                metadata=opik_meta,
-            ):
-                async with counter:
-                    result = await asyncio.wait_for(
-                        run(
-                            settings.runtime_kind,
-                            instance,
-                            req.input,
-                            req.session_id,
-                            agent_name=req.agent,
-                            cfg=cfg,
-                            secrets=secrets,
-                            principal_user_id=principal.user_id,
-                            adk_session_cache=adk_session_cache,
-                        ),
-                        timeout=settings.invoke_timeout_sec,
-                    )
-        except TimeoutError as exc:
-            raise HTTPException(
-                status_code=504,
-                detail=f"invoke timed out after {settings.invoke_timeout_sec}s",
-            ) from exc
-
-        return result
+        return await execute_invoke(
+            _invoke_context(app),
+            agent=req.agent,
+            version=req.version,
+            input_data=req.input,
+            session_id=req.session_id,
+            principal=principal,
+            token=token,
+            x_resolve=x_resolve,
+            delegate_depth=delegate_depth,
+        )
     finally:
         if knowledge_token is not None:
             reset_knowledge_bindings(knowledge_token)

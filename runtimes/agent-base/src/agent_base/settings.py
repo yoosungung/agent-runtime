@@ -50,6 +50,15 @@ class Settings(BaseRuntimeSettings):
         default="",
         description="S3 bucket for pipeline wiki mounts.",
     )
+    argo_server_url: str = Field(
+        default="",
+        description="Argo Workflows server base URL for job completion callbacks.",
+    )
+    argo_auth_token: str = Field(
+        default="",
+        description="Bearer token for Argo API (optional — in-cluster SA).",
+    )
+    agent_job_ttl_sec: int = Field(default=604_800, description="Redis TTL for agent jobs (7d).")
 
     @field_validator("warmup_agents", mode="before")
     @classmethod

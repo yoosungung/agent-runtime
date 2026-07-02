@@ -17,6 +17,12 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
 - **이미지 1개, 하드웨어적 분리는 Deployment 단위**. 각 Deployment는 `RUNTIME_KIND` env로 자기 정체성을 정한다: `compiled_graph` / `adk` / `custom`.
 - **요청 처리** (`POST /invoke`)
   - payload: `{agent, version?, input, session_id?, principal}` — 식별자만 받는다. 번들 정보는 안 받는다.
+
+- **Async jobs** (`POST /jobs`, `GET /jobs/{job_id}`) — Envoy `/v1/agents/jobs*`, path-graph pipeline Phase 2.
+  - Submit: 동일 payload + optional `callback.argo` `{namespace, workflow, node_field_selector?}`. 즉시 `{job_id, status: pending}`.
+  - Worker: Redis `rt:agent_job:{id}` (TTL 7d). pool이 background task로 `/invoke`와 동일 경로 실행.
+  - Poll: principal.sub 일치 검증. `status=succeeded` 시 `output`, `failed` 시 `error`.
+  - Argo resume: job terminal 시 `callback.argo`가 있으면 `PUT /api/v1/workflows/{ns}/{name}/resume` (실패 시 `…/stop`). env: `ARGO_SERVER_URL`, `ARGO_AUTH_TOKEN` (path-graph pipeline SA 또는 wire-dev port-forward).
   1. **`DeployApiClient.resolve(kind='agent', name=agent, version=version, principal=principal.id)`** → `{source, user}` 획득.
   2. `source.runtime_pool`이 `agent:{RUNTIME_KIND}`와 일치하는지 검증. 불일치 시 400.
   3. `BundleLoader.load(source)` — 디스크 캐시에 없으면 `bundle_uri`에서 zip 다운로드·체크섬 검증·압축 해제·checksum namespace import·`module:attr` import.
