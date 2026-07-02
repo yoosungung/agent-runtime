@@ -63,6 +63,8 @@ export function InfraMetaPage() {
     slmRuntime: "vllm",
   });
   const [presetApiKey, setPresetApiKey] = useState("");
+  const [presetContextWindow, setPresetContextWindow] = useState("131072");
+  const [presetMaxOutputTokens, setPresetMaxOutputTokens] = useState("");
   const [presetIsDefault, setPresetIsDefault] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -120,6 +122,8 @@ export function InfraMetaPage() {
       slmRuntime: "vllm",
     });
     setPresetApiKey("");
+    setPresetContextWindow("131072");
+    setPresetMaxOutputTokens("");
     setPresetIsDefault(false);
     setModalError(null);
     setIsModalOpen(true);
@@ -137,6 +141,8 @@ export function InfraMetaPage() {
       slmRuntime: p.slm_runtime || "vllm",
     });
     setPresetApiKey("");
+    setPresetContextWindow(String(p.context_window_tokens));
+    setPresetMaxOutputTokens(p.max_output_tokens != null ? String(p.max_output_tokens) : "");
     setPresetIsDefault(p.is_default);
     setModalError(null);
     setIsModalOpen(true);
@@ -159,6 +165,17 @@ export function InfraMetaPage() {
       setModalError("Model ID is required.");
       return;
     }
+    const contextWindow = Number(presetContextWindow);
+    if (!Number.isInteger(contextWindow) || contextWindow <= 0) {
+      setModalError("Context window must be a positive integer.");
+      return;
+    }
+    const maxOutputRaw = presetMaxOutputTokens.trim();
+    const maxOutputTokens = maxOutputRaw ? Number(maxOutputRaw) : null;
+    if (maxOutputTokens != null && (!Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0)) {
+      setModalError("Max output tokens must be a positive integer.");
+      return;
+    }
 
     try {
       if (editingPreset) {
@@ -174,6 +191,8 @@ export function InfraMetaPage() {
             slm_runtime: presetLlmConfig.mode === "openai_compatible" ? presetLlmConfig.slmRuntime : null,
             is_default: presetIsDefault,
             api_key: presetApiKey.trim() || null,
+            context_window_tokens: contextWindow,
+            max_output_tokens: maxOutputTokens,
           },
         });
       } else {
@@ -188,6 +207,8 @@ export function InfraMetaPage() {
           slm_runtime: presetLlmConfig.mode === "openai_compatible" ? presetLlmConfig.slmRuntime : null,
           is_default: presetIsDefault,
           api_key: presetApiKey.trim() || null,
+          context_window_tokens: contextWindow,
+          max_output_tokens: maxOutputTokens,
         });
       }
       setIsModalOpen(false);
@@ -208,6 +229,8 @@ export function InfraMetaPage() {
           openai_api_base: preset.openai_api_base,
           slm_runtime: preset.slm_runtime,
           is_default: true,
+          context_window_tokens: preset.context_window_tokens,
+          max_output_tokens: preset.max_output_tokens,
         },
       });
     } catch (err) {
@@ -540,6 +563,31 @@ export function InfraMetaPage() {
                   value={presetLlmConfig}
                   onChange={setPresetLlmConfig}
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-gray-700">Context Window (tokens)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={presetContextWindow}
+                    onChange={(e) => setPresetContextWindow(e.target.value)}
+                    required
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-gray-700">Max Output (tokens, optional)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={presetMaxOutputTokens}
+                    onChange={(e) => setPresetMaxOutputTokens(e.target.value)}
+                    placeholder="e.g. 8192"
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
               </div>
 
               <label className="block space-y-1">

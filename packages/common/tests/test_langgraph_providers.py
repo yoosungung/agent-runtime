@@ -75,6 +75,25 @@ def test_export_llm_api_keys_sets_env(monkeypatch):
     assert os.environ["OPENAI_API_KEY"] == "sk-test"
 
 
+def test_read_llm_preset_limits_from_env(monkeypatch):
+    monkeypatch.setenv("LLM_PRESET_SGLANG_GEMMA4_CONTEXT_WINDOW", "16384")
+    monkeypatch.setenv("LLM_PRESET_SGLANG_GEMMA4_MAX_OUTPUT_TOKENS", "8192")
+
+    assert lg.read_llm_preset_limits("SGLANG_GEMMA4") == (16384, 8192)
+
+
+def test_read_llm_preset_limits_missing_returns_none(monkeypatch):
+    monkeypatch.delenv("LLM_PRESET_MISSING_CONTEXT_WINDOW", raising=False)
+    monkeypatch.delenv("LLM_PRESET_MISSING_MAX_OUTPUT_TOKENS", raising=False)
+
+    assert lg.read_llm_preset_limits("MISSING") == (None, None)
+
+
+def test_extract_preset_name():
+    assert lg.extract_preset_name("preset:SGLANG_GEMMA4") == "SGLANG_GEMMA4"
+    assert lg.extract_preset_name("openai:gpt-4o-mini") is None
+
+
 def test_prepare_langgraph_llm_combines_export_and_resolve(monkeypatch):
     fake_model = object()
     mock_init = MagicMock(return_value=fake_model)

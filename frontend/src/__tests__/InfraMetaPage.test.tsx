@@ -51,6 +51,8 @@ vi.mock("../hooks/useLlmPresets", () => ({
         slm_runtime: null,
         is_default: true,
         api_key_configured: true,
+        context_window_tokens: 131072,
+        max_output_tokens: null,
         created_at: "2026-06-22T00:00:00Z",
         updated_at: "2026-06-22T00:00:00Z",
       }

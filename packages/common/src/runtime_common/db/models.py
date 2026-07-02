@@ -276,6 +276,8 @@ class LlmPresetRow(Base):
     slm_runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     api_key_configured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    context_window_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    max_output_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

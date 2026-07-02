@@ -38,6 +38,24 @@ def get_model_spec(cfg: dict) -> str | None:
     return _section(cfg).get("model")
 
 
+def extract_preset_name(model_spec: str | None) -> str | None:
+    """Return preset name from ``preset:NAME`` model spec."""
+    if model_spec and model_spec.startswith("preset:"):
+        name = model_spec[len("preset:") :].strip()
+        return name or None
+    return None
+
+
+def read_llm_preset_limits(preset_name: str) -> tuple[int | None, int | None]:
+    """Read reconciler-injected context limits for a named LLM preset."""
+    prefix = f"LLM_PRESET_{preset_name}"
+    ctx_raw = os.environ.get(f"{prefix}_CONTEXT_WINDOW", "").strip()
+    out_raw = os.environ.get(f"{prefix}_MAX_OUTPUT_TOKENS", "").strip()
+    context = int(ctx_raw) if ctx_raw else None
+    max_output = int(out_raw) if out_raw else None
+    return context, max_output
+
+
 def export_llm_api_keys(cfg: dict) -> None:
     """Copy provider API keys from merged cfg into process env for init_chat_model."""
     for cfg_key, env_key in _LLM_CFG_KEY_TO_ENV:

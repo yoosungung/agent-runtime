@@ -277,8 +277,8 @@ source/user meta와 **orthogonal**. principal·번들과 무관하게 pool pod c
 | 범위 | platform (global) | 번들/버전 | principal × 번들 | 클러스터 bootstrap |
 | 수명 | 운영 중 mutable | immutable (버전) | invoke마다 fresh | 배포 시 |
 | 전달 | flat env → ConfigMap + Secret → pod env | resolve → merge → factory cfg | resolve → merge → factory cfg | gitops envFrom |
-| 예시 | `OPIK_URL`, `LLM_PRESET_{NAME}_MODEL_ID`, `LLM_PRESET_{NAME}_API_KEY` 등 | MCP provider, preset reference (`preset:NAME`) | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
+| 예시 | `OPIK_URL`, `LLM_PRESET_{NAME}_MODEL_ID`, `LLM_PRESET_{NAME}_CONTEXT_WINDOW`, `LLM_PRESET_{NAME}_MAX_OUTPUT_TOKENS`, `LLM_PRESET_{NAME}_API_KEY` 등 | MCP provider, preset reference (`preset:NAME`), prompt/output 예산 전략 | mailbox, model override | `REDIS_URL`, `DEPLOY_API_URL` |
 
-**API/DB/K8s**: `env`는 flat container env var 이름(`[A-Z][A-Z0-9_]*`, reserved 제외). LLM Preset을 등록하면 `LLM_PRESET_{NAME}_*` 형태의 환경변수가 자동 매핑되어 컨테이너에 주입됩니다. **Admin UI**는 Opik 및 LLM Presets 탭을 제공하여 이들을 관리합니다.
+**API/DB/K8s**: `env`는 flat container env var 이름(`[A-Z][A-Z0-9_]*`, reserved 제외). LLM Preset을 등록하면 `LLM_PRESET_{NAME}_*` 형태의 환경변수가 자동 매핑되어 컨테이너에 주입됩니다. `llm_presets.context_window_tokens`(필수)는 서버가 허용하는 총 컨텍스트 상한, `max_output_tokens`(선택)는 completion 상한이다. 번들·user-meta는 그 안에서 배치 크기·merge 등 예산 전략만 조정한다. **Admin UI**는 Opik 및 LLM Presets 탭을 제공하여 이들을 관리합니다.
 
 **infra에 두지 않을 것**: 번들 도메인 credential → `source_meta.config`; principal identity → `user_meta.config`; custom image 전용 env → `source_meta.pool_env`(infra보다 우선).

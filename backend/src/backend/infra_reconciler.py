@@ -59,6 +59,11 @@ async def reconcile_infra(
             flat_env[f"{prefix}_API_BASE"] = p.openai_api_base
         if p.slm_runtime:
             flat_env[f"{prefix}_SLM_RUNTIME"] = p.slm_runtime
+        flat_env[f"{prefix}_CONTEXT_WINDOW"] = str(p.context_window_tokens)
+        if p.max_output_tokens is not None:
+            flat_env[f"{prefix}_MAX_OUTPUT_TOKENS"] = str(p.max_output_tokens)
+        else:
+            flat_env.pop(f"{prefix}_MAX_OUTPUT_TOKENS", None)
 
         if p.is_default:
             default_preset = p

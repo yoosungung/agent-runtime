@@ -173,6 +173,8 @@ db-migrate-all: db-migrate ## apply 0001 … 0011 for existing DBs
 		psql -U runtime -d runtime < backend/migrations/0010_hermes_general.sql
 	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
 		psql -U runtime -d runtime < backend/migrations/0011_chat_selectable.sql
+	kubectl -n $(NAMESPACE) exec -i statefulset/postgres -- \
+		psql -U runtime -d runtime < backend/migrations/0012_llm_preset_context.sql
 
 # --- docs -----------------------------------------------------------------
 

@@ -1217,6 +1217,7 @@ async def test_llm_presets_crud(client: AsyncClient):
             "model_id": "claude-3-5-sonnet",
             "is_default": True,
             "api_key": "sk-ant-test-key",
+            "context_window_tokens": 131072,
         },
         headers=_csrf_headers(),
     )
@@ -1239,6 +1240,7 @@ async def test_llm_presets_crud(client: AsyncClient):
             "name": "CLAUDE_TEST",
             "mode": "frontier",
             "model_id": "claude-other",
+            "context_window_tokens": 131072,
         },
         headers=_csrf_headers(),
     )
@@ -1251,6 +1253,7 @@ async def test_llm_presets_crud(client: AsyncClient):
             "name": "claude-test",
             "mode": "frontier",
             "model_id": "claude-other",
+            "context_window_tokens": 131072,
         },
         headers=_csrf_headers(),
     )
@@ -1265,6 +1268,7 @@ async def test_llm_presets_crud(client: AsyncClient):
             "frontier_provider": "anthropic",
             "model_id": "claude-3-5-opus",
             "is_default": False,
+            "context_window_tokens": 131072,
         },
         headers=_csrf_headers(),
     )

@@ -37,6 +37,8 @@ class LlmPresetResponse(BaseModel):
     slm_runtime: str | None = None
     is_default: bool
     api_key_configured: bool
+    context_window_tokens: int
+    max_output_tokens: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -53,6 +55,8 @@ class LlmPresetCreateRequest(BaseModel):
     slm_runtime: str | None = None
     is_default: bool = False
     api_key: str | None = None
+    context_window_tokens: int = Field(ge=1)
+    max_output_tokens: int | None = Field(default=None, ge=1)
 
     @field_validator("name")
     @classmethod
@@ -78,6 +82,8 @@ class LlmPresetUpdateRequest(BaseModel):
     slm_runtime: str | None = None
     is_default: bool = False
     api_key: str | None = None
+    context_window_tokens: int = Field(ge=1)
+    max_output_tokens: int | None = Field(default=None, ge=1)
 
     @field_validator("mode")
     @classmethod
@@ -120,6 +126,8 @@ async def create_llm_preset(
         slm_runtime=body.slm_runtime,
         is_default=body.is_default,
         api_key_configured=bool(body.api_key),
+        context_window_tokens=body.context_window_tokens,
+        max_output_tokens=body.max_output_tokens,
     )
     db.add(row)
     
@@ -189,6 +197,8 @@ async def update_llm_preset(
     row.openai_api_base = body.openai_api_base
     row.slm_runtime = body.slm_runtime
     row.is_default = body.is_default
+    row.context_window_tokens = body.context_window_tokens
+    row.max_output_tokens = body.max_output_tokens
     if body.api_key is not None:
         row.api_key_configured = bool(body.api_key)
     row.updated_at = datetime.now(UTC)

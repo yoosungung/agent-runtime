@@ -13,6 +13,8 @@ export interface LlmPreset {
   slm_runtime: SlmRuntime | null;
   is_default: boolean;
   api_key_configured: boolean;
+  context_window_tokens: number;
+  max_output_tokens: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -27,6 +29,8 @@ export interface LlmPresetCreate {
   slm_runtime?: SlmRuntime | null;
   is_default: boolean;
   api_key?: string | null;
+  context_window_tokens: number;
+  max_output_tokens?: number | null;
 }
 
 export interface LlmPresetUpdate {
@@ -38,6 +42,8 @@ export interface LlmPresetUpdate {
   slm_runtime?: SlmRuntime | null;
   is_default: boolean;
   api_key?: string | null;
+  context_window_tokens: number;
+  max_output_tokens?: number | null;
 }
 
 export function useLlmPresets() {

@@ -80,6 +80,7 @@ async def test_reconcile_infra_legacy_key_migration():
         frontier_provider="openai",
         model_id="gpt-4o",
         is_default=True,
+        context_window_tokens=131072,
     )
 
     db = AsyncMock()
@@ -113,6 +114,7 @@ async def test_reconcile_infra_default_preset_projection():
         frontier_provider="anthropic",
         model_id="claude-3-5-sonnet",
         is_default=True,
+        context_window_tokens=131072,
     )
 
     db = AsyncMock()
@@ -147,6 +149,8 @@ async def test_reconcile_infra_secret_key_naming():
         mode="openai_compatible",
         model_id="gpt-4",
         is_default=False,
+        context_window_tokens=16384,
+        max_output_tokens=8192,
     )
 
     db = AsyncMock()
@@ -171,6 +175,40 @@ async def test_reconcile_infra_secret_key_naming():
 
 
 @pytest.mark.asyncio
+async def test_reconcile_infra_injects_preset_context_limits():
+    k8s = MagicMock()
+    k8s.read_infra_secrets = AsyncMock(return_value={})
+    k8s.apply_infra_configmap = AsyncMock()
+    k8s.apply_infra_secret = AsyncMock()
+    k8s.restart_infra_pool_deployments = AsyncMock(return_value=[])
+
+    infra_row = InfraMetaRow(scope="global", scope_key="", env={})
+    preset = LlmPresetRow(
+        name="SGLANG_GEMMA4",
+        mode="openai_compatible",
+        model_id="google/gemma-3-12b-it",
+        openai_api_base="http://sglang:30000/v1",
+        slm_runtime="sglang",
+        is_default=False,
+        context_window_tokens=16384,
+        max_output_tokens=8192,
+    )
+
+    db = AsyncMock()
+    mock_infra_res = MagicMock()
+    mock_infra_res.scalar_one_or_none.return_value = infra_row
+    mock_presets_res = MagicMock()
+    mock_presets_res.scalars.return_value.all.return_value = [preset]
+    db.execute.side_effect = [mock_infra_res, mock_presets_res]
+
+    await reconcile_infra(k8s, db)
+
+    saved_env = k8s.apply_infra_configmap.call_args[0][0]
+    assert saved_env["LLM_PRESET_SGLANG_GEMMA4_CONTEXT_WINDOW"] == "16384"
+    assert saved_env["LLM_PRESET_SGLANG_GEMMA4_MAX_OUTPUT_TOKENS"] == "8192"
+
+
+@pytest.mark.asyncio
 async def test_reconcile_infra_delete_preset_clears_secrets():
     k8s = MagicMock()
     # secret contains an old preset API key
@@ -190,6 +228,7 @@ async def test_reconcile_infra_delete_preset_clears_secrets():
         frontier_provider="openai",
         model_id="gpt-4o",
         is_default=False,
+        context_window_tokens=131072,
     )
 
     db = AsyncMock()
