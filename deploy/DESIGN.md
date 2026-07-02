@@ -152,7 +152,8 @@ router            →  pool_dfp cluster
 | `GET /v1/mcp/servers` (exact) | — | `ext_authz_direct` | MCP 서버 목록 (JWT + access, name/version) |
 | `GET /v1/mcp/servers/*/catalog` | 활성 | `pool_dfp` + `/catalog` rewrite | tools/resources/prompts catalog |
 | `POST /v1/mcp/stream` | 활성 | `pool_dfp` + `/mcp` rewrite | MCP JSON-RPC/SSE |
-| `/v1/agents/*` | 활성 | `pool_dfp` + retry | agent invoke. `:path` → `/invoke` rewrite |
+| `/v1/agents/jobs` 및 `/v1/agents/jobs/*` | 활성 | `pool_dfp` + retry | async job submit/poll. `path_separated_prefix` → `/jobs` rewrite (invoke 규칙보다 우선) |
+| `/v1/agents/*` (jobs 제외) | 활성 | `pool_dfp` + retry | agent invoke. `:path` → `/invoke` rewrite |
 | `/v1/mcp/*` | 활성 | `pool_dfp` | mcp invoke. `:path` → `/invoke` rewrite |
 | `/healthz` | — | direct 200 | |
 
