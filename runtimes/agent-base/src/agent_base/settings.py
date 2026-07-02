@@ -13,7 +13,7 @@ class Settings(BaseRuntimeSettings):
     bundle_cache_dir: str = Field(default="/var/cache/agent-bundles")
     invoke_timeout_sec: int = Field(default=120)
     job_invoke_timeout_sec: int = Field(
-        default=1800,
+        default=7200,
         description="Async /jobs worker timeout; graph-extractor batch runs can exceed sync invoke.",
     )
     mcp_gateway_url: str = Field(

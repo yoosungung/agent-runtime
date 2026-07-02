@@ -20,7 +20,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
 
 - **Async jobs** (`POST /jobs`, `GET /jobs/{job_id}`) — Envoy `/v1/agents/jobs*`, path-graph pipeline Phase 2.
   - Submit: 동일 payload + optional `callback.argo` `{namespace, workflow, node_field_selector?}`. 즉시 `{job_id, status: pending}`.
-  - Worker: Redis `rt:agent_job:{id}` (TTL 7d). pool이 background task로 `/invoke`와 동일 경로 실행. **job 실행 한도**는 `JOB_INVOKE_TIMEOUT_SEC`(기본 1800s) — 동기 `/invoke`의 `INVOKE_TIMEOUT_SEC`(기본 120s)와 분리.
+  - Worker: Redis `rt:agent_job:{id}` (TTL 7d). pool이 background task로 `/invoke`와 동일 경로 실행. **job 실행 한도**는 `JOB_INVOKE_TIMEOUT_SEC`(기본 **7200s / 2h**) — 동기 `/invoke`의 `INVOKE_TIMEOUT_SEC`(기본 120s)와 분리. graph-extractor 등 장기 job은 compiled-graph pool에서 `INVOKE_TIMEOUT_SEC`도 7200으로 맞춘다.
   - Poll: principal.sub 일치 검증. `status=succeeded` 시 `output`, `failed` 시 `error`.
   - Argo resume: job terminal 시 `callback.argo`가 있으면 `PUT /api/v1/workflows/{ns}/{name}/resume` (실패 시 `…/stop`). env: `ARGO_SERVER_URL`, `ARGO_AUTH_TOKEN` (path-graph pipeline SA 또는 wire-dev port-forward).
   1. **`DeployApiClient.resolve(kind='agent', name=agent, version=version, principal=principal.id)`** → `{source, user}` 획득.

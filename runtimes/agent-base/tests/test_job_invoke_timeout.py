@@ -58,9 +58,9 @@ async def test_execute_invoke_accepts_custom_timeout_sec(monkeypatch):
         session_id="sess",
         principal=Principal(sub="user:1"),
         token=None,
-        timeout_sec=1800,
+        timeout_sec=7200,
     )
-    assert captured["timeout"] == 1800
+    assert captured["timeout"] == 7200
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_job_service_uses_job_invoke_timeout(monkeypatch):
     store.mark_succeeded = AsyncMock()
     store.mark_failed = AsyncMock()
 
-    settings = Settings(_env_file=None, invoke_timeout_sec=120, job_invoke_timeout_sec=1800)
+    settings = Settings(_env_file=None, invoke_timeout_sec=120, job_invoke_timeout_sec=7200)
     ctx = MagicMock()
     service = JobService(store, ctx, settings, http_client=MagicMock())
 
@@ -89,4 +89,4 @@ async def test_job_service_uses_job_invoke_timeout(monkeypatch):
 
     await service._run_job("job-1", req, principal, None)
 
-    assert captured["timeout_sec"] == 1800
+    assert captured["timeout_sec"] == 7200
