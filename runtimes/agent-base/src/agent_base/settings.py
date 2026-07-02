@@ -46,9 +46,9 @@ class Settings(BaseRuntimeSettings):
         default_factory=list,
         description="Agent names to preload at startup (comma-separated via WARMUP_AGENTS env).",
     )
-    path_graph_dsn: str = Field(
-        default="",
-        description="Postgres DSN for path-graph binding resolve. Falls back to VFS_DSN.",
+    admin_backend_url: str = Field(
+        default="http://backend.runtime.svc.cluster.local:8000",
+        description="Admin backend URL for pipeline binding resolve (cluster-internal).",
     )
     wiki_s3_bucket: str = Field(
         default="",

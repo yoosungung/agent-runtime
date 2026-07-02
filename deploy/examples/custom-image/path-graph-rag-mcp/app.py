@@ -60,7 +60,7 @@ async def _run_search(arguments: dict[str, Any], *, default_top_k: int) -> dict[
         )
 
     top_k = int(arguments.get("top_k") or default_top_k)
-    from path_graph.rag.hybrid_search import hybrid_search
+    from path_graph.console.rag import hybrid_search
 
     results = await asyncio.to_thread(
         hybrid_search,

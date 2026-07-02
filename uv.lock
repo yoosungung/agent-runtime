@@ -33,7 +33,6 @@ dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "opik" },
-    { name = "path-graph" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "runtime-common" },
@@ -51,7 +50,6 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "opik", specifier = ">=2.0" },
-    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "runtime-common", editable = "packages/common" },
@@ -418,7 +416,7 @@ requires-dist = [
     { name = "hermes-base", editable = "runtimes/hermes-base" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kubernetes-asyncio", specifier = ">=31.0" },
-    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" },
+    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.1/path_graph-0.1.1-py3-none-any.whl" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "runtime-common", editable = "packages/common" },
@@ -3089,8 +3087,8 @@ wheels = [
 
 [[package]]
 name = "path-graph"
-version = "0.1.0"
-source = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" }
+version = "0.1.1"
+source = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.1/path_graph-0.1.1-py3-none-any.whl" }
 dependencies = [
     { name = "boto3" },
     { name = "graspologic-native" },
@@ -3106,7 +3104,7 @@ dependencies = [
     { name = "qdrant-client" },
 ]
 wheels = [
-    { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl", hash = "sha256:89d5dfb05a13782c8e37c09677a4f27cfc08541a301eb41fa2deff8194d9d951" },
+    { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.1/path_graph-0.1.1-py3-none-any.whl", hash = "sha256:ff9c8c9fe9d865efddb1a79325042dba7331445a7595b5b21e638ade06853b4b" },
 ]
 
 [package.metadata]

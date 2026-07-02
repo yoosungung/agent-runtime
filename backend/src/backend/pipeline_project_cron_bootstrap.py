@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from path_graph.admin.projects import ProjectStore
+from backend.pipeline_domain import ProjectStore
 
 from backend.pipeline_cron import reconcile_project_cron
 

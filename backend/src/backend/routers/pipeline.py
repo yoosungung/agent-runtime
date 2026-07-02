@@ -10,9 +10,22 @@ from uuid import uuid4
 import psycopg
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from path_graph.admin.lifecycle import (
+from backend.pipeline_domain import (
+    DownstreamBusyError,
+    DownstreamValidationError,
     LIFECYCLE_BATCH_ID,
+    PgMetaStore,
+    PgSettings,
+    ProjectCreate,
     ProjectLifecycleBusyError,
+    ProjectProfile,
+    ProjectStore,
+    SourceCreate,
+    SourceDriver,
+    SourceProfile,
+    SourceStore,
+    SourceUpdate,
+    UploadValidationError,
     api_cleanup_project,
     api_get_binding,
     api_list_tombstones,
@@ -21,35 +34,22 @@ from path_graph.admin.lifecycle import (
     api_reconcile_project,
     api_reingest_document,
     api_restore_document,
-    assert_project_lifecycle_idle,
-    mark_project_lifecycle_started,
-)
-from path_graph.admin.downstream import (
-    DownstreamBusyError,
-    DownstreamValidationError,
+    api_search_project,
     assert_project_graphrag_idle,
-    prepare_graphrag_submission,
-)
-from path_graph.admin.projects import ProjectStore
-from path_graph.admin.retrieval import api_search_project
-from path_graph.admin.runner import probe_source
-from path_graph.admin.sources import SourceStore
-from path_graph.admin.uploads import (
-    UploadValidationError,
+    assert_project_lifecycle_idle,
     build_ingest_manifest,
     count_documents_for_project,
     count_documents_for_source,
     filename_from_raw_uri,
     list_documents_for_project,
     list_documents_for_source,
+    make_blob_store,
+    mark_project_lifecycle_started,
+    prepare_graphrag_submission,
+    probe_source,
+    s3_key_dead_letter,
     upload_raw_files,
 )
-from path_graph.config import Settings as PgSettings
-from path_graph.contracts.project import ProjectCreate, ProjectProfile
-from path_graph.contracts.s3_keys import s3_key_dead_letter
-from path_graph.contracts.source import SourceCreate, SourceDriver, SourceProfile, SourceUpdate
-from path_graph.meta.pg import PgMetaStore
-from path_graph.storage.blob import make_blob_store
 from pydantic import BaseModel, Field
 
 from backend.deps import check_csrf, get_settings, require_admin

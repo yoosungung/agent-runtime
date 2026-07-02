@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from path_graph.admin.sources import SourceStore
+from backend.pipeline_domain import SourceStore
 
 from backend.pipeline_argo import _TERMINAL_WORKFLOW_PHASES, get_workflow_status
 from backend.pipeline_collect_sync import apply_collect_sync_after_terminal

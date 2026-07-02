@@ -16,15 +16,18 @@ from backend.pipeline_argo import (
 )
 from backend.pipeline_credential_secrets import make_credential_secret_store
 from backend.settings import Settings
-from path_graph.admin.credential_settings import merge_credential_into_settings
-from path_graph.admin.credentials import CredentialStore
-from path_graph.admin.downstream import apply_graphrag_success
-from path_graph.admin.lifecycle import clear_project_lifecycle_on_failure
-from path_graph.admin.projects import ProjectStore
-from path_graph.admin.runner import resolve_source_settings
-from path_graph.admin.sources import SourceStore
-from path_graph.config import Settings as PgSettings, get_settings as get_pg_settings
-from path_graph.contracts.source import SourceProfile
+from backend.pipeline_domain import (
+    CredentialStore,
+    PgSettings,
+    ProjectStore,
+    SourceProfile,
+    SourceStore,
+    apply_graphrag_success,
+    clear_project_lifecycle_on_failure,
+    get_pg_settings,
+    merge_credential_into_settings,
+    resolve_source_settings,
+)
 
 _INGEST_IN_PROGRESS_MSG = "이 source의 ingest가 이미 수행 중입니다."
 _WORKFLOW_IN_PROGRESS_MSG = "이 source의 workflow가 이미 수행 중입니다."
@@ -462,7 +465,7 @@ async def pg_settings_for_source(
 
 
 def _platform_client_id(settings: Settings, driver) -> str:
-    from path_graph.contracts.source import SourceDriver
+    from backend.pipeline_domain import SourceDriver
 
     if driver == SourceDriver.GDRIVE:
         return settings.PIPELINE_GDRIVE_CLIENT_ID
@@ -470,7 +473,7 @@ def _platform_client_id(settings: Settings, driver) -> str:
 
 
 def _platform_client_secret(settings: Settings, driver) -> str:
-    from path_graph.contracts.source import SourceDriver
+    from backend.pipeline_domain import SourceDriver
 
     if driver == SourceDriver.GDRIVE:
         return settings.PIPELINE_GDRIVE_CLIENT_SECRET

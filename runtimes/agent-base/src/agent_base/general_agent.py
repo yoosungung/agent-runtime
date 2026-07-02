@@ -37,21 +37,22 @@ def _wiki_routes_for_build(
     general: GeneralAgentSourceConfig,
     *,
     tenant: str | None,
-    path_graph_dsn: str | None,
+    admin_backend_url: str | None,
     wiki_s3_bucket: str | None,
 ) -> dict[str, Any]:
     if not general.vfs.wiki_enabled or not general.knowledge_project_ids:
         return {}
-    if not tenant or not path_graph_dsn or not wiki_s3_bucket:
+    if not tenant or not admin_backend_url or not wiki_s3_bucket:
         return {}
     try:
-        from path_graph.admin.lifecycle import api_get_binding
         import boto3
+
+        from runtime_common.pipeline_binding import fetch_project_binding
 
         bindings = resolve_knowledge_bindings(
             tenant,
             general.knowledge_project_ids,
-            fetch_binding=api_get_binding,
+            fetch_binding=lambda t, pid: fetch_project_binding(admin_backend_url, t, pid),
         )
         client = boto3.client(
             "s3",
@@ -88,7 +89,7 @@ def build_general_agent(
     agent_delegate_timeout_sec: float = 60.0,
     max_delegate_depth: int = 3,
     principal_tenant: str | None = None,
-    path_graph_dsn: str | None = None,
+    admin_backend_url: str | None = None,
     wiki_s3_bucket: str | None = None,
 ) -> Any:
     """Build a DeepAgents CompiledStateGraph for a general-tier agent."""
@@ -102,7 +103,7 @@ def build_general_agent(
         wiki_routes = _wiki_routes_for_build(
             general,
             tenant=principal_tenant,
-            path_graph_dsn=path_graph_dsn,
+            admin_backend_url=admin_backend_url,
             wiki_s3_bucket=wiki_s3_bucket,
         )
         backend = build_general_vfs(

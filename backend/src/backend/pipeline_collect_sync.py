@@ -6,8 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-from path_graph.admin.sources import SourceStore
-from path_graph.contracts.source import SourceDriver
+from backend.pipeline_domain import SourceDriver, SourceStore
 
 from backend.pipeline_argo import _get_workflow_object
 from backend.settings import Settings

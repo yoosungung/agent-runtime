@@ -210,7 +210,7 @@ ext-authz가 `x-pod-addr`(warm pod IP)과 함께 `x-pod-fallback-addr`(pool Serv
 - `POSTGRES_DSN`은 **auth / deploy-api에만** 주입. gateway·pool은 받지 않는다.
 - ext-authz에는 `DEPLOY_API_URL`, `AUTH_URL`, `REDIS_URL` + bundle 모드 pool 서비스 URL 환경 변수. `POOL_CUSTOM_URL`/`POOL_MCP_CUSTOM_URL`은 삭제 — image 모드 URL은 slug에서 동적 derive.
 - pool에는 `DEPLOY_API_URL`, `REDIS_URL`, `POD_NAME`, `POD_IP`, `POD_PORT`, `MAX_CONCURRENT`, `REGISTRY_HEARTBEAT_INTERVAL_SEC=2`, `REGISTRY_TTL_SEC=3`.
-- **agent-pool-compiled-graph (general tier, PG-3 wiki VFS)**: Secret `s3-creds` (`S3_*`) + `WIKI_S3_BUCKET` ← `s3-creds.S3_BUCKET`, `PATH_GRAPH_DSN` ← `postgres-credentials.VFS_DSN`. `general_agent`는 `WIKI_S3_*` 미설정 시 `S3_*` fallback. Garage NP는 `app: agent-pool` ingress 허용.
+- **agent-pool-compiled-graph (general tier, PG-3 wiki VFS)**: Secret `s3-creds` (`S3_*`) + `WIKI_S3_BUCKET` ← `s3-creds.S3_BUCKET`, `ADMIN_BACKEND_URL` → `http://backend.runtime.svc.cluster.local:8000` (binding resolve; path-graph wheel 없음). `general_agent`는 `WIKI_S3_*` 미설정 시 `S3_*` fallback. Garage NP는 `app: agent-pool` ingress 허용.
 - backend(BFF)에는 `ENVOY_URL=http://envoy.runtime.svc.cluster.local:8080` — 레거시 `/api/chat/invoke` 프록시용. SPA 빌드 시 `VITE_AGENTS_INVOKE_URL=/v1/agents/invoke`(Dockerfile ARG).
 
 ## RBAC

@@ -86,11 +86,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: VFS_DSN
-            - name: PATH_GRAPH_DSN
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: VFS_DSN
+            - name: ADMIN_BACKEND_URL
+              value: http://backend.runtime.svc.cluster.local:8000
             - name: WIKI_S3_BUCKET
               valueFrom:
                 secretKeyRef:

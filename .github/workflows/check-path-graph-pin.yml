@@ -1,0 +1,27 @@
+name: Check path-graph pin
+
+on:
+  pull_request:
+    paths:
+      - "backend/pyproject.toml"
+      - "deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile"
+      - "deploy/tests/test_path_graph_dependency.py"
+      - "scripts/check-path-graph-pin.sh"
+      - ".github/workflows/check-path-graph-pin.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare pin to latest path-graph release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/check-path-graph-pin.sh

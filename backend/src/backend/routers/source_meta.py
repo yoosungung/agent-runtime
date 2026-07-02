@@ -182,7 +182,7 @@ def _build_general_config(
 
 def _pipeline_project_store(settings: Settings):
     from backend.routers.pipeline import _path_graph_dsn
-    from path_graph.admin.projects import ProjectStore
+    from backend.pipeline_domain import ProjectStore
 
     return ProjectStore(_path_graph_dsn(settings))
 

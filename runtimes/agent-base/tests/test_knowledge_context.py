@@ -30,13 +30,13 @@ BINDING_PAYLOAD = {
 @pytest.mark.asyncio
 async def test_setup_knowledge_bindings_resolves_projects():
     with patch(
-        "path_graph.admin.lifecycle.api_get_binding",
+        "agent_base.knowledge_context.fetch_project_binding",
         return_value=BINDING_PAYLOAD,
     ):
         token = await setup_knowledge_bindings(
             tenant="acme",
             project_ids=[PROJECT_ID],
-            path_graph_dsn="postgresql://local/path_graph",
+            admin_backend_url="http://backend.test:8000",
         )
     try:
         bindings = get_current_bindings()
@@ -48,11 +48,11 @@ async def test_setup_knowledge_bindings_resolves_projects():
 
 
 @pytest.mark.asyncio
-async def test_setup_knowledge_bindings_skips_without_dsn():
+async def test_setup_knowledge_bindings_skips_without_backend_url():
     token = await setup_knowledge_bindings(
         tenant="acme",
         project_ids=[PROJECT_ID],
-        path_graph_dsn=None,
+        admin_backend_url=None,
     )
     try:
         assert get_current_bindings() == []
@@ -63,13 +63,13 @@ async def test_setup_knowledge_bindings_skips_without_dsn():
 @pytest.mark.asyncio
 async def test_setup_knowledge_bindings_tolerates_resolve_failure():
     with patch(
-        "path_graph.admin.lifecycle.api_get_binding",
+        "agent_base.knowledge_context.fetch_project_binding",
         side_effect=ValueError("project not found"),
     ):
         token = await setup_knowledge_bindings(
             tenant="acme",
             project_ids=[PROJECT_ID],
-            path_graph_dsn="postgresql://local/path_graph",
+            admin_backend_url="http://backend.test:8000",
         )
     try:
         assert get_current_bindings() == []

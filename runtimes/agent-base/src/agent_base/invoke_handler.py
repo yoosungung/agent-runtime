@@ -94,11 +94,11 @@ async def execute_invoke(
             if ctx.vfs_pool is None:
                 raise HTTPException(status_code=503, detail="VFS pool not configured (set VFS_DSN)")
             general_cfg = GeneralAgentSourceConfig.model_validate(cfg.get("general") or {})
-            pg_dsn = settings.path_graph_dsn or settings.vfs_dsn
+            admin_url = settings.admin_backend_url
             knowledge_token = await setup_knowledge_bindings(
                 tenant=principal.tenant,
                 project_ids=general_cfg.knowledge_project_ids,
-                path_graph_dsn=pg_dsn,
+                admin_backend_url=admin_url,
             )
             try:
                 instance = await get_or_build_general_agent(
@@ -115,7 +115,7 @@ async def execute_invoke(
                     agent_delegate_timeout_sec=float(settings.agent_delegate_timeout_sec),
                     max_delegate_depth=settings.max_delegate_depth,
                     principal_tenant=principal.tenant,
-                    path_graph_dsn=pg_dsn,
+                    admin_backend_url=admin_url,
                     wiki_s3_bucket=settings.wiki_s3_bucket,
                 )
             except (ValueError, RuntimeError) as exc:

@@ -17,6 +17,7 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream 완료. **Knowledge
 | PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [x] | 4.4.4 — BFF `pg-reconcile-{tenant}-{project}` 일 1회 upsert; create/delete + startup bootstrap |
 | PG-6 | Async agent job API + Argo resume callback | [x] | path-graph 3.2.2 — `POST/GET /v1/agents/jobs`, pool `/jobs` |
 | PG-7 | path-graph wheel 의존성 (release URL pin, staging 제거) | [x] | path-graph 1.4.11 — `path-graph==0.1.0` + GitHub Release wheel |
+| PG-8 | `path_graph.console` + `pipeline_domain` wrapper; agent-base binding HTTP | [x] | path-graph 1.4.12 — agent-base path-graph wheel 제거 |
 
 **권장 순서**: PG-1 → PG-5 → PG-2 → PG-3 [x] → PG-6. SharePoint Cron delta E2E는 path-graph ROADMAP §관리자 검증 체크리스트.
 
@@ -50,8 +51,7 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream 완료. **Knowledge
 
 ### Nice-to-have
 
-- [ ] **path_graph.admin 공개 API 경계** — runtime BFF를 HTTP 또는 narrow facade로 축소 (wheel 의존은 유지, import 결합만 완화)
-- [ ] **path-graph 버전 bump 자동화** — Dependabot/Renovate로 release wheel pin 갱신
+- [ ] **path-graph 버전 bump 자동화** — Renovate 등으로 release wheel pin 갱신 (현재: `check-path-graph-pin` CI)
 - [ ] **VFS grep 고급 검색** — BM25 / vector / graph 기반 grep 대체. 현재는 Postgres `LATERAL unnest` + literal `LIKE` (agent tool loop용 MVP).
 - [ ] **VFS glob 최적화** — `pg_trgm`·materialized path index 등. 현재는 scoped `path ~ regex` 전체 스캔.
 - [ ] **Admin VFS — `/user/` 개인 영역** — `vfs_user_files` 열람·관리 UI, 사용자 선택 + 감사 강화 ([frontend/DESIGN.md](frontend/DESIGN.md) `/vfs` 2단계).

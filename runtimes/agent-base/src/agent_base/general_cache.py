@@ -28,7 +28,7 @@ async def get_or_build_general_agent(
     agent_delegate_timeout_sec: float = 60.0,
     max_delegate_depth: int = 3,
     principal_tenant: str | None = None,
-    path_graph_dsn: str | None = None,
+    admin_backend_url: str | None = None,
     wiki_s3_bucket: str | None = None,
 ) -> object:
     """Build or reuse a cached general-tier DeepAgents graph."""
@@ -52,7 +52,7 @@ async def get_or_build_general_agent(
             agent_delegate_timeout_sec=agent_delegate_timeout_sec,
             max_delegate_depth=max_delegate_depth,
             principal_tenant=principal_tenant,
-            path_graph_dsn=path_graph_dsn,
+            admin_backend_url=admin_backend_url,
             wiki_s3_bucket=wiki_s3_bucket,
         )
 

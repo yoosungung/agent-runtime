@@ -22,11 +22,7 @@ dependencies = [
     "google-adk>=0.1.0 ; python_version >= '3.12'",
     "opik>=2.0",
     "boto3>=1.40",
-    "path-graph==0.1.0",
 ]
-
-[tool.uv.sources]
-path-graph = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]

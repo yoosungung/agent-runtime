@@ -19,9 +19,13 @@ from backend.pipeline_oauth import (
     verify_oauth_state,
 )
 from backend.settings import Settings
-from path_graph.admin.credentials import CredentialStore
-from path_graph.contracts.credential import CredentialCreate, CredentialProfile, OAuthStatus
-from path_graph.contracts.source import SourceDriver
+from backend.pipeline_domain import (
+    CredentialCreate,
+    CredentialProfile,
+    CredentialStore,
+    OAuthStatus,
+    SourceDriver,
+)
 from runtime_common.schemas import Principal
 
 logger = logging.getLogger(__name__)

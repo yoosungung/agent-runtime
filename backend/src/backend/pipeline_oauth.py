@@ -12,8 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 from backend.settings import Settings
-from path_graph.contracts.credential import refresh_token_env_key
-from path_graph.contracts.source import SourceDriver
+from backend.pipeline_domain import SourceDriver, refresh_token_env_key
 
 logger = logging.getLogger(__name__)
 

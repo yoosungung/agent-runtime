@@ -37,6 +37,7 @@ from backend.routers import me_knowledge_projects as me_knowledge_projects_route
 from backend.routers import me_user_meta as me_user_meta_router_module
 from backend.routers import pipeline as pipeline_router_module
 from backend.routers import pipeline_credentials as pipeline_credentials_router_module
+from backend.routers import pipeline_internal as pipeline_internal_router_module
 from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
@@ -326,6 +327,7 @@ app.include_router(chat_threads_router_module.router)  # /api/me/chat/threads
 app.include_router(chat_router_module.router)  # /api/chat/*
 app.include_router(audit_router_module.router)  # /api/audit
 app.include_router(custom_images_router_module.router)  # /api/admin/custom-images/*
+app.include_router(pipeline_internal_router_module.router)  # /internal/v1/pipeline/*
 
 _settings = get_settings()
 if _settings.PIPELINE_CONSOLE_ENABLED:

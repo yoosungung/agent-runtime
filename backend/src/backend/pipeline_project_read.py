@@ -6,9 +6,7 @@ import asyncio
 from typing import Any
 
 from fastapi import HTTPException
-from path_graph.admin.lifecycle import api_get_binding
-from path_graph.admin.projects import ProjectStore
-from path_graph.contracts.project import ProjectProfile
+from backend.pipeline_domain import ProjectProfile, ProjectStore, api_get_binding
 from pydantic import BaseModel
 
 from backend.settings import Settings

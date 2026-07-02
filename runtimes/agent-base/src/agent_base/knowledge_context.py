@@ -7,6 +7,7 @@ import logging
 from contextvars import ContextVar
 
 from runtime_common.knowledge import KnowledgeBinding, resolve_knowledge_bindings
+from runtime_common.pipeline_binding import fetch_project_binding
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +29,15 @@ async def setup_knowledge_bindings(
     *,
     tenant: str | None,
     project_ids: list[str],
-    path_graph_dsn: str | None,
+    admin_backend_url: str | None,
 ) -> object:
     """Resolve bindings for this invoke request. Returns context token for reset."""
     token = _bindings_var.set([])
-    if not tenant or not project_ids or not path_graph_dsn:
-        return token
-
-    try:
-        from path_graph.admin.lifecycle import api_get_binding
-    except ImportError:
-        logger.warning("path_graph_unavailable_for_knowledge_resolve")
+    if not tenant or not project_ids or not admin_backend_url:
         return token
 
     def fetch_binding(t: str, project_id: str) -> dict:
-        return api_get_binding(t, project_id)
+        return fetch_project_binding(admin_backend_url, t, project_id)
 
     try:
         bindings = await asyncio.to_thread(
