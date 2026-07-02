@@ -293,7 +293,7 @@ make build-path-graph-rag-mcp      # MCP 이미지만 빠르게 GHCR push
 make build-path-graph-rag-mcp-wait
 ```
 
-`backend`·`agent-base`·`path-graph-rag-mcp`는 워크스페이스 의존 `path-graph` 패키지가 필요하다. GHA는 `yoosungung/path-graph`를 checkout해 빌드 컨텍스트 `path-graph/pipeline`으로 stage한 뒤 Docker build한다. 로컬 Docker: `make sync-path-graph-docker` 후 `docker build -f runtimes/agent-base/Dockerfile .` (backend·`path-graph-rag-mcp` 동일 패턴).
+`backend`·`agent-base`·`path-graph-rag-mcp`는 `path-graph` Python wheel이 필요하다. **release wheel URL pin** (`path-graph==0.1.0` + GitHub Release asset). GHA/Docker는 `UV_INDEX_GITHUB_*`로 private release 다운로드 후 `uv sync`/`uv pip install` — path-graph repo checkout·`path-graph/pipeline` staging 없음. 로컬 sibling 개발: `cp uv.override.toml.example uv.override.toml`. 로컬 Docker: `docker build` 시 `--build-arg UV_INDEX_GITHUB_PASSWORD=$(gh auth token)` (backend·agent-base·path-graph-rag-mcp).
 
 태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)
 

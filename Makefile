@@ -16,13 +16,8 @@ IMAGE_TAG ?= $(shell git rev-parse HEAD)
 help:
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-sync: ## uv sync with dev deps (includes editable path-graph from ../path-graph)
+sync: ## uv sync with dev deps (path-graph release wheel; sibling dev: uv.override.toml)
 	uv sync --all-packages
-
-sync-path-graph-docker: ## copy sibling path-graph into build context (backend / agent-base / path-graph-rag-mcp Docker)
-	mkdir -p path-graph
-	rm -rf path-graph/pipeline
-	cp -r ../path-graph/pipeline path-graph/pipeline
 
 lint: ## ruff check
 	uv run ruff check .

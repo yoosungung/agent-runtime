@@ -1,0 +1,6 @@
+# Local sibling path-graph development (optional).
+# cp uv.override.toml.example uv.override.toml
+# uv sync --all-packages
+
+[tool.uv.sources]
+path-graph = { path = "../path-graph/pipeline", editable = true }

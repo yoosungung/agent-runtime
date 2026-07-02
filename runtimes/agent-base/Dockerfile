@@ -12,8 +12,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
 COPY runtimes/agent-base ./runtimes/agent-base
-# agent-base pyproject path: ../../../path-graph/pipeline → /path-graph/pipeline
-COPY path-graph/pipeline /path-graph/pipeline
+
+ARG UV_INDEX_GITHUB_PASSWORD
+ENV UV_INDEX_GITHUB_USERNAME=x-access-token \
+    UV_INDEX_GITHUB_PASSWORD=${UV_INDEX_GITHUB_PASSWORD}
 
 RUN uv sync --frozen --package agent-base --no-dev
 

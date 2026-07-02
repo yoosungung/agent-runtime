@@ -22,8 +22,8 @@ venv/
 .cursor/
 *.swp
 
-# Local path-graph checkout for backend Docker build (GHA uses separate checkout)
-path-graph/
+# Local path-graph editable override (see uv.override.toml.example)
+uv.override.toml
 
 # OS
 .DS_Store

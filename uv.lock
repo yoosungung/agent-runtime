@@ -51,7 +51,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "opik", specifier = ">=2.0" },
-    { name = "path-graph", editable = "../path-graph/pipeline" },
+    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "runtime-common", editable = "packages/common" },
@@ -418,7 +418,7 @@ requires-dist = [
     { name = "hermes-base", editable = "runtimes/hermes-base" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kubernetes-asyncio", specifier = ">=31.0" },
-    { name = "path-graph", editable = "../path-graph/pipeline" },
+    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "runtime-common", editable = "packages/common" },
@@ -3090,7 +3090,7 @@ wheels = [
 [[package]]
 name = "path-graph"
 version = "0.1.0"
-source = { editable = "../path-graph/pipeline" }
+source = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl" }
 dependencies = [
     { name = "boto3" },
     { name = "graspologic-native" },
@@ -3105,6 +3105,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "qdrant-client" },
 ]
+wheels = [
+    { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.0/path_graph-0.1.0-py3-none-any.whl", hash = "sha256:89d5dfb05a13782c8e37c09677a4f27cfc08541a301eb41fa2deff8194d9d951" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3113,7 +3116,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "langgraph", marker = "extra == 'dev'", specifier = ">=0.2" },
-    { name = "markitdown", extras = ["pdf", "docx", "xlsx", "xls"], specifier = ">=0.1.0" },
+    { name = "markitdown", extras = ["docx", "pdf", "xls", "xlsx"], specifier = ">=0.1.0" },
     { name = "msal", specifier = ">=1.28" },
     { name = "nebula3-python", specifier = ">=3.8" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

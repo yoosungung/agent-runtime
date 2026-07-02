@@ -15,14 +15,14 @@ make build-path-graph-rag-mcp
 make build-path-graph-rag-mcp-wait
 ```
 
-워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp` · 단독 [`path-graph-rag-mcp.yml`](../../../../.github/workflows/path-graph-rag-mcp.yml). `yoosungung/path-graph` `main`의 `pipeline/`을 stage한 뒤 빌드한다.
+워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp` · 단독 [`path-graph-rag-mcp.yml`](../../../../.github/workflows/path-graph-rag-mcp.yml). `path-graph`는 GitHub Release wheel(`v0.1.0`)에서 설치 — repo checkout·staging 없음.
 
 ### 로컬 Docker (선택)
 
 ```bash
 # agents-runtime repo root
-make sync-path-graph-docker
 docker build -f deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile \
+  --build-arg UV_INDEX_GITHUB_PASSWORD="$(gh auth token)" \
   -t ghcr.io/yoosungung/agent-runtime/path-graph-rag-mcp:local .
 ```
 

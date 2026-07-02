@@ -5,6 +5,7 @@ on:
     paths:
       - "deploy/examples/custom-image/path-graph-rag-mcp/**"
       - "deploy/tests/test_build_images_workflow.py"
+      - "deploy/tests/test_path_graph_dependency.py"
       - ".github/workflows/path-graph-rag-mcp.yml"
       - ".github/workflows/build-images.yml"
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - "deploy/examples/custom-image/path-graph-rag-mcp/**"
       - "deploy/tests/test_build_images_workflow.py"
+      - "deploy/tests/test_path_graph_dependency.py"
       - ".github/workflows/path-graph-rag-mcp.yml"
       - ".github/workflows/build-images.yml"
   workflow_dispatch:
@@ -26,41 +28,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout path-graph (hybrid_search import for tests)
-        uses: actions/checkout@v4
-        with:
-          repository: yoosungung/path-graph
-          ref: main
-          path: _path_graph_repo
-
-      - name: Stage path-graph for uv editable sources
-        run: mkdir -p ../path-graph && cp -r _path_graph_repo/pipeline ../path-graph/
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
       - name: Unit tests
+        env:
+          UV_INDEX_GITHUB_USERNAME: x-access-token
+          UV_INDEX_GITHUB_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           uv sync --all-packages
           uv run pytest deploy/examples/custom-image/path-graph-rag-mcp/test_app.py \
-            deploy/tests/test_build_images_workflow.py -q
+            deploy/tests/test_build_images_workflow.py \
+            deploy/tests/test_path_graph_dependency.py -q
 
   docker:
     needs: unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout path-graph for Docker build context
-        uses: actions/checkout@v4
-        with:
-          repository: yoosungung/path-graph
-          ref: main
-          path: _path_graph
-
-      - name: Stage path-graph package for Docker build
-        run: rm -rf path-graph && mkdir -p path-graph && cp -r _path_graph/pipeline path-graph/
 
       - uses: docker/setup-buildx-action@v3
 
@@ -78,5 +64,7 @@ jobs:
           file: deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ghcr.io/${{ github.repository_owner }}/agent-runtime/path-graph-rag-mcp:${{ github.sha }}
+          build-args: |
+            UV_INDEX_GITHUB_PASSWORD=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

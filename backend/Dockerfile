@@ -24,8 +24,10 @@ COPY pyproject.toml uv.lock ./
 COPY packages/common ./packages/common
 COPY runtimes/hermes-base ./runtimes/hermes-base
 COPY backend/ ./backend/
-# backend pyproject path: ../../path-graph/pipeline → /path-graph/pipeline in this layout
-COPY path-graph/pipeline /path-graph/pipeline
+
+ARG UV_INDEX_GITHUB_PASSWORD
+ENV UV_INDEX_GITHUB_USERNAME=x-access-token \
+    UV_INDEX_GITHUB_PASSWORD=${UV_INDEX_GITHUB_PASSWORD}
 
 RUN uv sync --frozen --package backend --no-dev
 
@@ -43,7 +45,6 @@ WORKDIR /app
 COPY --from=python-builder /app/.venv ./.venv
 COPY --from=python-builder /app/packages ./packages
 COPY --from=python-builder /app/backend ./backend
-COPY --from=python-builder /path-graph/pipeline /path-graph/pipeline
 COPY --from=frontend-builder /app/frontend/dist ./dist
 
 RUN chown -R appuser:appuser /app
