@@ -48,6 +48,7 @@ async def execute_invoke(
     token: str | None,
     x_resolve: str | None = None,
     delegate_depth: int = 0,
+    timeout_sec: int | None = None,
 ) -> dict[str, Any]:
     settings = ctx.settings
     expected_pool = f"agent:{settings.runtime_kind}"
@@ -134,6 +135,7 @@ async def execute_invoke(
 
         user_id = str(principal.user_id) if principal.user_id else principal.sub
         opik_meta = {"version": version or "latest", "runtime_kind": settings.runtime_kind}
+        invoke_timeout = timeout_sec if timeout_sec is not None else settings.invoke_timeout_sec
 
         try:
             with opik_trace_context(
@@ -156,12 +158,12 @@ async def execute_invoke(
                             principal_user_id=principal.user_id,
                             adk_session_cache=ctx.adk_session_services,
                         ),
-                        timeout=settings.invoke_timeout_sec,
+                        timeout=invoke_timeout,
                     )
         except TimeoutError as exc:
             raise HTTPException(
                 status_code=504,
-                detail=f"invoke timed out after {settings.invoke_timeout_sec}s",
+                detail=f"invoke timed out after {invoke_timeout}s",
             ) from exc
     finally:
         if knowledge_token is not None:

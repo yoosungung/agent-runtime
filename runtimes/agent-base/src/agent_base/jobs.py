@@ -124,6 +124,7 @@ class JobService:
                 principal=principal,
                 token=token,
                 x_resolve=x_resolve,
+                timeout_sec=self._settings.job_invoke_timeout_sec,
             )
             record = await self._store.mark_succeeded(job_id, output=result)
             await self._maybe_argo_callback(record, success=True)
