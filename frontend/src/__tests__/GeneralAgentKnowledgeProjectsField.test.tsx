@@ -26,7 +26,7 @@ vi.mock("../hooks/useKnowledgeProjects", () => ({
       project_slug: "docs",
       rag: { index_namespace: "path_graph_dev_col-1", filter: {} },
       graph: { nebula_space: "space-1" },
-      wiki: { s3_prefix: "wiki/docs", vfs_mount: "/wiki/docs/" },
+      wiki: { vfs_mount: "/wiki/docs/" },
     },
   }),
 }));

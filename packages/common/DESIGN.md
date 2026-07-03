@@ -127,3 +127,9 @@
     - ext-authz가 사용. `ring_key`는 trace용.
   - **`active_counter.py`** (또는 `registry.ActiveCounter`) — `asyncio.Semaphore`를 감싸 `active`/`max` 노출. warm-registry publisher가 읽고, pool 런타임이 진입/종료에서 갱신.
 
+- **`vfs/`** — general-tier Postgres VFS (`VFS_DSN`). deepagents `CompositeBackend`용 store + backend.
+  - `store.py` — `AgentVfsStore` / `UserVfsStore` (`Asyncpg*` 구현 포함): `(kind, agent_name)` / `user_id` 스코프.
+  - `wiki_store.py` — `WikiVfsStore` / `AsyncpgWikiVfsStore`: `(tenant, project_id)` 스코프. pipeline GraphRAG·admin wiki CRUD와 동일 테이블 `vfs_wiki_files`.
+  - `database_backend.py` — `AgentDatabaseBackend`, `UserDatabaseBackend`, `WikiDatabaseBackend` (wiki는 agent-pool에서 `read_only=True`).
+  - `composite.py` — `build_general_vfs`, `wiki_routes_from_bindings` (binding `wiki.vfs_mount` → `WikiDatabaseBackend`).
+  - `knowledge/models.py` — `WikiBinding.vfs_mount` only (resolved binding wire).

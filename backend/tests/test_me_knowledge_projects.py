@@ -101,7 +101,7 @@ async def test_get_knowledge_project_binding_for_user(client: AsyncClient):
         "project_slug": "docs",
         "rag": {"index_namespace": "path_graph_dev_col", "filter": {"project_id": PROJECT_ID}},
         "graph": {"nebula_space": "space"},
-        "wiki": {"s3_prefix": "wiki/x/", "vfs_mount": "/wiki/docs/"},
+        "wiki": {"vfs_mount": "/wiki/docs/"},
     }
 
     with (

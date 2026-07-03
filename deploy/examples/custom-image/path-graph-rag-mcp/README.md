@@ -15,7 +15,7 @@ make build-path-graph-rag-mcp
 make build-path-graph-rag-mcp-wait
 ```
 
-워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp` · 단독 [`path-graph-rag-mcp.yml`](../../../../.github/workflows/path-graph-rag-mcp.yml). `path-graph`는 GitHub Release wheel(`v0.1.0`)에서 설치 — repo checkout·staging 없음.
+워크플로: [`.github/workflows/build-images.yml`](../../../../.github/workflows/build-images.yml) matrix `path-graph-rag-mcp` · 단독 [`path-graph-rag-mcp.yml`](../../../../.github/workflows/path-graph-rag-mcp.yml). `path-graph`는 GitHub Release wheel(`v0.1.3`)에서 설치 — repo checkout·staging 없음.
 
 ### 로컬 Docker (선택)
 

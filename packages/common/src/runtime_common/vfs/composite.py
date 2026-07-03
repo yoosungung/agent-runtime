@@ -8,8 +8,13 @@ from deepagents.backends.composite import CompositeBackend
 from deepagents.backends.state import StateBackend
 
 from runtime_common.knowledge.models import KnowledgeBinding
-from runtime_common.vfs.database_backend import AgentDatabaseBackend, UserDatabaseBackend
+from runtime_common.vfs.database_backend import (
+    AgentDatabaseBackend,
+    UserDatabaseBackend,
+    WikiDatabaseBackend,
+)
 from runtime_common.vfs.store import AgentVfsStore, UserVfsStore
+from runtime_common.vfs.wiki_store import WikiVfsStore
 
 
 def build_general_vfs(
@@ -39,21 +44,19 @@ def build_general_vfs(
 def wiki_routes_from_bindings(
     bindings: list[KnowledgeBinding],
     *,
-    s3_client: Any,
-    bucket: str,
+    wiki_store: WikiVfsStore,
+    read_only: bool = True,
 ) -> dict[str, Any]:
-    from runtime_common.vfs.wiki_backend import WikiS3ReadBackend
-
     routes: dict[str, Any] = {}
     for binding in bindings:
         mount = binding.wiki.vfs_mount.strip()
-        prefix = binding.wiki.s3_prefix.strip()
-        if not mount or not prefix or not bucket:
+        if not mount or not binding.tenant or not binding.project_id:
             continue
-        routes[mount] = WikiS3ReadBackend(
-            bucket=bucket,
-            prefix=prefix,
-            s3_client=s3_client,
+        routes[mount] = WikiDatabaseBackend(
+            wiki_store,
+            binding.tenant,
+            binding.project_id,
+            read_only=read_only,
         )
     return routes
 

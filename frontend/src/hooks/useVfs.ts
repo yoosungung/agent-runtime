@@ -147,3 +147,122 @@ export function vfsErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Request failed";
 }
+
+export interface VfsUserSummary {
+  user_id: number;
+  username: string;
+  tenant: string;
+  file_count: number;
+  total_bytes: number;
+  last_modified: string | null;
+}
+
+export interface VfsWikiProjectSummary {
+  project_id: string;
+  slug: string;
+  name: string;
+  vfs_mount: string;
+  file_count: number;
+  total_bytes: number;
+  last_modified: string | null;
+}
+
+export function useVfsUsers(filters?: { limit?: number; offset?: number }) {
+  const params = new URLSearchParams();
+  if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["vfs", "users", filters?.limit ?? 50, filters?.offset ?? 0],
+    queryFn: () =>
+      apiJson<PageResponse<VfsUserSummary>>(`/api/vfs/users${qs ? `?${qs}` : ""}`),
+  });
+}
+
+export function useVfsWikiProjects(filters?: { limit?: number; offset?: number }) {
+  const params = new URLSearchParams();
+  if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["vfs", "wiki", "projects", filters?.limit ?? 50, filters?.offset ?? 0],
+    queryFn: () =>
+      apiJson<PageResponse<VfsWikiProjectSummary>>(
+        `/api/vfs/wiki/projects${qs ? `?${qs}` : ""}`,
+      ),
+  });
+}
+
+export function useVfsUserEntries(userId: string, path: string) {
+  const params = new URLSearchParams({ path });
+  return useQuery({
+    queryKey: ["vfs", "user", "entries", userId, path],
+    queryFn: () =>
+      apiJson<{ items: VfsEntry[] }>(
+        `/api/vfs/users/${encodeURIComponent(userId)}/entries?${params}`,
+      ),
+  });
+}
+
+export function useVfsUserFile(userId: string, path: string | null) {
+  return useQuery({
+    queryKey: ["vfs", "user", "file", userId, path ?? ""],
+    enabled: !!path,
+    queryFn: () =>
+      apiJson<VfsFile>(
+        `/api/vfs/users/${encodeURIComponent(userId)}/files?path=${encodeURIComponent(path!)}`,
+      ),
+  });
+}
+
+export function usePatchVfsUserFile(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { path: string; content: string }) =>
+      apiJson<VfsFile>(`/api/vfs/users/${encodeURIComponent(userId)}/files`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["vfs", "user", "entries", userId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "user", "file", userId, vars.path] });
+    },
+  });
+}
+
+export function useVfsWikiEntries(projectId: string, path: string) {
+  const params = new URLSearchParams({ path });
+  return useQuery({
+    queryKey: ["vfs", "wiki", "entries", projectId, path],
+    queryFn: () =>
+      apiJson<{ items: VfsEntry[] }>(
+        `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/entries?${params}`,
+      ),
+  });
+}
+
+export function useVfsWikiFile(projectId: string, path: string | null) {
+  return useQuery({
+    queryKey: ["vfs", "wiki", "file", projectId, path ?? ""],
+    enabled: !!path,
+    queryFn: () =>
+      apiJson<VfsFile>(
+        `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(path!)}`,
+      ),
+  });
+}
+
+export function usePatchVfsWikiFile(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { path: string; content: string }) =>
+      apiJson<VfsFile>(`/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/files`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "entries", projectId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "file", projectId, vars.path] });
+    },
+  });
+}

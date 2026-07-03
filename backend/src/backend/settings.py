@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     VFS_DSN: str = ""
     VFS_PGBOUNCER: bool = False
     MAX_VFS_FILE_BYTES: int = 1_048_576  # 1 MiB
+    MAX_WIKI_VFS_FILE_BYTES: int = 4_194_304  # 4 MiB
 
     # Pipeline admin console (path-graph sources / ingest)
     PIPELINE_CONSOLE_ENABLED: bool = True

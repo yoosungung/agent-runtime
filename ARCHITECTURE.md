@@ -32,6 +32,7 @@ LLM 에이전트/MCP 서버를 위한 **런타임 플랫폼**. base image에 사
 - **Agent delegate invoke (MCP internal 대칭)**: orchestrator agent-pool이 delegate agent를 호출할 때 `POST /v1/agents/invoke-internal` — payload는 엣지와 동일 `{agent, version?, input, session_id?, principal}`. 응답은 **동기 JSON** `{output}` (SSE 없음). delegate `session_id`는 부모 chat session과 분리(호출마다 ephemeral). ACL은 caller JWT `access[]` + orchestrator `config.delegate_agents[]` allowlist. 재귀 방지: `X-Runtime-Delegate-Depth` 헤더, 최대 깊이 3; depth ≥ 1이면 delegate tool 미노출.
 - **`source_meta.chat_selectable`**: Chat UI agent picker 노출 여부(기본 `true`). `false`여도 ACL에 있으면 invoke-internal delegate 호출 가능. visibility(누가 접근 가능)와 UI 노출을 분리한다. main/sub deploy_mode는 없다 — 동일 agent가 orchestrator·delegate 역할을 맥락에 따라 겸한다.
 - **Hermes Profile General tier (`hermes_general`)**: `deploy_mode='hermes_general'`, `runtime_pool='agent:hermes'`, pool `RUNTIME_KIND=hermes`, 이미지 `hermes-base`. General tier(`deploy_mode='general'`)와 **대칭 UX** — 번들 없이 Hermes profile 등록·lazy 활성화. Profile·공유 memory·skills 정본은 Postgres VFS (`vfs_agent_files`, 경로 `/profile/…`); per-user `USER.md`는 `vfs_user_files` (`/hermes/{agent}/memories/USER.md`). invoke는 VFS pull → emptyDir scratch → `AIAgent` → push. 세션은 Hermes SessionDB Postgres (`HERMES_SESSION_DSN`). **Chat UI only** — hermes-agent gateway/TUI/ACP는 pool OCI에 미포함. 상세: [docs/vfs-profile-design.md](docs/vfs-profile-design.md), [runtimes/hermes-base/DESIGN.md](runtimes/hermes-base/DESIGN.md).
+- **General-tier VFS + Knowledge Binding (path-graph)**: general agent `CompositeBackend` — `/agent/` → `vfs_agent_files`, `/user/` → `vfs_user_files`, `config.general.knowledge_project_ids[]`로 resolve한 project마다 `wiki.vfs_mount` → **`vfs_wiki_files` read-only** (`VFS_DSN`). Wiki 본문 정본은 PG; S3 `wiki/` prefix는 **미사용**. Binding `wiki` 필드는 `vfs_mount`만 (`project_id`는 상위 binding). 파이프라인·admin 쓰기·purge 계약은 [path-graph ARCHITECTURE.md](../path-graph/ARCHITECTURE.md) §Knowledge Binding.
 - **scope 경계**: LLM/RAG는 scope 밖. **번들 object store 기본값은 in-cluster Garage(S3 호환)** — 배포 시 env/secret으로 외부 S3(NCP·AWS 등)로 대체 가능. 관리 콘솔 `frontend/`·`backend/`는 예외.
 
 ### 이것만은 하지 말 것
@@ -119,8 +120,11 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 | `chat_threads` | admin backend | — | per-user Chat UI thread registry; `agent_version` pin |
 | `refresh_tokens` | auth | auth | refresh 토큰 해시 |
 | `api_keys` | auth (admin bridge) / backend BFF | auth | user-bound; `user_resource_access` 재사용 |
+| `vfs_agent_files` | admin backend / agent-pool | agent-pool (read-write `/agent/`) | general-tier agent 공유 VFS |
+| `vfs_user_files` | admin backend / agent-pool | agent-pool (read-write `/user/`) | per-user cross-agent VFS |
+| `vfs_wiki_files` | path-graph pipeline / admin backend | agent-pool (read-only wiki mount) | `(tenant, project_id)` scoped wiki pages |
 
-마이그레이션: `backend/migrations/0001_init.sql`. 적용: `make db-migrate` 또는 `make db-migrate-all`.
+마이그레이션: `backend/migrations/0001_init.sql` … `0013_vfs_wiki.sql`. 적용: `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate-0013` Job. path-graph 스키마는 `path_graph.migrations` (동일 DSN).
 
 ### source_meta
 

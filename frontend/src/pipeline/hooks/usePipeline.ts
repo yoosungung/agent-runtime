@@ -117,7 +117,7 @@ export interface KnowledgeBinding {
   project_slug: string;
   rag: { index_namespace: string; filter: Record<string, string> };
   graph: { nebula_space: string };
-  wiki: { s3_prefix: string; vfs_mount: string };
+  wiki: { vfs_mount: string };
 }
 
 export function usePipelineProjectBinding(id: string | undefined) {

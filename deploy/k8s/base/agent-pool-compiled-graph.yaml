@@ -88,11 +88,6 @@ spec:
                   key: VFS_DSN
             - name: ADMIN_BACKEND_URL
               value: http://backend.runtime.svc.cluster.local:8000
-            - name: WIKI_S3_BUCKET
-              valueFrom:
-                secretKeyRef:
-                  name: s3-creds
-                  key: S3_BUCKET
           volumeMounts:
             - name: bundles
               mountPath: /var/cache/agent-bundles

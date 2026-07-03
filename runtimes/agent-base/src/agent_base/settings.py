@@ -50,10 +50,6 @@ class Settings(BaseRuntimeSettings):
         default="http://backend.runtime.svc.cluster.local:8000",
         description="Admin backend URL for pipeline binding resolve (cluster-internal).",
     )
-    wiki_s3_bucket: str = Field(
-        default="",
-        description="S3 bucket for pipeline wiki mounts.",
-    )
     argo_server_url: str = Field(
         default="",
         description="Argo Workflows server base URL for job completion callbacks.",

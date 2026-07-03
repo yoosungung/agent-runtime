@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
+import { useVfsWikiProjects } from "../../hooks/useVfs";
 import {
   usePipelineProject,
   usePipelineProjectBinding,
@@ -16,6 +17,8 @@ export function PipelineProjectOverviewPage() {
   const navigate = useNavigate();
   const { data: project, isLoading, isError } = usePipelineProject(projectId);
   const { data: binding } = usePipelineProjectBinding(projectId);
+  const { data: wikiProjects } = useVfsWikiProjects({ limit: 200, offset: 0 });
+  const wikiStats = wikiProjects?.items.find((row) => row.project_id === projectId);
   const { data: sourcesData } = usePipelineSources(projectId, { limit: 50, offset: 0 });
   const sourceCount = sourcesData?.total ?? 0;
 
@@ -74,8 +77,32 @@ export function PipelineProjectOverviewPage() {
               <dd className="font-mono text-xs">{binding.graph.nebula_space}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Wiki prefix</dt>
-              <dd className="font-mono text-xs">{binding.wiki.s3_prefix}</dd>
+              <dt className="text-gray-500">Wiki mount</dt>
+              <dd className="font-mono text-xs">{binding.wiki.vfs_mount}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Wiki files</dt>
+              <dd className="text-xs">
+                {wikiStats ? (
+                  <>
+                    {wikiStats.file_count} file(s)
+                    {wikiStats.file_count > 0 ? (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <Link
+                          to={`/vfs/wiki/${projectId}`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          VFS에서 보기
+                        </Link>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </dd>
             </div>
           </dl>
           <p className="mt-3 text-xs text-gray-500">

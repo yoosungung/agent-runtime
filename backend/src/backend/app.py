@@ -42,6 +42,7 @@ from backend.routers import source_meta as source_meta_router_module
 from backend.routers import user_meta as user_meta_router_module
 from backend.routers import users as users_router_module
 from backend.routers import vfs as vfs_router_module
+from backend.routers import vfs_user_wiki as vfs_user_wiki_router_module
 from backend.settings import get_settings
 from runtime_common.auth import AuthClient
 from runtime_common.db import make_engine, make_session_factory, session_scope
@@ -235,17 +236,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     vfs_pool = None
     vfs_agent_store = None
+    vfs_user_store = None
+    vfs_wiki_store = None
     vfs_dsn = (settings.VFS_DSN or settings.POSTGRES_DSN).replace(
         "postgresql+asyncpg://", "postgresql://"
     )
     if vfs_dsn:
         from runtime_common.vfs.store import AsyncpgAgentVfsStore, create_asyncpg_pool
+        from runtime_common.vfs.store import AsyncpgUserVfsStore
+        from runtime_common.vfs.wiki_store import AsyncpgWikiVfsStore
 
         pgbouncer = settings.VFS_PGBOUNCER or settings.POSTGRES_PGBOUNCER
         vfs_pool = await create_asyncpg_pool(vfs_dsn, pgbouncer=pgbouncer)
         vfs_agent_store = AsyncpgAgentVfsStore(vfs_pool)
+        vfs_user_store = AsyncpgUserVfsStore(vfs_pool)
+        vfs_wiki_store = AsyncpgWikiVfsStore(vfs_pool)
     app.state.vfs_pool = vfs_pool
     app.state.vfs_agent_store = vfs_agent_store
+    app.state.vfs_user_store = vfs_user_store
+    app.state.vfs_wiki_store = vfs_wiki_store
 
     yield
 
@@ -321,6 +330,7 @@ app.include_router(infra_meta_router_module.router)  # /api/infra-meta/*
 app.include_router(llm_presets_router_module.router)  # /api/llm-presets/*
 app.include_router(bucket_router_module.router)  # /api/bucket/*
 app.include_router(vfs_router_module.router)  # /api/vfs/*
+app.include_router(vfs_user_wiki_router_module.router)  # /api/vfs/users|wiki/*
 app.include_router(users_router_module.router)  # /api/users/*
 app.include_router(users_router_module.me_router)  # /api/me/password
 app.include_router(chat_threads_router_module.router)  # /api/me/chat/threads

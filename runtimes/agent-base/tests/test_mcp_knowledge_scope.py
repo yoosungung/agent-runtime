@@ -25,7 +25,7 @@ def test_build_mcp_tools_scopes_search_index_namespace(monkeypatch):
             "project_id": "p1",
             "rag": {"index_namespace": "path_graph_acme_allowed", "filter": {"project_id": "p1"}},
             "graph": {"nebula_space": "g1"},
-            "wiki": {"s3_prefix": "w", "vfs_mount": "/wiki/w/"},
+            "wiki": {"vfs_mount": "/wiki/w/"},
         }
     )
     monkeypatch.setattr(mcp_mod, "get_current_bindings", lambda: [binding])

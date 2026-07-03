@@ -29,7 +29,6 @@ async def get_or_build_general_agent(
     max_delegate_depth: int = 3,
     principal_tenant: str | None = None,
     admin_backend_url: str | None = None,
-    wiki_s3_bucket: str | None = None,
 ) -> object:
     """Build or reuse a cached general-tier DeepAgents graph."""
     cfg = merge_configs(source.config, user.config if user else None)
@@ -53,7 +52,6 @@ async def get_or_build_general_agent(
             max_delegate_depth=max_delegate_depth,
             principal_tenant=principal_tenant,
             admin_backend_url=admin_backend_url,
-            wiki_s3_bucket=wiki_s3_bucket,
         )
 
     return await cache.get_or_build(key, builder)

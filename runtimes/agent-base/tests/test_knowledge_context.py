@@ -23,7 +23,7 @@ BINDING_PAYLOAD = {
         "filter": {"project_id": PROJECT_ID},
     },
     "graph": {"nebula_space": "path_graph_acme_docs"},
-    "wiki": {"s3_prefix": "wiki/acme/x/", "vfs_mount": "/wiki/docs/"},
+    "wiki": {"vfs_mount": "/wiki/docs/"},
 }
 
 

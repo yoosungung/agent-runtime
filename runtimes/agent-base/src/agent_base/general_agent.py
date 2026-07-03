@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -20,6 +19,7 @@ from runtime_common.vfs.store import (
     AsyncpgUserVfsStore,
     UserVfsStore,
 )
+from runtime_common.vfs.wiki_store import AsyncpgWikiVfsStore, WikiVfsStore
 
 _DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -38,15 +38,13 @@ def _wiki_routes_for_build(
     *,
     tenant: str | None,
     admin_backend_url: str | None,
-    wiki_s3_bucket: str | None,
+    wiki_store: WikiVfsStore | None,
 ) -> dict[str, Any]:
     if not general.vfs.wiki_enabled or not general.knowledge_project_ids:
         return {}
-    if not tenant or not admin_backend_url or not wiki_s3_bucket:
+    if not tenant or not admin_backend_url or wiki_store is None:
         return {}
     try:
-        import boto3
-
         from runtime_common.pipeline_binding import fetch_project_binding
 
         bindings = resolve_knowledge_bindings(
@@ -54,22 +52,7 @@ def _wiki_routes_for_build(
             general.knowledge_project_ids,
             fetch_binding=lambda t, pid: fetch_project_binding(admin_backend_url, t, pid),
         )
-        client = boto3.client(
-            "s3",
-            endpoint_url=os.environ.get("WIKI_S3_ENDPOINT_URL")
-            or os.environ.get("S3_ENDPOINT_URL")
-            or None,
-            aws_access_key_id=os.environ.get("WIKI_S3_ACCESS_KEY_ID")
-            or os.environ.get("S3_ACCESS_KEY_ID")
-            or None,
-            aws_secret_access_key=os.environ.get("WIKI_S3_SECRET_ACCESS_KEY")
-            or os.environ.get("S3_SECRET_ACCESS_KEY")
-            or None,
-            region_name=os.environ.get("WIKI_S3_REGION")
-            or os.environ.get("S3_REGION")
-            or "us-east-1",
-        )
-        return wiki_routes_from_bindings(bindings, s3_client=client, bucket=wiki_s3_bucket)
+        return wiki_routes_from_bindings(bindings, wiki_store=wiki_store, read_only=True)
     except Exception:
         return {}
 
@@ -90,7 +73,6 @@ def build_general_agent(
     max_delegate_depth: int = 3,
     principal_tenant: str | None = None,
     admin_backend_url: str | None = None,
-    wiki_s3_bucket: str | None = None,
 ) -> Any:
     """Build a DeepAgents CompiledStateGraph for a general-tier agent."""
     general = _parse_general_cfg(cfg)
@@ -100,11 +82,14 @@ def build_general_agent(
         u_store = user_store or (AsyncpgUserVfsStore(vfs_pool) if vfs_pool else None)
         if a_store is None or u_store is None:
             raise RuntimeError("VFS store or vfs_pool required for general agent")
+        wiki_store: WikiVfsStore | None = (
+            AsyncpgWikiVfsStore(vfs_pool) if vfs_pool else None
+        )
         wiki_routes = _wiki_routes_for_build(
             general,
             tenant=principal_tenant,
             admin_backend_url=admin_backend_url,
-            wiki_s3_bucket=wiki_s3_bucket,
+            wiki_store=wiki_store,
         )
         backend = build_general_vfs(
             a_store,

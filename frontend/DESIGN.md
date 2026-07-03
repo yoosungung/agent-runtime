@@ -82,8 +82,14 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 /me/user-meta/:kind/:name              본인 user_meta 편집 (template 기반 폼)
 /chat                                  agent 선택 → 대화 (SSE 스트리밍)
 /bundle/bucket                          admin: bundle object store 브라우저 (S3 또는 local); `/bucket` → redirect
-/vfs                                    admin: general agent VFS 목록 (`/agent/` 공유 영역)
-/vfs/agents/:kind/:name                 admin: VFS 파일 브라우저 + 텍스트 에디터
+/vfs                                    admin: VFS 3영역 랜딩 (Agent / User / Wiki)
+/vfs/agent                              admin: general agent VFS 목록
+/vfs/agent/:kind/:name                  admin: agent VFS 브라우저 + 텍스트 에디터
+/vfs/agents/:kind/:name                 → `/vfs/agent/:kind/:name` 호환
+/vfs/user                               admin: 사용자 VFS 목록
+/vfs/user/:userId                       admin: user VFS 브라우저
+/vfs/wiki                               admin: pipeline project wiki VFS 목록
+/vfs/wiki/:projectId                    admin: wiki VFS 브라우저 (project slug breadcrumb)
 /settings/infra                        admin: Platform env (LLM·Opik·OTLP)
 /users                                 admin: 사용자 관리
 /audit                                 admin: 감사 로그
@@ -106,7 +112,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 **Bucket (`/bundle/bucket`, admin)** — Bundle 섹션 탭(Agent/MCP 옆, admin만 표시). `GET /api/bucket/info` 배지(S3/local). breadcrumb + 1-depth listing. toolbar: New Folder · Upload · Move · Delete. `in_use` 행(checkbox disabled, "In use" badge) — `source_meta` 참조 중 번들. delete/move 409 → "Source Meta가 참조 중인 번들입니다…" toast.
 
-**VFS (`/vfs`, admin)** — 상단 nav: Platform → **VFS** → User → Audit. general agent 목록(`/vfs`) → 파일 브라우저(`/vfs/agents/:kind/:name`). Bucket UX와 유사(breadcrumb, New Folder/File, Upload, Delete, 텍스트 에디터). agent name 기준 공유·버전 무관 안내. General agent 상세에서 "VFS 관리" 링크(admin).
+**VFS (`/vfs`, admin)** — Platform → **VFS**. 랜딩(`/vfs`)에서 Agent·User·Wiki 카드 선택. Agent(`/vfs/agent`)는 general agent 목록 → 브라우저(`/vfs/agent/:kind/:name`). User(`/vfs/user`)는 사용자 목록 → 개인 VFS(`/vfs/user/:userId`). Wiki(`/vfs/wiki`)는 pipeline project 목록 → project wiki VFS(`/vfs/wiki/:projectId`). Bucket UX와 유사(breadcrumb, 텍스트 에디터). agent name·project slug 기준 공유 안내.
 
 **가드 매트릭스**:
 

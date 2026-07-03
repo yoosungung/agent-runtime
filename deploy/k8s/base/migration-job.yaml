@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0009_users_tenant_not_null.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0013_vfs_wiki.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -390,16 +390,34 @@ data:
 
     ALTER TABLE users
         ALTER COLUMN tenant SET NOT NULL;
+  0013_vfs_wiki.sql: |
+    -- Wiki VFS — pipeline GraphRAG wiki pages (tenant + project_id scope).
+
+    CREATE TABLE IF NOT EXISTS vfs_wiki_files (
+        tenant       TEXT NOT NULL,
+        project_id   UUID NOT NULL,
+        path         TEXT NOT NULL,
+        parent_path  TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        is_dir       BOOLEAN NOT NULL DEFAULT FALSE,
+        size         INTEGER NOT NULL DEFAULT 0,
+        content      BYTEA NOT NULL,
+        encoding     VARCHAR(8) NOT NULL DEFAULT 'utf-8',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        modified_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (tenant, project_id, path)
+    );
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_wiki_files_parent
+        ON vfs_wiki_files (tenant, project_id, parent_path);
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0009
+  name: db-migrate-0013
   namespace: runtime
   annotations:
-    # Job spec.template is immutable — bump Job metadata.name (e.g. db-migrate-0009)
-    # when migration scripts change; delete obsolete completed Jobs if desired.
-    migration-version: "0009"
+    migration-version: "0013"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -447,6 +465,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0008_chat_threads_agent_version.sql
               echo "Applying /migrations/0009_users_tenant_not_null.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0009_users_tenant_not_null.sql
+              echo "Applying /migrations/0013_vfs_wiki.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0013_vfs_wiki.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

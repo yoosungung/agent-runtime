@@ -25,7 +25,7 @@ function BindingPreview({ projectId }: { projectId: string }) {
       </div>
       <div>
         <dt className="inline text-gray-500">Wiki: </dt>
-        <dd className="inline font-mono">{binding.wiki.s3_prefix}</dd>
+        <dd className="inline font-mono">{binding.wiki.vfs_mount}</dd>
       </div>
     </dl>
   );

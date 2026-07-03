@@ -31,5 +31,5 @@ export function formatVfsSize(size: number | null | undefined): string {
 }
 
 export function vfsAgentBrowserPath(kind: string, name: string): string {
-  return `/vfs/agents/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`;
+  return `/vfs/agent/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`;
 }

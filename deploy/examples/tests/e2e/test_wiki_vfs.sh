@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# PG-3 — Wiki VFS cluster E2E (general agent + S3 wiki prefix mount).
+# PG-3 — Wiki VFS cluster E2E (general agent + PG vfs_wiki_files mount).
 #
 # Prerequisites:
-#   - dev cluster: agents-runtime k8s applied, agent-pool-compiled-graph has WIKI_S3_BUCKET + s3-creds
+#   - dev cluster: agents-runtime k8s applied, agent-pool-compiled-graph has VFS_DSN
 #   - admin login password (INITIAL_ADMIN_PASSWORD secret)
 #   - utility-server MCP registered (run ./run.sh once, or this script registers it)
 #
@@ -35,16 +35,38 @@ require_kubectl() {
   command -v kubectl >/dev/null 2>&1 || fail "kubectl required"
 }
 
-assert_agent_pool_wiki_env() {
-  log "check agent-pool WIKI_S3_BUCKET + S3_ENDPOINT_URL"
-  local bucket endpoint
-  bucket=$(kubectl -n runtime exec deploy/agent-pool-compiled-graph -- printenv WIKI_S3_BUCKET 2>/dev/null \
+assert_agent_pool_vfs_env() {
+  log "check agent-pool VFS_DSN"
+  local dsn
+  dsn=$(kubectl -n runtime exec deploy/agent-pool-compiled-graph -- printenv VFS_DSN 2>/dev/null \
     || true)
-  endpoint=$(kubectl -n runtime exec deploy/agent-pool-compiled-graph -- printenv S3_ENDPOINT_URL 2>/dev/null \
-    || true)
-  [[ -n "$bucket" ]] || fail "WIKI_S3_BUCKET unset on agent-pool — apply k8s + rollout restart"
-  [[ -n "$endpoint" ]] || fail "S3_ENDPOINT_URL unset on agent-pool — ensure s3-creds envFrom"
-  ok "agent-pool wiki env: bucket=$bucket endpoint=$endpoint"
+  [[ -n "$dsn" ]] || fail "VFS_DSN unset on agent-pool — apply k8s + rollout restart"
+  ok "agent-pool VFS_DSN configured"
+}
+
+seed_wiki_fixture() {
+  log "seed wiki fixture in vfs_wiki_files (tenant=$TENANT project=$PROJECT_ID)"
+  local slug="${WIKI_PAGE%.md}"
+  kubectl exec -n runtime postgres-0 -- psql -U runtime -d runtime -v ON_ERROR_STOP=1 <<SQL
+INSERT INTO vfs_wiki_files (
+  tenant, project_id, path, parent_path, name, is_dir, size, content, encoding
+) VALUES (
+  '${TENANT}',
+  '${PROJECT_ID}'::uuid,
+  '/${slug}.md',
+  '/',
+  '${slug}.md',
+  FALSE,
+  length('# ${WIKI_MARKER}\n\nCluster E2E wiki mount verification.\n'),
+  convert_to('# ${WIKI_MARKER}\n\nCluster E2E wiki mount verification.\n', 'UTF8'),
+  'utf-8'
+)
+ON CONFLICT (tenant, project_id, path) DO UPDATE SET
+  content = EXCLUDED.content,
+  size = EXCLUDED.size,
+  modified_at = now();
+SQL
+  ok "wiki vfs row seeded"
 }
 
 resolve_project_id() {
@@ -59,59 +81,13 @@ resolve_project_id() {
   ok "project_id=$PROJECT_ID"
 }
 
-upload_wiki_fixture() {
-  log "upload wiki fixture to S3 (tenant=$TENANT project=$PROJECT_ID)"
-  eval "$(
-    kubectl -n runtime get secret s3-creds -o json \
-      | python3 -c 'import json,sys,base64; d=json.load(sys.stdin)["data"];
-for k,v in d.items(): print(f"export {k}={base64.b64decode(v).decode()!r}")'
-  )"
-  local pf_pid=""
-  if [[ "${S3_ENDPOINT_URL:-}" == *".svc"* ]]; then
-    log "port-forward runtime/garage-s3 :3900 for local upload"
-    kubectl -n runtime port-forward svc/garage-s3 3900:3900 >/dev/null 2>&1 &
-    pf_pid=$!
-    sleep 2
-    export S3_ENDPOINT_URL=http://127.0.0.1:3900
-  fi
-  export REPO_ROOT TENANT PROJECT_ID WIKI_PAGE WIKI_MARKER
-  if ! "$E2E_PY" <<'PY'
-import os
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(os.environ["REPO_ROOT"]) / "../path-graph/pipeline/src"))
-
-import boto3
-from path_graph.contracts.s3_keys import s3_key_wiki
-
-tenant = os.environ["TENANT"]
-project_id = os.environ["PROJECT_ID"]
-page = os.environ["WIKI_PAGE"]
-marker = os.environ["WIKI_MARKER"]
-key = s3_key_wiki(tenant, project_id, page.removesuffix(".md"))
-body = f"# {marker}\n\nCluster E2E wiki mount verification.\n"
-
-client = boto3.client(
-    "s3",
-    endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
-    aws_access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or None,
-    aws_secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or None,
-    region_name=os.environ.get("S3_REGION") or "us-east-1",
-)
-bucket = os.environ["S3_BUCKET"]
-client.put_object(Bucket=bucket, Key=key, Body=body.encode("utf-8"))
-print(key)
-PY
-  then
-    [[ -n "$pf_pid" ]] && kill "$pf_pid" 2>/dev/null || true
-    fail "wiki fixture upload failed"
-  fi
-  [[ -n "$pf_pid" ]] && kill "$pf_pid" 2>/dev/null || true
-  ok "wiki object uploaded"
-}
-
-ensure_utility_mcp() {
+export REPO_ROOT
+require_kubectl
+assert_agent_pool_vfs_env
+login
+load_state
+resolve_project_id
+seed_wiki_fixture
   local zipf="$WORK_DIR/utility-server.zip"
   local dir="$EXAMPLES_DIR/mcp-base/fastmcp_bundle"
   if admin_curl GET "/api/source-meta?kind=mcp&name=$MCP_SERVER" \
@@ -197,11 +173,11 @@ EOF
 
 export REPO_ROOT
 require_kubectl
-assert_agent_pool_wiki_env
+assert_agent_pool_vfs_env
 login
 load_state
 resolve_project_id
-upload_wiki_fixture
+seed_wiki_fixture
 ensure_utility_mcp
 grant_access mcp "$MCP_SERVER"
 login

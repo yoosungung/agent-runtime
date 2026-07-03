@@ -335,7 +335,7 @@ class GeneralVfsConfig(BaseModel):
     enabled: bool = True
     wiki_enabled: bool = Field(
         default=True,
-        description="Mount pipeline wiki prefixes when knowledge_project_ids is non-empty.",
+        description="Mount pipeline wiki VFS when knowledge_project_ids is non-empty.",
     )
 
 

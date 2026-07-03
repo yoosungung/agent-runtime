@@ -116,7 +116,6 @@ async def execute_invoke(
                     max_delegate_depth=settings.max_delegate_depth,
                     principal_tenant=principal.tenant,
                     admin_backend_url=admin_url,
-                    wiki_s3_bucket=settings.wiki_s3_bucket,
                 )
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(

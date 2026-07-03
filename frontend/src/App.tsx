@@ -58,6 +58,9 @@ const InfraMetaPage = lazy(() =>
 const BucketPage = lazy(() =>
   import("./pages/BucketPage").then((m) => ({ default: m.BucketPage })),
 );
+const VfsLandingPage = lazy(() =>
+  import("./pages/VfsLandingPage").then((m) => ({ default: m.VfsLandingPage })),
+);
 const VfsAgentsListPage = lazy(() =>
   import("./pages/VfsAgentsListPage").then((m) => ({
     default: m.VfsAgentsListPage,
@@ -66,6 +69,19 @@ const VfsAgentsListPage = lazy(() =>
 const VfsBrowserPage = lazy(() =>
   import("./pages/VfsBrowserPage").then((m) => ({
     default: m.VfsBrowserPage,
+  })),
+);
+const VfsUsersListPage = lazy(() =>
+  import("./pages/VfsUsersListPage").then((m) => ({ default: m.VfsUsersListPage })),
+);
+const VfsWikiProjectsListPage = lazy(() =>
+  import("./pages/VfsWikiProjectsListPage").then((m) => ({
+    default: m.VfsWikiProjectsListPage,
+  })),
+);
+const VfsScopedBrowserPage = lazy(() =>
+  import("./pages/VfsScopedBrowserPage").then((m) => ({
+    default: m.VfsScopedBrowserPage,
   })),
 );
 const GeneralAgentNewPage = lazy(() =>
@@ -257,10 +273,25 @@ export function App() {
                   </Route>
 
                   <Route element={<RequireRole min="admin" />}>
-                    <Route path="/vfs" element={<VfsAgentsListPage />} />
+                    <Route path="/vfs" element={<VfsLandingPage />} />
+                    <Route path="/vfs/agent" element={<VfsAgentsListPage />} />
+                    <Route
+                      path="/vfs/agent/:kind/:name"
+                      element={<VfsBrowserPage />}
+                    />
                     <Route
                       path="/vfs/agents/:kind/:name"
                       element={<VfsBrowserPage />}
+                    />
+                    <Route path="/vfs/user" element={<VfsUsersListPage />} />
+                    <Route
+                      path="/vfs/user/:id"
+                      element={<VfsScopedBrowserPage scope="user" />}
+                    />
+                    <Route path="/vfs/wiki" element={<VfsWikiProjectsListPage />} />
+                    <Route
+                      path="/vfs/wiki/:id"
+                      element={<VfsScopedBrowserPage scope="wiki" />}
                     />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<UserNewPage />} />

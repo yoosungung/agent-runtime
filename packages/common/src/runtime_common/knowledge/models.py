@@ -21,7 +21,6 @@ class GraphBinding(BaseModel):
 class WikiBinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    s3_prefix: str
     vfs_mount: str
 
 
@@ -55,7 +54,6 @@ class KnowledgeBinding(BaseModel):
             ),
             graph=GraphBinding(nebula_space=str(graph_raw.get("nebula_space") or "")),
             wiki=WikiBinding(
-                s3_prefix=str(wiki_raw.get("s3_prefix") or ""),
                 vfs_mount=str(wiki_raw.get("vfs_mount") or ""),
             ),
         )

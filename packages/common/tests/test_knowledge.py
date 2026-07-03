@@ -25,7 +25,7 @@ def test_scope_search_arguments_overwrites_index_namespace():
             "project_slug": "default",
             "rag": {"index_namespace": "path_graph_acme_default", "filter": {"project_id": "p1"}},
             "graph": {"nebula_space": "space-a"},
-            "wiki": {"s3_prefix": "wiki/a", "vfs_mount": "/wiki/a/"},
+            "wiki": {"vfs_mount": "/wiki/a/"},
         }
     )
     scoped = scope_search_arguments({"query": "x", "index_namespace": "evil"}, binding)
@@ -64,7 +64,7 @@ async def test_invoke_scoped_retrieval_parallel_search():
                 "project_id": "p1",
                 "rag": {"index_namespace": "path_graph_t_p1", "filter": {}},
                 "graph": {"nebula_space": "g1"},
-                "wiki": {"s3_prefix": "w1", "vfs_mount": "/wiki/p1/"},
+                "wiki": {"vfs_mount": "/wiki/p1/"},
             }
         ),
         KnowledgeBinding.from_api_dict(
@@ -73,7 +73,7 @@ async def test_invoke_scoped_retrieval_parallel_search():
                 "project_id": "p2",
                 "rag": {"index_namespace": "path_graph_t_p2", "filter": {}},
                 "graph": {"nebula_space": "g2"},
-                "wiki": {"s3_prefix": "w2", "vfs_mount": "/wiki/p2/"},
+                "wiki": {"vfs_mount": "/wiki/p2/"},
             }
         ),
     ]
@@ -99,7 +99,7 @@ def test_resolve_knowledge_bindings_uses_fetcher():
             "project_id": project_id,
             "rag": {"index_namespace": f"path_graph_{tenant}_{project_id}", "filter": {}},
             "graph": {"nebula_space": f"g-{project_id}"},
-            "wiki": {"s3_prefix": f"w/{project_id}", "vfs_mount": f"/wiki/{project_id}/"},
+            "wiki": {"vfs_mount": f"/wiki/{project_id}/"},
         }
 
     bindings = resolve_knowledge_bindings("acme", ["p1", "p2"], fetch_binding=fetch)
@@ -115,7 +115,7 @@ def test_resolve_knowledge_bindings_rejects_tenant_mismatch():
             "project_id": project_id,
             "rag": {"index_namespace": "path_graph_other_x", "filter": {}},
             "graph": {"nebula_space": "g"},
-            "wiki": {"s3_prefix": "w", "vfs_mount": "/wiki/"},
+            "wiki": {"vfs_mount": "/wiki/"},
         }
 
     with pytest.raises(ValueError, match="tenant mismatch"):
@@ -123,6 +123,9 @@ def test_resolve_knowledge_bindings_rejects_tenant_mismatch():
 
 
 def test_wiki_routes_from_bindings_distinct_mounts():
+    from runtime_common.vfs.wiki_store import MemoryWikiVfsStore
+
+    wiki_store = MemoryWikiVfsStore()
     bindings = [
         KnowledgeBinding.from_api_dict(
             {
@@ -130,7 +133,7 @@ def test_wiki_routes_from_bindings_distinct_mounts():
                 "project_id": "p1",
                 "rag": {"index_namespace": "path_graph_t_a", "filter": {}},
                 "graph": {"nebula_space": "g1"},
-                "wiki": {"s3_prefix": "wiki/p1/", "vfs_mount": "/wiki/a/"},
+                "wiki": {"vfs_mount": "/wiki/a/"},
             }
         ),
         KnowledgeBinding.from_api_dict(
@@ -139,9 +142,9 @@ def test_wiki_routes_from_bindings_distinct_mounts():
                 "project_id": "p2",
                 "rag": {"index_namespace": "path_graph_t_b", "filter": {}},
                 "graph": {"nebula_space": "g2"},
-                "wiki": {"s3_prefix": "wiki/p2/", "vfs_mount": "/wiki/b/"},
+                "wiki": {"vfs_mount": "/wiki/b/"},
             }
         ),
     ]
-    routes = wiki_routes_from_bindings(bindings, s3_client=object(), bucket="wiki-bucket")
+    routes = wiki_routes_from_bindings(bindings, wiki_store=wiki_store)
     assert set(routes) == {"/wiki/a/", "/wiki/b/"}
