@@ -16,8 +16,8 @@ function BindingPreview({ projectId }: { projectId: string }) {
   return (
     <dl className="text-xs text-gray-600 mt-1 ml-6 space-y-1">
       <div>
-        <dt className="inline text-gray-500">Qdrant: </dt>
-        <dd className="inline font-mono">{binding.rag.qdrant_collection}</dd>
+        <dt className="inline text-gray-500">Index: </dt>
+        <dd className="inline font-mono">{binding.rag.index_namespace}</dd>
       </div>
       <div>
         <dt className="inline text-gray-500">Nebula: </dt>

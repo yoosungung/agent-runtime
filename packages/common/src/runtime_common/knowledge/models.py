@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class RagBinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    qdrant_collection: str
+    index_namespace: str
     filter: dict[str, str] = Field(default_factory=dict)
 
 
@@ -47,7 +47,7 @@ class KnowledgeBinding(BaseModel):
             project_id=str(data.get("project_id") or ""),
             project_slug=str(data.get("project_slug") or ""),
             rag=RagBinding(
-                qdrant_collection=str(rag_raw.get("qdrant_collection") or ""),
+                index_namespace=str(rag_raw.get("index_namespace") or ""),
                 filter={
                     str(k): str(v)
                     for k, v in (rag_raw.get("filter") or {}).items()

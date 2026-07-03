@@ -13,7 +13,7 @@ BINDING = {
     "tenant": "acme",
     "project_id": "550e8400-e29b-41d4-a716-446655440000",
     "project_slug": "docs",
-    "rag": {"qdrant_collection": "path_graph_acme_docs"},
+    "rag": {"index_namespace": "path_graph_acme_product-docs"},
 }
 
 

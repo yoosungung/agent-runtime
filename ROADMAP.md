@@ -13,7 +13,7 @@ Admin Console ingest(RAG) MVP 완료. Graph·Wiki downstream 완료. **Knowledge
 | PG-1 | Console GraphRAG BFF + UI | [x] | path-graph 4.5.1–4.5.3 |
 | PG-2 | `config.general.knowledge_project_ids[]` + invoke 시 Knowledge Binding resolve | [x] | 3.2.0 |
 | PG-3 | VFS `/wiki` mount — binding `wiki.s3_prefix` | [x] | 3.2.1 — [`test_wiki_vfs.sh`](deploy/examples/tests/e2e/test_wiki_vfs.sh) 클러스터 E2E 통과 (2026-07) |
-| PG-4 | retrieval — Qdrant `rag.qdrant_collection` + `project_id` filter; 복수 project parallel + RRF | [x] | 3.2.0 — `invoke_scoped_retrieval` |
+| PG-4 | retrieval — `rag.index_namespace` + `project_id` filter; 복수 project parallel + RRF | [x] | 3.2.0 — `invoke_scoped_retrieval` |
 | PG-5 | reconcile CronWorkflow per project (Console 또는 bootstrap) | [x] | 4.4.4 — BFF `pg-reconcile-{tenant}-{project}` 일 1회 upsert; create/delete + startup bootstrap |
 | PG-6 | Async agent job API + Argo resume callback | [x] | path-graph 3.2.2 — `POST/GET /v1/agents/jobs`, pool `/jobs` |
 | PG-7 | path-graph wheel 의존성 (release URL pin, staging 제거) | [x] | path-graph 1.4.11 — `path-graph==0.1.0` + GitHub Release wheel |

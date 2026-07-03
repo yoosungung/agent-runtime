@@ -19,7 +19,7 @@ BINDING_PAYLOAD = {
     "project_id": PROJECT_ID,
     "project_slug": "docs",
     "rag": {
-        "qdrant_collection": "path_graph_acme_docs",
+        "index_namespace": "path_graph_acme_docs",
         "filter": {"project_id": PROJECT_ID},
     },
     "graph": {"nebula_space": "path_graph_acme_docs"},
@@ -42,7 +42,7 @@ async def test_setup_knowledge_bindings_resolves_projects():
         bindings = get_current_bindings()
         assert len(bindings) == 1
         assert bindings[0].project_id == PROJECT_ID
-        assert bindings[0].rag.qdrant_collection == "path_graph_acme_docs"
+        assert bindings[0].rag.index_namespace == "path_graph_acme_docs"
     finally:
         reset_knowledge_bindings(token)
 

@@ -95,7 +95,7 @@ export function FilesMaintenancePage() {
         <section className="bg-white shadow rounded-lg p-4">
           <h3 className="text-sm font-medium text-gray-900 mb-2">Index reconcile</h3>
           <p className="text-sm text-gray-600 mb-3">
-            PG·Qdrant·Nebula 간 고아 인덱스를 정리합니다.
+            PG(pgvector)·Nebula 간 고아 인덱스를 정리합니다.
           </p>
           <button
             type="button"

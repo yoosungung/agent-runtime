@@ -99,7 +99,7 @@ async def test_get_knowledge_project_binding_for_user(client: AsyncClient):
         "tenant": "dev",
         "project_id": PROJECT_ID,
         "project_slug": "docs",
-        "rag": {"qdrant_collection": "col", "filter": {"project_id": PROJECT_ID}},
+        "rag": {"index_namespace": "path_graph_dev_col", "filter": {"project_id": PROJECT_ID}},
         "graph": {"nebula_space": "space"},
         "wiki": {"s3_prefix": "wiki/x/", "vfs_mount": "/wiki/docs/"},
     }
@@ -114,7 +114,7 @@ async def test_get_knowledge_project_binding_for_user(client: AsyncClient):
         resp = await client.get(f"/api/me/knowledge-projects/{PROJECT_ID}/binding")
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["rag"]["qdrant_collection"] == "col"
+    assert resp.json()["rag"]["index_namespace"] == "path_graph_dev_col"
     store.get_project.assert_called_once_with("dev", PROJECT_ID)
 
 

@@ -7,7 +7,7 @@ import asyncio
 from runtime_common.knowledge.models import KnowledgeBinding
 
 
-def test_build_mcp_tools_scopes_search_collection(monkeypatch):
+def test_build_mcp_tools_scopes_search_index_namespace(monkeypatch):
     import agent_base.mcp_tools as mcp_mod
 
     calls: list[dict] = []
@@ -23,7 +23,7 @@ def test_build_mcp_tools_scopes_search_collection(monkeypatch):
         {
             "tenant": "acme",
             "project_id": "p1",
-            "rag": {"qdrant_collection": "allowed-col", "filter": {"project_id": "p1"}},
+            "rag": {"index_namespace": "path_graph_acme_allowed", "filter": {"project_id": "p1"}},
             "graph": {"nebula_space": "g1"},
             "wiki": {"s3_prefix": "w", "vfs_mount": "/wiki/w/"},
         }
@@ -37,8 +37,8 @@ def test_build_mcp_tools_scopes_search_collection(monkeypatch):
     )
 
     async def run_tool() -> str:
-        return await tools[0].coroutine({"query": "hi", "collection": "evil"})
+        return await tools[0].coroutine({"query": "hi", "index_namespace": "evil"})
 
     out = asyncio.run(run_tool())
     assert "ok" in out
-    assert calls[0]["arguments"]["collection"] == "allowed-col"
+    assert calls[0]["arguments"]["index_namespace"] == "path_graph_acme_allowed"

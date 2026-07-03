@@ -24,7 +24,7 @@ vi.mock("../hooks/useKnowledgeProjects", () => ({
       tenant: "acme",
       project_id: "p1",
       project_slug: "docs",
-      rag: { qdrant_collection: "col-1", filter: {} },
+      rag: { index_namespace: "path_graph_dev_col-1", filter: {} },
       graph: { nebula_space: "space-1" },
       wiki: { s3_prefix: "wiki/docs", vfs_mount: "/wiki/docs/" },
     },

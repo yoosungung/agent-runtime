@@ -115,7 +115,7 @@ export interface KnowledgeBinding {
   tenant: string;
   project_id: string;
   project_slug: string;
-  rag: { qdrant_collection: string; filter: Record<string, string> };
+  rag: { index_namespace: string; filter: Record<string, string> };
   graph: { nebula_space: string };
   wiki: { s3_prefix: string; vfs_mount: string };
 }

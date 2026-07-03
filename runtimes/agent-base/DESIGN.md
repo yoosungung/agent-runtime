@@ -8,7 +8,7 @@ Agent-Pool의 베이스 이미지. AWS Lambda와 유사하게 **같은 이미지
 
 ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/invoke` 시 `source.deploy_mode == 'general'`이면 `BundleLoader`를 건너뛰고 `agent_base.general_agent.build_general_agent()`를 호출한다.
 
-- **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`). `config.general.knowledge_project_ids[]`가 있으면 invoke마다 knowledge binding resolve 후 retrieval tool args에 collection/nebula_space/project_id를 서버가 덮어씀. 복수 project `search`는 parallel + RRF.
+- **MCP**: 등록 시 캐시된 `config.general.mcp_tools`를 LangChain tool로 래핑 → `POST {MCP_GATEWAY_URL}/v1/mcp/invoke-internal` (JWT forward via `agent_base.context.get_current_token`). `config.general.knowledge_project_ids[]`가 있으면 invoke마다 knowledge binding resolve 후 retrieval tool args에 index_namespace/nebula_space/project_id를 서버가 덮어씀. 복수 project `search`는 parallel + RRF.
 - **Agent delegate**: `config.general.delegate_agents[]`에 등록된 agent를 LangChain tool로 래핑 → `POST {AGENT_GATEWAY_URL}/v1/agents/invoke-internal` (동일 JWT forward, `X-Runtime-Delegate-Depth`). depth ≥ 1인 invoke에서는 delegate tool 미노출.
 - **Knowledge binding**: invoke마다 `runtime_common.pipeline_binding` → backend `GET /internal/v1/pipeline/tenants/{tenant}/projects/{id}/binding` (`X-Runtime-Caller: agent-pool`). env: `ADMIN_BACKEND_URL`.
 - **VFS**: `CompositeBackend` — `/` → `StateBackend`, `/agent/` → `vfs_agent_files`, `/user/` → `vfs_user_files`, 선택 project의 `wiki.vfs_mount` → S3 prefix read-only backend (`WIKI_S3_BUCKET`). DSN: `VFS_DSN` only (no `PATH_GRAPH_DSN`).

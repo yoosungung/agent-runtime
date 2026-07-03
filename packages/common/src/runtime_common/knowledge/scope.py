@@ -31,9 +31,9 @@ def scope_search_arguments(
     arguments: dict[str, Any],
     binding: KnowledgeBinding,
 ) -> dict[str, Any]:
-    """Overwrite retrieval args with binding-derived collection and filters."""
+    """Overwrite retrieval args with binding-derived index namespace and filters."""
     scoped = dict(arguments)
-    scoped["collection"] = binding.rag.qdrant_collection
+    scoped["index_namespace"] = binding.rag.index_namespace
     filters = dict(binding.rag.filter)
     filters.setdefault("project_id", binding.project_id)
     scoped["filter"] = filters

@@ -17,19 +17,19 @@ def test_mcp_requires_knowledge_project():
     assert mcp_requires_knowledge_project({"knowledge": {"requires_project": True}}) is True
 
 
-def test_scope_search_arguments_overwrites_collection():
+def test_scope_search_arguments_overwrites_index_namespace():
     binding = KnowledgeBinding.from_api_dict(
         {
             "tenant": "acme",
             "project_id": "p1",
             "project_slug": "default",
-            "rag": {"qdrant_collection": "col-a", "filter": {"project_id": "p1"}},
+            "rag": {"index_namespace": "path_graph_acme_default", "filter": {"project_id": "p1"}},
             "graph": {"nebula_space": "space-a"},
             "wiki": {"s3_prefix": "wiki/a", "vfs_mount": "/wiki/a/"},
         }
     )
-    scoped = scope_search_arguments({"query": "x", "collection": "evil"}, binding)
-    assert scoped["collection"] == "col-a"
+    scoped = scope_search_arguments({"query": "x", "index_namespace": "evil"}, binding)
+    assert scoped["index_namespace"] == "path_graph_acme_default"
     assert scoped["project_id"] == "p1"
     assert scoped["tenant"] == "acme"
     assert scoped["project_slug"] == "default"
@@ -62,7 +62,7 @@ async def test_invoke_scoped_retrieval_parallel_search():
             {
                 "tenant": "t",
                 "project_id": "p1",
-                "rag": {"qdrant_collection": "c1", "filter": {}},
+                "rag": {"index_namespace": "path_graph_t_p1", "filter": {}},
                 "graph": {"nebula_space": "g1"},
                 "wiki": {"s3_prefix": "w1", "vfs_mount": "/wiki/p1/"},
             }
@@ -71,7 +71,7 @@ async def test_invoke_scoped_retrieval_parallel_search():
             {
                 "tenant": "t",
                 "project_id": "p2",
-                "rag": {"qdrant_collection": "c2", "filter": {}},
+                "rag": {"index_namespace": "path_graph_t_p2", "filter": {}},
                 "graph": {"nebula_space": "g2"},
                 "wiki": {"s3_prefix": "w2", "vfs_mount": "/wiki/p2/"},
             }
@@ -80,7 +80,7 @@ async def test_invoke_scoped_retrieval_parallel_search():
 
     out = await invoke_scoped_retrieval(
         "search",
-        {"query": "hello", "collection": "ignored"},
+        {"query": "hello", "index_namespace": "ignored"},
         bindings=bindings,
         call_mcp=fake_call,
     )
@@ -97,7 +97,7 @@ def test_resolve_knowledge_bindings_uses_fetcher():
         return {
             "tenant": tenant,
             "project_id": project_id,
-            "rag": {"qdrant_collection": f"col-{project_id}", "filter": {}},
+            "rag": {"index_namespace": f"path_graph_{tenant}_{project_id}", "filter": {}},
             "graph": {"nebula_space": f"g-{project_id}"},
             "wiki": {"s3_prefix": f"w/{project_id}", "vfs_mount": f"/wiki/{project_id}/"},
         }
@@ -105,7 +105,7 @@ def test_resolve_knowledge_bindings_uses_fetcher():
     bindings = resolve_knowledge_bindings("acme", ["p1", "p2"], fetch_binding=fetch)
     assert len(bindings) == 2
     assert seen == [("acme", "p1"), ("acme", "p2")]
-    assert bindings[0].rag.qdrant_collection == "col-p1"
+    assert bindings[0].rag.index_namespace == "path_graph_acme_p1"
 
 
 def test_resolve_knowledge_bindings_rejects_tenant_mismatch():
@@ -113,7 +113,7 @@ def test_resolve_knowledge_bindings_rejects_tenant_mismatch():
         return {
             "tenant": "other",
             "project_id": project_id,
-            "rag": {"qdrant_collection": "c", "filter": {}},
+            "rag": {"index_namespace": "path_graph_other_x", "filter": {}},
             "graph": {"nebula_space": "g"},
             "wiki": {"s3_prefix": "w", "vfs_mount": "/wiki/"},
         }
@@ -128,7 +128,7 @@ def test_wiki_routes_from_bindings_distinct_mounts():
             {
                 "tenant": "t",
                 "project_id": "p1",
-                "rag": {"qdrant_collection": "c1", "filter": {}},
+                "rag": {"index_namespace": "path_graph_t_a", "filter": {}},
                 "graph": {"nebula_space": "g1"},
                 "wiki": {"s3_prefix": "wiki/p1/", "vfs_mount": "/wiki/a/"},
             }
@@ -137,7 +137,7 @@ def test_wiki_routes_from_bindings_distinct_mounts():
             {
                 "tenant": "t",
                 "project_id": "p2",
-                "rag": {"qdrant_collection": "c2", "filter": {}},
+                "rag": {"index_namespace": "path_graph_t_b", "filter": {}},
                 "graph": {"nebula_space": "g2"},
                 "wiki": {"s3_prefix": "wiki/p2/", "vfs_mount": "/wiki/b/"},
             }

@@ -83,7 +83,7 @@
 | `POST` | `/api/me/api-keys` | 본인 API key 발급 — plain key **1회** | `{name, expires_in_days?}` |
 | `DELETE` | `/api/me/api-keys/{id}` | 본인 key 폐기 (`disabled`) | |
 | `GET` | `/api/me/knowledge-projects` | tenant 소속 pipeline project 목록 (read-only) — general agent `knowledge_project_ids` 선택용 | `role` 무관, `principal.tenant` 필수 |
-| `GET` | `/api/me/knowledge-projects/{id}/binding` | `resolve_knowledge_binding` 미리보기 (collection/space/wiki prefix) | 동일 tenant project만 |
+| `GET` | `/api/me/knowledge-projects/{id}/binding` | `resolve_knowledge_binding` 미리보기 (index_namespace/space/wiki prefix) | 동일 tenant project만 |
 | `GET` | `/api/user-meta` | Postgres SELECT by `(kind,name,version,principal)` 또는 `(source_meta_id, principal)` | admin only |
 | `PUT` | `/api/user-meta` | Postgres UPSERT `(source_meta_id, principal_id)` | admin break-glass / e2e |
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
@@ -140,7 +140,7 @@ admin 전용. `principal.tenant` 필수. blocking path-graph 호출은 `asyncio.
 | `GET` | `/api/pipeline/projects/{id}/search` | hybrid retrieval — `q`, `top_k` (기본 10) |
 | `GET` | `/api/pipeline/projects/{id}/documents` | project 문서 목록 (`?ingest_state=` `?source_id=` `?filename=` contains, 표준 페이지네이션) |
 | `GET` | `/api/pipeline/projects/{id}/tombstones` | tombstone 목록 |
-| `POST` | `/api/pipeline/projects/{id}/reconcile` | PG↔Qdrant↔Nebula reconcile |
+| `POST` | `/api/pipeline/projects/{id}/reconcile` | PG(pgvector)↔Nebula reconcile |
 | `POST` | `/api/pipeline/projects/{id}/cleanup` | artifact cleanup (`{dry_run}`) |
 | `POST` | `/api/pipeline/projects/{id}/purge` | Argo `pipeline-purge-project` 제출 (`202`, `{reason?}`) |
 | `POST` | `/api/pipeline/projects/{id}/delete` | Argo `pipeline-delete-project` 제출 (`202`, purge+PG hard delete) |

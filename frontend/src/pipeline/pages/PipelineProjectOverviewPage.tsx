@@ -66,8 +66,8 @@ export function PipelineProjectOverviewPage() {
           <h3 className="text-sm font-medium text-gray-900 mb-3">Knowledge binding</h3>
           <dl className="text-sm space-y-2">
             <div>
-              <dt className="text-gray-500">Qdrant collection</dt>
-              <dd className="font-mono text-xs">{binding.rag.qdrant_collection}</dd>
+              <dt className="text-gray-500">Index namespace</dt>
+              <dd className="font-mono text-xs">{binding.rag.index_namespace}</dd>
             </div>
             <div>
               <dt className="text-gray-500">Nebula space</dt>
