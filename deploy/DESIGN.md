@@ -95,10 +95,10 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 
 - **레이아웃**: `k8s/base/` (공통 정의) + `k8s/overlays/{dev,prod}` (오버레이 패치).
 - **공용 설정**: `_shared.yaml`의 ConfigMap `runtime-env` — bootstrap 정적 env (서비스 URL, REDIS_URL). 환경별 값은 overlay에서 JSON 패치.
-- **Pipeline lifecycle (backend)**: ConfigMap `runtime-env`에 `QDRANT_URL`·`NEBULA_*`(호스트/포트). Secret `pipeline-infra-secrets`에 `PATH_GRAPH_DSN`·`QDRANT_API_KEY`·`NEBULA_PASSWORD`. dev overlay는 pgbouncer 미사용 시 `PATH_GRAPH_DSN`을 postgres 직접 DSN으로 패치.
+- **Pipeline lifecycle (backend)**: ConfigMap `runtime-env`에 `NEBULA_*`(호스트/포트). Secret `pipeline-infra-secrets`에 `PATH_GRAPH_DSN`·`NEBULA_PASSWORD`. dev overlay는 pgbouncer 미사용 시 `PATH_GRAPH_DSN`을 postgres 직접 DSN으로 패치. 벡터 검색은 runtime Postgres **17 + pgvector** (`pgvector/pgvector:pg17`, `path_graph.chunks.embedding`).
 - **동적 플랫폼 infra**: ConfigMap `runtime-infra` + Secret `runtime-infra-secrets` — admin `PUT /api/infra-meta` 후 backend reconciler가 생성·갱신. pool Deployment 4종 + custom image pool이 `envFrom`(optional)으로 마운트.
 - **리소스 분류**
-  - 메타데이터 DB: `postgres` StatefulSet + Service (PVC 5Gi). **auth / deploy-api만 접근.**
+  - 메타데이터 DB: `postgres` StatefulSet + Service (PVC 5Gi, **PostgreSQL 17 + pgvector**). **auth / deploy-api / path_graph 스키마 공유.**
   - **Redis**: LangGraph 체크포인터 + ext-authz warm-registry 공용.
   - 서비스: `auth`, `deploy-api`, `ext-authz`, `envoy`, `backend`
 - Agent pools (3 정적): `agent-pool-compiled-graph` / `-adk` (`agent-base` 이미지) + `agent-pool-hermes` (`hermes-base`)
