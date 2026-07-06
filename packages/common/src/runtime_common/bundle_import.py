@@ -138,9 +138,12 @@ class _BundleModuleLoader(importlib.abc.Loader):
         return None
 
     def exec_module(self, module: object) -> None:
-        if self.is_package:
+        if self.is_package and self.module_path.is_dir():
             module.__path__ = [str(self.module_path)]  # type: ignore[attr-defined]
             return
+        if self.is_package:
+            module.__path__ = [str(self.module_path.parent)]  # type: ignore[attr-defined]
+        module.__file__ = str(self.module_path)  # type: ignore[attr-defined]
         source = self.module_path.read_text(encoding="utf-8")
         code = compile(source, str(self.module_path), "exec", dont_inherit=True)
         with _BundleImportHook(self.namespace, self.bundle_dir):

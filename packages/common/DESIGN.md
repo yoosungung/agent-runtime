@@ -41,7 +41,7 @@
   - **`bundle_import.py`** — checksum-scoped import namespace. `loader.py` 전용; pool 외부에서 import 하지 않는다.
     - **namespace 이름**: `_rt_bundle_{safe_key}` — `safe_key`는 cache entry key(checksum 또는 `name:version`)에서 `:`/`/` → `_`, 최대 80자.
     - **등록**: 번들 최초 load 시 `MetaPathFinder`를 `sys.meta_path` 맨 앞에 삽입. `_rt_bundle_{key}.*` 모듈만 해당 finder가 처리.
-    - **모듈 해석**: bundle zip 루트 기준 — `foo.py`, `pkg/__init__.py`, `pkg/sub.py`, `pkg/`(implicit namespace 디렉터리) 지원.
+    - **모듈 해석**: bundle zip 루트 기준 — `foo.py`, `pkg/__init__.py`, `pkg/sub.py`, `pkg/`(implicit namespace 디렉터리) 지원. exec 시 `__file__`을 소스 경로로 설정(`Path(__file__)` 패턴 지원). `pkg/__init__.py`는 패키지로 exec; 디렉터리만 있는 implicit namespace는 `__path__`만 설정.
     - **절대 import 리다이렉트**: 모듈 exec 중 `builtins.__import__` hook. `level==0`이고 bundle_dir에 해당 파일/패키지가 있으면 `_rt_bundle_{key}.{name}`으로 import. bundle_dir에 없으면(`httpx`, `runtime_common.*` 등) 표준 import 경로 유지.
     - **상대 import**: hook 개입 없음 — `from .models import X` 등은 Python 기본 규칙(`__package__`)으로 동작.
     - **evict**: `unregister_namespace()` — finder 제거 + `sys.modules`에서 namespace prefix 전체 purge.

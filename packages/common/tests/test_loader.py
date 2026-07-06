@@ -318,6 +318,35 @@ def test_namespace_does_not_add_bundle_dir_to_sys_path(tmp_path):
     assert sys.path == sys_path_before
 
 
+def test_namespace_module_sets_file_for_path_usage(tmp_path):
+    """Bundles often use Path(__file__) at import time (search_bundle pattern)."""
+    cache_dir = str(tmp_path / "cache")
+    loader = BundleLoader(cache_dir=cache_dir, max_entries=8)
+
+    bundle_bytes = _make_zip(
+        {
+            "app.py": (
+                "from pathlib import Path\n"
+                "def factory(): return Path(__file__).name\n"
+            ),
+        }
+    )
+    zip_path = tmp_path / "bundle.zip"
+    zip_path.write_bytes(bundle_bytes)
+    checksum = "sha256:" + hashlib.sha256(bundle_bytes).hexdigest()
+    meta = SourceMeta(
+        kind="mcp",
+        name="file-mod",
+        version="v1",
+        runtime_pool="mcp:mcp_sdk",
+        entrypoint="app:factory",
+        bundle_uri=f"file://{zip_path}",
+        checksum=checksum,
+    )
+
+    assert loader.load(meta)() == "app.py"
+
+
 def test_namespace_nested_package_import(tmp_path):
     cache_dir = str(tmp_path / "cache")
     loader = BundleLoader(cache_dir=cache_dir, max_entries=8)
