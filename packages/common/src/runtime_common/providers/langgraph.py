@@ -62,8 +62,12 @@ def export_llm_api_keys(cfg: dict) -> None:
         if val := cfg.get(cfg_key):
             os.environ[env_key] = val
 
-    # Support preset dynamic mapping (look into both langgraph and adk config sections)
-    model_spec = cfg.get("langgraph", {}).get("model") or cfg.get("adk", {}).get("model")
+    # Support preset dynamic mapping (langgraph, adk, hermes config sections)
+    model_spec = (
+        cfg.get("langgraph", {}).get("model")
+        or cfg.get("adk", {}).get("model")
+        or cfg.get("hermes", {}).get("model")
+    )
     if model_spec and model_spec.startswith("preset:"):
         preset_name = model_spec[len("preset:"):].strip()
         api_key = os.environ.get(f"LLM_PRESET_{preset_name}_API_KEY", "").strip()

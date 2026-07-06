@@ -15,6 +15,7 @@ agents-runtime **Hermes Profile General** tier용 pool. Profile 정본은 **Post
 | MCP | LangChain → Envoy | `runtime_mcp` → Envoy |
 | 파일 저장 | VFS → DeepAgents `backend` | VFS → **pull/scratch/push** → `HERMES_HOME` |
 | 세션 | LangGraph Postgres checkpointer | Hermes SessionDB Postgres |
+| LLM | `prepare_langgraph_llm(cfg)` — `preset:NAME` / `DEFAULT_LLM_MODEL` | `prepare_hermes_llm(cfg)` — 동일 preset registry, Hermes `provider/model` 형식 |
 
 ### `/invoke` 처리
 

@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from hermes_base.schemas import parse_hermes_cfg
+from runtime_common.providers.hermes import prepare_hermes_llm
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,9 @@ def build_config_yaml(cfg: dict, *, session_dsn: str | None = None) -> str:
     }
     if session_dsn:
         hermes_yaml["sessions"]["postgres_dsn"] = session_dsn
-    if hermes.model:
-        hermes_yaml.setdefault("model", {})["default"] = hermes.model
+    model = prepare_hermes_llm(cfg)
+    if model:
+        hermes_yaml.setdefault("model", {})["default"] = model
     return yaml.safe_dump(hermes_yaml, sort_keys=False, allow_unicode=True)
 
 

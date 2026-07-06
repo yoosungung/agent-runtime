@@ -12,6 +12,8 @@ from hermes_base.mcp_bridge import build_runtime_mcp_env
 from hermes_base.profile_scope import profile_runtime_scope
 from hermes_base.schemas import parse_hermes_cfg
 from runtime_common.factory import merge_configs
+from runtime_common.providers.hermes import prepare_hermes_llm
+from runtime_common.factory import merge_configs
 from runtime_common.instance_cache import InstanceCache, make_instance_key
 from runtime_common.schemas import SourceMeta, UserMeta
 from runtime_common.secrets import SecretResolver
@@ -36,10 +38,11 @@ def build_hermes_agent(
     gateway = mcp_gateway_url or os.environ.get("MCP_GATEWAY_URL", "")
     if gateway and hermes.mcp_tools:
         build_runtime_mcp_env(gateway, hermes.mcp_tools)
+    model = prepare_hermes_llm(cfg)
     with profile_runtime_scope(profile_home):
         if agent_factory is not None:
             return agent_factory(
-                model=hermes.model,
+                model=model,
                 enabled_toolsets=hermes.enabled_toolsets,
                 quiet_mode=True,
                 skip_context_files=True,
@@ -52,7 +55,7 @@ def build_hermes_agent(
                 "hermes-agent not installed — run ./scripts/vendor-hermes.sh"
             ) from exc
         return AIAgent(
-            model=hermes.model,
+            model=model,
             enabled_toolsets=hermes.enabled_toolsets,
             quiet_mode=True,
             skip_context_files=True,

@@ -404,7 +404,11 @@ class HermesGeneralSourceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     soul: str = Field(..., min_length=1)
-    model: str = ""
+    model: str = Field(
+        default="",
+        description="LLM model for Hermes AIAgent: 'provider/model', 'provider:model', "
+        "'preset:NAME', or empty to use platform DEFAULT_LLM_MODEL from infra presets.",
+    )
     mcp_servers: list[str] = Field(..., min_length=1)
     mcp_tools: list[McpToolManifestEntry] = Field(default_factory=list)
     enabled_toolsets: list[str] = Field(default_factory=lambda: ["web", "runtime_mcp"])
