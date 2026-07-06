@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-PATH_GRAPH_VERSION = "0.1.3"
+PATH_GRAPH_VERSION = "0.1.4"
 PATH_GRAPH_WHEEL_URL = (
     f"https://github.com/yoosungung/path-graph/releases/download/"
     f"v{PATH_GRAPH_VERSION}/path_graph-{PATH_GRAPH_VERSION}-py3-none-any.whl"
