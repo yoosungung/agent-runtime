@@ -12,6 +12,7 @@ class ChatThreadType(StrEnum):
     LANGGRAPH = "langgraph"
     ADK = "adk"
     CUSTOM = "custom"
+    HERMES = "hermes"
 
 
 def thread_type_from_runtime_pool(runtime_pool: str) -> ChatThreadType:
@@ -25,6 +26,8 @@ def thread_type_from_runtime_pool(runtime_pool: str) -> ChatThreadType:
         return ChatThreadType.ADK
     if parsed.runtime_kind == "custom":
         return ChatThreadType.CUSTOM
+    if parsed.runtime_kind == "hermes":
+        return ChatThreadType.HERMES
     raise ValueError(f"unsupported agent runtime_pool for chat threads: {runtime_pool!r}")
 
 

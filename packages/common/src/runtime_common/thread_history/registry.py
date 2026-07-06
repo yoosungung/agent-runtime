@@ -6,6 +6,7 @@ from runtime_common.chat_threads import ChatThreadType
 from runtime_common.thread_history.adk import AdkThreadHistoryAdapter
 from runtime_common.thread_history.base import UiMessage
 from runtime_common.thread_history.custom import CustomThreadHistoryAdapter
+from runtime_common.thread_history.hermes import HermesThreadHistoryAdapter
 from runtime_common.thread_history.langgraph import LangGraphThreadHistoryAdapter
 
 
@@ -20,6 +21,8 @@ async def load_thread_messages(
         adapter = LangGraphThreadHistoryAdapter()
     elif thread_type == ChatThreadType.ADK:
         adapter = AdkThreadHistoryAdapter(db)
+    elif thread_type == ChatThreadType.HERMES:
+        adapter = HermesThreadHistoryAdapter()
     else:
         adapter = CustomThreadHistoryAdapter()
 

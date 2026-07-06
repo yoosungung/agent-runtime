@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0014_resource_visibility_allowlist.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0015_chat_threads_hermes.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -427,14 +427,21 @@ data:
           WHERE ura.kind = sm.kind
             AND ura.name = sm.name
       );
+  0015_chat_threads_hermes.sql: |
+    -- Allow Hermes profile agents in chat_threads.thread_type.
+
+    ALTER TABLE chat_threads DROP CONSTRAINT IF EXISTS chk_chat_threads_type;
+    ALTER TABLE chat_threads
+        ADD CONSTRAINT chk_chat_threads_type
+        CHECK (thread_type IN ('langgraph', 'adk', 'custom', 'hermes'));
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0014
+  name: db-migrate-0015
   namespace: runtime
   annotations:
-    migration-version: "0014"
+    migration-version: "0015"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -486,6 +493,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0013_vfs_wiki.sql
               echo "Applying /migrations/0014_resource_visibility_allowlist.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0014_resource_visibility_allowlist.sql
+              echo "Applying /migrations/0015_chat_threads_hermes.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0015_chat_threads_hermes.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

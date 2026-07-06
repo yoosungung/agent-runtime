@@ -17,6 +17,7 @@ from runtime_common.chat_threads import (
         ("agent:compiled_graph", ChatThreadType.LANGGRAPH),
         ("agent:adk", ChatThreadType.ADK),
         ("agent:custom:my-bot", ChatThreadType.CUSTOM),
+        ("agent:hermes", ChatThreadType.HERMES),
     ],
 )
 def test_thread_type_from_runtime_pool(runtime_pool: str, expected: ChatThreadType) -> None:

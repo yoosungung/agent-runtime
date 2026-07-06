@@ -158,6 +158,48 @@ async def test_create_thread_pins_latest_agent_version(client: AsyncClient) -> N
 
 
 @pytest.mark.asyncio
+async def test_create_hermes_chat_thread(client: AsyncClient) -> None:
+    from backend.app import app
+
+    async with app.state.session_factory() as session:
+        session.add(
+            SourceMetaRow(
+                id=12,
+                kind="agent",
+                name="hermes-bot",
+                version="v1",
+                runtime_pool="agent:hermes",
+                deploy_mode="hermes_general",
+                config={"hermes": {"soul": "hi", "mcp_servers": ["search-server"]}},
+            )
+        )
+        await session.commit()
+
+    prev = app.state.auth_client.verify.return_value
+    from runtime_common.schemas import Principal
+
+    app.state.auth_client.verify.return_value = Principal.model_validate(
+        {
+            **_USER_PRINCIPAL,
+            "access": [
+                {"kind": "agent", "name": "chat-bot"},
+                {"kind": "agent", "name": "hermes-bot"},
+            ],
+        }
+    )
+    try:
+        create_resp = await client.post(
+            "/api/me/chat/threads",
+            json={"agent_name": "hermes-bot"},
+        )
+    finally:
+        app.state.auth_client.verify.return_value = prev
+
+    assert create_resp.status_code == 201, create_resp.text
+    assert create_resp.json()["thread_type"] == "hermes"
+
+
+@pytest.mark.asyncio
 async def test_create_thread_requires_agent_access(client: AsyncClient) -> None:
     resp = await client.post(
         "/api/me/chat/threads",
