@@ -21,7 +21,7 @@ export interface SourceMeta {
   status: "pending" | "active" | "failed" | "retired";
   created_by_user_id?: number | null;
   owner_tenant?: string | null;
-  visibility?: "private" | "tenant" | "public";
+  visibility?: "private" | "tenant" | "public" | "allowlist";
   chat_selectable?: boolean;
   created_at: string;
   updated_at?: string;
@@ -94,7 +94,7 @@ export function useCreateHermesAgent() {
       skills?: string[];
       model?: string;
       config?: Record<string, unknown>;
-      visibility?: "private" | "tenant" | "public";
+      visibility?: "private" | "tenant" | "public" | "allowlist";
     }) =>
       apiJson<SourceMeta>("/api/source-meta/hermes-general", {
         method: "POST",
@@ -115,7 +115,7 @@ export function usePatchHermesAgent(id: number) {
       skills?: string[];
       model?: string;
       config?: Record<string, unknown>;
-      visibility?: "private" | "tenant" | "public";
+      visibility?: "private" | "tenant" | "public" | "allowlist";
     }) =>
       apiJson<SourceMeta>(`/api/source-meta/hermes-general/${id}`, {
         method: "PATCH",
@@ -139,7 +139,7 @@ export function useCreateGeneralAgent() {
       knowledge_project_ids?: string[];
       delegate_agents?: string[];
       config?: Record<string, unknown>;
-      visibility?: "private" | "tenant" | "public";
+      visibility?: "private" | "tenant" | "public" | "allowlist";
       chat_selectable?: boolean;
     }) =>
       apiJson<SourceMeta>("/api/source-meta/general", {
@@ -161,7 +161,7 @@ export function usePatchGeneralAgent(id: number) {
       knowledge_project_ids?: string[];
       delegate_agents?: string[];
       config?: Record<string, unknown>;
-      visibility?: "private" | "tenant" | "public";
+      visibility?: "private" | "tenant" | "public" | "allowlist";
       chat_selectable?: boolean;
     }) =>
       apiJson<SourceMeta>(`/api/source-meta/general/${id}`, {

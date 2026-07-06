@@ -18,6 +18,7 @@ import {
   formSecondaryButtonClassName,
 } from "../components/FormPageLayout";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { AccessList } from "../components/AccessList";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { canManageGeneralAgent } from "../lib/generalAgent";
 import { parseSkillsInput, readHermesConfig } from "../lib/hermesAgent";
@@ -170,6 +171,10 @@ export function HermesAgentDetailPage() {
             onChange={setVisibility}
             disabled={!canManage || item.retired}
           />
+
+          {visibility === "allowlist" && (
+            <AccessList sourceMetaId={numId} kind="agent" name={item.name} />
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

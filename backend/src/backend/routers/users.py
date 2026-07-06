@@ -12,6 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.access_helpers import require_allowlist_visibility
 from backend.audit import log_event, make_audit_row
 from backend.deps import (
     check_csrf,
@@ -636,17 +637,8 @@ async def grant_user_access(
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Check source_meta.name exists
-    sm_result = await db.execute(
-        select(func.count())
-        .select_from(SourceMetaRow)
-        .where(SourceMetaRow.kind == body.kind, SourceMetaRow.name == body.name)
-    )
-    if sm_result.scalar_one() == 0:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No source_meta found with kind={body.kind}, name={body.name}",
-        )
+    # Verify resource exists and uses allowlist visibility
+    await require_allowlist_visibility(db, body.kind, body.name)
 
     # Idempotent insert
     existing = await db.execute(
@@ -784,6 +776,7 @@ async def bulk_user_access(
 
     if body.action == "grant":
         for item in body.items:
+            await require_allowlist_visibility(db, item.kind, item.name)
             existing = await db.execute(
                 select(UserResourceAccessRow).where(
                     UserResourceAccessRow.user_id == id,

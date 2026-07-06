@@ -15,6 +15,9 @@ export interface CustomImage {
   status: "pending" | "active" | "failed" | "retired";
   deploy_mode: "image";
   chat_selectable?: boolean;
+  visibility?: "private" | "tenant" | "public" | "allowlist";
+  created_by_user_id?: number | null;
+  owner_tenant?: string | null;
   created_at: string;
 }
 
@@ -31,6 +34,7 @@ export interface CustomImageCreateBody {
   env?: Record<string, string>;
   config?: Record<string, unknown>;
   chat_selectable?: boolean;
+  visibility?: "private" | "tenant" | "public" | "allowlist";
 }
 
 export interface CustomImagePatchBody {
@@ -39,6 +43,7 @@ export interface CustomImagePatchBody {
   env?: Record<string, string>;
   config?: Record<string, unknown>;
   chat_selectable?: boolean;
+  visibility?: "private" | "tenant" | "public" | "allowlist";
 }
 
 export function useCustomImageList(kind?: "agent" | "mcp") {

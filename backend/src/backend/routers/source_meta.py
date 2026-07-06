@@ -522,6 +522,9 @@ async def upload_bundle(
     entrypoint = meta_dict.get("entrypoint", "")
     config = meta_dict.get("config", {})
     chat_selectable = bool(meta_dict.get("chat_selectable", True))
+    visibility = str(meta_dict.get("visibility", GeneralVisibility.PRIVATE))
+    owner_tenant = await _resolve_creator_tenant(db, principal)
+    _validate_general_visibility(visibility, owner_tenant)
 
     _validate_kind(kind)
     _validate_name(name)
@@ -556,6 +559,9 @@ async def upload_bundle(
         config=config or {},
         retired=False,
         chat_selectable=chat_selectable if kind == "agent" else True,
+        created_by_user_id=principal.user_id,
+        owner_tenant=owner_tenant,
+        visibility=visibility,
     )
     db.add(row)
     db.add(
@@ -875,6 +881,7 @@ class SourceMetaCreateRequest(BaseModel):
     checksum: str | None = None
     config: dict = {}
     chat_selectable: bool = True
+    visibility: str = GeneralVisibility.PRIVATE
 
 
 @router.post("", response_model=SourceMetaResponse, status_code=201)
@@ -897,6 +904,8 @@ async def create_source_meta(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _validate_delegate_agents(principal, root_cfg.delegate_agents)
+    owner_tenant = await _resolve_creator_tenant(db, principal)
+    _validate_general_visibility(body.visibility, owner_tenant)
 
     # Validate URI scheme
     uri_lower = body.bundle_uri.lower()
@@ -968,6 +977,9 @@ async def create_source_meta(
         config=body.config or {},
         retired=False,
         chat_selectable=body.chat_selectable if body.kind == "agent" else True,
+        created_by_user_id=principal.user_id,
+        owner_tenant=owner_tenant,
+        visibility=body.visibility,
     )
     db.add(row)
     db.add(
@@ -1061,6 +1073,7 @@ class SourceMetaPatchRequest(BaseModel):
     config: dict | None = None
     user_meta_template: dict | None = None
     chat_selectable: bool | None = None
+    visibility: str | None = None
 
 
 @router.patch("/{id}", response_model=SourceMetaResponse)
@@ -1094,6 +1107,13 @@ async def patch_source_meta(
             UserMetaFormTemplate.model_validate(body.user_meta_template)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    if body.visibility is not None:
+        owner_tenant = await _resolve_creator_tenant(db, principal, fallback=row.owner_tenant)
+        _validate_general_visibility(body.visibility, owner_tenant)
+        row.visibility = body.visibility
+        if body.visibility == GeneralVisibility.TENANT:
+            row.owner_tenant = owner_tenant
 
     for field, value in update_data.items():
         setattr(row, field, value)

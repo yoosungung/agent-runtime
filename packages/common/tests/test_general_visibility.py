@@ -4,6 +4,7 @@ from runtime_common.general_visibility import (
     GeneralVisibility,
     can_manage_general_agent,
     can_use_general_agent,
+    can_use_source_meta,
     validate_tenant_visibility,
 )
 
@@ -72,6 +73,33 @@ def test_manage_only_creator_or_admin():
     assert not can_manage_general_agent(created_by_user_id=5, principal_user_id=6)
     assert can_manage_general_agent(
         created_by_user_id=5, principal_user_id=6, is_admin=True
+    )
+
+
+def test_allowlist_requires_acl_row():
+    assert can_use_source_meta(
+        visibility=GeneralVisibility.ALLOWLIST,
+        created_by_user_id=1,
+        owner_tenant="acme",
+        principal_user_id=2,
+        principal_tenant="acme",
+        acl_has_row=True,
+    )
+    assert not can_use_source_meta(
+        visibility=GeneralVisibility.ALLOWLIST,
+        created_by_user_id=1,
+        owner_tenant="acme",
+        principal_user_id=2,
+        principal_tenant="acme",
+        acl_has_row=False,
+    )
+    assert can_use_source_meta(
+        visibility=GeneralVisibility.ALLOWLIST,
+        created_by_user_id=1,
+        owner_tenant="acme",
+        principal_user_id=1,
+        principal_tenant="acme",
+        acl_has_row=False,
     )
 
 

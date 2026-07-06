@@ -588,9 +588,33 @@ class TestLogoutRevoke:
 
 class TestUserBoundApiKeys:
     async def _grant_access(self, session_factory, user_id: int, kind: str, name: str) -> None:
-        from runtime_common.db.models import UserResourceAccessRow
+        from runtime_common.db.models import SourceMetaRow, UserResourceAccessRow
+        from runtime_common.general_visibility import GeneralVisibility
 
         async with session_factory() as session:
+            existing = await session.execute(
+                select(SourceMetaRow).where(
+                    SourceMetaRow.kind == kind,
+                    SourceMetaRow.name == name,
+                    SourceMetaRow.retired.is_(False),
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                session.add(
+                    SourceMetaRow(
+                        kind=kind,
+                        name=name,
+                        version="v1",
+                        runtime_pool=f"{kind}:compiled_graph"
+                        if kind == "agent"
+                        else "mcp:fastmcp",
+                        entrypoint="app:factory" if kind == "mcp" else "app:build",
+                        bundle_uri="s3://bundles/test.zip",
+                        checksum="sha256:" + "a" * 64,
+                        config={},
+                        visibility=GeneralVisibility.ALLOWLIST,
+                    )
+                )
             session.add(UserResourceAccessRow(user_id=user_id, kind=kind, name=name))
             await session.commit()
 

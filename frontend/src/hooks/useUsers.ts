@@ -38,13 +38,17 @@ function buildQuery(params: Record<string, unknown>): string {
   return s ? `?${s}` : "";
 }
 
-export function useUsersList(params: UsersListParams) {
+export function useUsersList(
+  params: UsersListParams,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["users", "list", params],
     queryFn: () =>
       apiJson<PageResponse<User>>(
         `/api/users${buildQuery(params as Record<string, unknown>)}`,
       ),
+    enabled: options?.enabled ?? true,
   });
 }
 

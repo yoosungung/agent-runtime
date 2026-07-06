@@ -425,35 +425,33 @@ async def verify(req: VerifyRequest) -> Principal:
 
 async def _fetch_access(user_id: int) -> list[ResourceRef]:
     from runtime_common.db.models import SourceMetaRow, UserRow
-    from runtime_common.general_visibility import can_use_general_agent
+    from runtime_common.general_visibility import can_use_source_meta
 
     async with session_scope(app.state.session_factory) as session:
         stmt = select(UserResourceAccessRow).where(UserResourceAccessRow.user_id == user_id)
         result = await session.execute(stmt)
         rows = result.scalars().all()
-        access: dict[tuple[str, str], ResourceRef] = {
-            (r.kind, r.name): ResourceRef(kind=r.kind, name=r.name) for r in rows
-        }
+        acl_keys = {(r.kind, r.name) for r in rows}
 
         user_result = await session.execute(select(UserRow).where(UserRow.id == user_id))
         user = user_result.scalar_one_or_none()
         principal_tenant = user.tenant if user else None
 
-        sm_stmt = select(SourceMetaRow).where(
-            SourceMetaRow.deploy_mode == "general",
-            SourceMetaRow.retired.is_(False),
-            SourceMetaRow.kind == "agent",
-        )
+        access: dict[tuple[str, str], ResourceRef] = {}
+
+        sm_stmt = select(SourceMetaRow).where(SourceMetaRow.retired.is_(False))
         sm_result = await session.execute(sm_stmt)
         for row in sm_result.scalars().all():
-            if can_use_general_agent(
+            if not can_use_source_meta(
                 visibility=row.visibility,
                 created_by_user_id=row.created_by_user_id,
                 owner_tenant=row.owner_tenant,
                 principal_user_id=user_id,
                 principal_tenant=principal_tenant,
+                acl_has_row=(row.kind, row.name) in acl_keys,
             ):
-                access[(row.kind, row.name)] = ResourceRef(kind=row.kind, name=row.name)
+                continue
+            access[(row.kind, row.name)] = ResourceRef(kind=row.kind, name=row.name)
 
         return list(access.values())
 

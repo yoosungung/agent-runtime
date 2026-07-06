@@ -149,6 +149,7 @@ _SOURCE_DEFAULTS = {
     "checksum": "sha256:" + "a" * 64,
     "config": {},
     "retired": False,
+    "visibility": "allowlist",
 }
 
 
@@ -545,6 +546,21 @@ async def test_grant_user_access(client: AsyncClient):
         headers=_csrf_headers(),
     )
     assert resp.status_code == 204
+
+
+async def test_grant_user_access_rejects_non_allowlist_visibility(client: AsyncClient):
+    from backend.app import app
+
+    source = await _insert_source(app.state, {"visibility": "private"})
+    user = await _insert_user(app.state, "grant-denied-user")
+
+    resp = await client.post(
+        f"/api/users/{user.id}/access",
+        json={"kind": source.kind, "name": source.name},
+        headers=_csrf_headers(),
+    )
+    assert resp.status_code == 400
+    assert "allowlist" in resp.json()["detail"].lower()
 
 
 async def test_grant_user_access_idempotent(client: AsyncClient):

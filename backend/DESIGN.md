@@ -421,7 +421,7 @@ Admin SPA에서 Postgres VFS 세 영역을 CRUD한다. backend는 `VFS_DSN`(미�
 실패 시 backend는 해당 admin 액션을 500으로 롤백(또는 재시도 큐). 핵심 보안 작업이 "성공했는지 모호"한 상태는 피한다.
 
 **권한(access) 관리 모델**:
-- 행 단위: `(user_id, kind, name)`. kind ∈ {`agent`,`mcp`}, name은 `source_meta.name`과 같은 어휘. 버전별 ACL은 없음(auth DESIGN.md와 동일).
+- 행 단위: `(user_id, kind, name)`. kind ∈ {`agent`,`mcp`}, name은 `source_meta.name`과 같은 어휘. 버전별 ACL은 없음(auth DESIGN.md와 동일). **grant는 `source_meta.visibility=allowlist`일 때만** — 그 외는 visibility 정책이 접근을 결정한다.
 - 부여: source-meta의 `name`이 실제 존재하는지 존재검사 후 INSERT(FK 없는 느슨한 참조이지만 admin 쓰기 경로에서 정합성 책임).
 - 회수: 단일 행 DELETE. 캐스케이드 필요 없음.
 - 대량 부여: `POST /api/users/{id}/access:bulk` 로 `[{kind,name}]` 배열(MVP엔 넣지 않음, 필요해지면 추가).

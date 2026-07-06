@@ -26,7 +26,8 @@ from backend.audit import log_event, make_audit_row
 from backend.deps import check_csrf, get_db, get_settings, require_developer
 from backend.settings import Settings
 from runtime_common.config_schema import KnowledgePolicyConfig
-from runtime_common.db.models import SourceMetaRow
+from runtime_common.db.models import SourceMetaRow, UserRow
+from runtime_common.general_visibility import GeneralVisibility, validate_tenant_visibility
 from runtime_common.schemas import parse_runtime_pool
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,25 @@ def _validate_env(env: dict[str, str] | None) -> dict[str, str]:
     return env
 
 
+def _validate_visibility(visibility: str, owner_tenant: str | None) -> None:
+    if visibility not in {v.value for v in GeneralVisibility}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"visibility must be one of {[v.value for v in GeneralVisibility]}",
+        )
+    try:
+        validate_tenant_visibility(visibility, owner_tenant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _resolve_creator_tenant(db: AsyncSession, principal) -> str | None:
+    if principal.tenant:
+        return principal.tenant
+    result = await db.execute(select(UserRow.tenant).where(UserRow.id == principal.user_id))
+    return result.scalar_one_or_none()
+
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -122,6 +142,7 @@ class CustomImageCreateRequest(BaseModel):
     env: dict[str, str] | None = None
     config: dict = Field(default_factory=dict, description="Source-level default config")
     chat_selectable: bool = True
+    visibility: str = GeneralVisibility.PRIVATE
 
 
 class CustomImagePatchRequest(BaseModel):
@@ -132,6 +153,7 @@ class CustomImagePatchRequest(BaseModel):
     env: dict[str, str] | None = None
     config: dict | None = None
     chat_selectable: bool | None = None
+    visibility: str | None = None
 
 
 class CustomImageResponse(BaseModel):
@@ -149,6 +171,9 @@ class CustomImageResponse(BaseModel):
     deploy_mode: str
     created_at: datetime
     chat_selectable: bool = True
+    visibility: str = GeneralVisibility.PRIVATE
+    created_by_user_id: int | None = None
+    owner_tenant: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -214,6 +239,8 @@ async def create_custom_image(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     deploy_api_url = settings.DEPLOY_API_URL
+    owner_tenant = await _resolve_creator_tenant(db, principal)
+    _validate_visibility(body.visibility, owner_tenant)
 
     # Step (a): validate; step (b): INSERT with status='pending'
     row = SourceMetaRow(
@@ -234,6 +261,9 @@ async def create_custom_image(
         slug=slug,
         status="pending",
         chat_selectable=body.chat_selectable if body.kind == "agent" else True,
+        created_by_user_id=principal.user_id,
+        owner_tenant=owner_tenant,
+        visibility=body.visibility,
     )
     db.add(row)
     db.add(
@@ -414,6 +444,13 @@ async def patch_custom_image(
                 detail="chat_selectable applies to agent resources only",
             )
         row.chat_selectable = body.chat_selectable
+
+    if body.visibility is not None:
+        owner_tenant = await _resolve_creator_tenant(db, principal)
+        _validate_visibility(body.visibility, owner_tenant)
+        row.visibility = body.visibility
+        if body.visibility == GeneralVisibility.TENANT:
+            row.owner_tenant = owner_tenant
 
     db.add(
         make_audit_row(

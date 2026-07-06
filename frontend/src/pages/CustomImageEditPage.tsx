@@ -9,6 +9,9 @@ import { EnvVarEditor } from "../components/EnvVarEditor";
 import { JsonEditor } from "../components/JsonEditor";
 import { McpKnowledgePolicyField } from "../components/McpKnowledgePolicyField";
 import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
+import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { AccessList } from "../components/AccessList";
+import type { ResourceVisibility } from "../lib/generalVisibility";
 import {
   readMcpKnowledgeRequiresProject,
   withMcpKnowledgeRequiresProject,
@@ -38,6 +41,7 @@ export function CustomImageEditPage({ kind }: Props) {
   const [env, setEnv] = useState<Record<string, string>>({});
   const [requiresKnowledgeProject, setRequiresKnowledgeProject] = useState(false);
   const [chatSelectable, setChatSelectable] = useState(true);
+  const [visibility, setVisibility] = useState<ResourceVisibility>("private");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const backPath = kind === "agent" ? "/container/agents" : "/container/mcp";
@@ -47,6 +51,7 @@ export function CustomImageEditPage({ kind }: Props) {
     setConfig(item.config ?? {});
     setEnv(item.env ?? {});
     setChatSelectable(item.chat_selectable ?? true);
+    setVisibility((item.visibility as ResourceVisibility) ?? "private");
     if (kind === "mcp") {
       setRequiresKnowledgeProject(readMcpKnowledgeRequiresProject(item.config ?? {}));
     }
@@ -64,6 +69,7 @@ export function CustomImageEditPage({ kind }: Props) {
       await patchMut.mutateAsync({
         config: patchConfig,
         env,
+        visibility,
         ...(kind === "agent" ? { chat_selectable: chatSelectable } : {}),
       });
       await restartMut.mutateAsync({ kind: item.kind, slug: item.slug });
@@ -128,6 +134,12 @@ export function CustomImageEditPage({ kind }: Props) {
             checked={chatSelectable}
             onChange={setChatSelectable}
           />
+        )}
+
+        <GeneralAgentVisibilityField value={visibility} onChange={setVisibility} />
+
+        {visibility === "allowlist" && (
+          <AccessList sourceMetaId={item.id} kind={kind} name={item.name} />
         )}
 
         <div>

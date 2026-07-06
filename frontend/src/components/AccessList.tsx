@@ -4,6 +4,8 @@ import { useSourceMetaAccess } from "../hooks/useSourceMeta";
 import { useUserAccess, useGrantAccess, useRevokeAccess, useBulkRevokeAccess } from "../hooks/useUsers";
 import { Paginator } from "./Paginator";
 import { UserSearchInput } from "./UserSearchInput";
+import { GeneralAgentVisibilityField } from "./GeneralAgentVisibilityField";
+import type { ResourceVisibility } from "../lib/generalVisibility";
 import { useViewportPagination } from "../hooks/useViewportPagination";
 import { apiJson, type PageResponse } from "../lib/api";
 
@@ -19,6 +21,9 @@ interface Props {
   sourceMetaId?: number;
   kind?: "agent" | "mcp";
   name?: string;
+  visibility?: ResourceVisibility;
+  onVisibilityChange?: (value: ResourceVisibility) => void | Promise<void>;
+  policyDisabled?: boolean;
 }
 
 // Resource-view: show users for a given source_meta
@@ -26,10 +31,16 @@ function ResourceAccessList({
   sourceMetaId,
   kind,
   name,
+  visibility = "private",
+  onVisibilityChange,
+  policyDisabled = false,
 }: {
   sourceMetaId: number;
   kind?: string;
   name?: string;
+  visibility?: ResourceVisibility;
+  onVisibilityChange?: (value: ResourceVisibility) => void | Promise<void>;
+  policyDisabled?: boolean;
 }) {
   const { anchorRef, limit, offset, setOffset } = useViewportPagination({ min: 10 });
   const { data, isLoading, isError } = useSourceMetaAccess(sourceMetaId, {
@@ -37,6 +48,7 @@ function ResourceAccessList({
     offset,
   });
   const [addError, setAddError] = useState<string | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   async function handleGrant(user: { id: number; username: string }) {
@@ -59,12 +71,41 @@ function ResourceAccessList({
   if (isLoading) return <p className="text-sm text-gray-500">Loading...</p>;
   if (isError) return <p className="text-sm text-red-500">Failed to load access list</p>;
 
+  async function handleVisibilityChange(next: ResourceVisibility) {
+    if (!onVisibilityChange) return;
+    setPolicyError(null);
+    try {
+      await onVisibilityChange(next);
+    } catch (e: unknown) {
+      setPolicyError(e instanceof Error ? e.message : "Failed to update access policy");
+    }
+  }
+
   return (
     <div>
+      {onVisibilityChange && (
+        <div className="mb-6 max-w-md">
+          <GeneralAgentVisibilityField
+            value={visibility}
+            onChange={(value) => void handleVisibilityChange(value)}
+            disabled={policyDisabled}
+          />
+          {policyError && <p className="text-sm text-red-600 mt-2">{policyError}</p>}
+        </div>
+      )}
+
+      {visibility !== "allowlist" ? (
+        <p className="text-sm text-gray-600 mb-4">
+          현재 정책에서는 개별 사용자 목록이 적용되지 않습니다. 지정된 사용자만 허용하려면
+          &quot;지정된 사용자 허용&quot;을 선택하세요.
+        </p>
+      ) : (
+        <>
       <div className="mb-3 flex gap-2">
         <UserSearchInput
           onSelect={handleGrant}
           placeholder="Add user by username..."
+          excludeUserIds={data?.items.map((entry) => entry.user_id) ?? []}
         />
       </div>
       {addError && <p className="text-sm text-red-600 mb-2">{addError}</p>}
@@ -120,6 +161,8 @@ function ResourceAccessList({
         />
       )}
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -366,13 +409,24 @@ function UserAccessList({ userId }: { userId: number }) {
   );
 }
 
-export function AccessList({ userId, sourceMetaId, kind, name }: Props) {
+export function AccessList({
+  userId,
+  sourceMetaId,
+  kind,
+  name,
+  visibility,
+  onVisibilityChange,
+  policyDisabled,
+}: Props) {
   if (sourceMetaId !== undefined) {
     return (
       <ResourceAccessList
         sourceMetaId={sourceMetaId}
         kind={kind}
         name={name}
+        visibility={visibility}
+        onVisibilityChange={onVisibilityChange}
+        policyDisabled={policyDisabled}
       />
     );
   }

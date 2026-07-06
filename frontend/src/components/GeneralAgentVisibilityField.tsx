@@ -1,11 +1,11 @@
-import type { GeneralVisibility } from "../lib/generalVisibility";
-import { GENERAL_VISIBILITY_OPTIONS } from "../lib/generalVisibility";
+import type { ResourceVisibility } from "../lib/generalVisibility";
+import { RESOURCE_ACCESS_OPTIONS } from "../lib/generalVisibility";
 import { useSession } from "../hooks/useSession";
 import { formInputClassName } from "./FormPageLayout";
 
 interface Props {
-  value: GeneralVisibility;
-  onChange: (value: GeneralVisibility) => void;
+  value: ResourceVisibility;
+  onChange: (value: ResourceVisibility) => void;
   disabled?: boolean;
 }
 
@@ -16,7 +16,7 @@ export function GeneralAgentVisibilityField({
 }: Props) {
   const { data: session } = useSession();
   const hasTenant = Boolean(session?.tenant);
-  const selectedOption = GENERAL_VISIBILITY_OPTIONS.find((o) => o.value === value);
+  const selectedOption = RESOURCE_ACCESS_OPTIONS.find((o) => o.value === value);
 
   return (
     <div>
@@ -30,10 +30,10 @@ export function GeneralAgentVisibilityField({
         id="general-agent-visibility"
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value as GeneralVisibility)}
+        onChange={(e) => onChange(e.target.value as ResourceVisibility)}
         className={formInputClassName}
       >
-        {GENERAL_VISIBILITY_OPTIONS.map((option) => {
+        {RESOURCE_ACCESS_OPTIONS.map((option) => {
           const tenantDisabled =
             option.value === "tenant" && !hasTenant && !disabled;
           return (
@@ -52,7 +52,7 @@ export function GeneralAgentVisibilityField({
       )}
       {!hasTenant && !disabled && (
         <p className="text-xs text-amber-600 mt-1">
-          계정에 tenant가 없어 &quot;내 테넌트만 사용&quot;을 선택할 수 없습니다.
+          계정에 tenant가 없어 &quot;내 tenant 허용&quot;을 선택할 수 없습니다.
         </p>
       )}
     </div>

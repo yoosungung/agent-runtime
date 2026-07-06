@@ -11,6 +11,7 @@ import { useSession } from "../hooks/useSession";
 import { GeneralAgentKnowledgeProjectsField } from "../components/GeneralAgentKnowledgeProjectsField";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
 import { GeneralAgentChatSelectableField } from "../components/GeneralAgentChatSelectableField";
+import { AccessList } from "../components/AccessList";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import {
@@ -230,6 +231,10 @@ export function GeneralAgentDetailPage() {
           onChange={setVisibility}
           disabled={!canManage}
         />
+
+        {visibility === "allowlist" && item && (
+          <AccessList sourceMetaId={numId} kind="agent" name={item.name} />
+        )}
 
         <GeneralAgentChatSelectableField
           checked={chatSelectable}

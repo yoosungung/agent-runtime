@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0013_vfs_wiki.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0014_resource_visibility_allowlist.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -410,14 +410,31 @@ data:
 
     CREATE INDEX IF NOT EXISTS ix_vfs_wiki_files_parent
         ON vfs_wiki_files (tenant, project_id, parent_path);
+  0014_resource_visibility_allowlist.sql: |
+    -- Extend source_meta.visibility with allowlist; backfill bundle/image ACL resources.
+
+    ALTER TABLE source_meta DROP CONSTRAINT IF EXISTS chk_source_meta_visibility;
+    ALTER TABLE source_meta
+        ADD CONSTRAINT chk_source_meta_visibility
+        CHECK (visibility IN ('private', 'tenant', 'public', 'allowlist'));
+
+    UPDATE source_meta sm
+    SET visibility = 'allowlist'
+    WHERE sm.retired = FALSE
+      AND EXISTS (
+          SELECT 1
+          FROM user_resource_access ura
+          WHERE ura.kind = sm.kind
+            AND ura.name = sm.name
+      );
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0013
+  name: db-migrate-0014
   namespace: runtime
   annotations:
-    migration-version: "0013"
+    migration-version: "0014"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -467,6 +484,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0009_users_tenant_not_null.sql
               echo "Applying /migrations/0013_vfs_wiki.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0013_vfs_wiki.sql
+              echo "Applying /migrations/0014_resource_visibility_allowlist.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0014_resource_visibility_allowlist.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

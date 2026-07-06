@@ -61,9 +61,10 @@ def test_migration_job_includes_vfs_sql() -> None:
     assert "vfs_agent_files" in migration_job
     assert "0013_vfs_wiki.sql:" in migration_job
     assert "vfs_wiki_files" in migration_job
-    assert "0013_vfs_wiki.sql" in migration_job.split("command:")[1]
-    assert 'migration-version: "0013"' in migration_job
-    assert "name: db-migrate-0013" in migration_job
+    assert "0014_resource_visibility_allowlist.sql:" in migration_job
+    assert "0014_resource_visibility_allowlist.sql" in migration_job.split("command:")[1]
+    assert 'migration-version: "0014"' in migration_job
+    assert "name: db-migrate-0014" in migration_job
     assert "app: db-migrate" in migration_job
 
 

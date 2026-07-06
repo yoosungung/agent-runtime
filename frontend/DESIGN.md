@@ -284,7 +284,8 @@ src/
     SignatureUploadDialog.tsx        .sig 교체
     ConfirmDialog.tsx                (+ destructive 변형 지원)
     AccessList.tsx                   (user↔resource 양방향 공유)
-    UserSearchInput.tsx              prefix autocomplete
+    UserSearchInput.tsx              user combobox (browse on focus, prefix search, no autofill)
+    GeneralAgentVisibilityField.tsx  사용 권한 4모드 (private/tenant/public/allowlist)
     ErrorBoundary.tsx                500 전역
   hooks/
     useSession.ts                    GET /api/me (is_admin + must_change_password 포함)

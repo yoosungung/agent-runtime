@@ -43,7 +43,12 @@ function renderResourceAccess() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AccessList sourceMetaId={2} kind="mcp" name="utility-server" />
+      <AccessList
+        sourceMetaId={2}
+        kind="mcp"
+        name="utility-server"
+        visibility="allowlist"
+      />
     </QueryClientProvider>,
   );
 }

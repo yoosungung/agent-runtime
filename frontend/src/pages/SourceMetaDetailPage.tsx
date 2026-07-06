@@ -353,11 +353,15 @@ export function SourceMetaDetailPage({ kind }: Props) {
             />
           )}
 
-          {activeTab === "access" && (
+          {activeTab === "access" && item && (
             <AccessList
               sourceMetaId={numId}
               kind={item.kind}
               name={item.name}
+              visibility={item.visibility ?? "private"}
+              onVisibilityChange={async (next) => {
+                await patchMut.mutateAsync({ visibility: next });
+              }}
             />
           )}
         </div>
