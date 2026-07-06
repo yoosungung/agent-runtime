@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import JSZip from "jszip";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -112,7 +112,6 @@ export function SourceMetaNewPage({ kind }: Props) {
   });
 
   const bundleUri = watch("bundle_uri");
-  const runtimePool = watch("runtime_pool");
   const requiresChecksum =
     bundleUri?.startsWith("s3://") || bundleUri?.startsWith("oci://");
 
@@ -123,12 +122,6 @@ export function SourceMetaNewPage({ kind }: Props) {
     }
     return merged;
   }
-
-  useEffect(() => {
-    if (kind === "mcp" && runtimePool.startsWith("mcp:custom:")) {
-      setRequiresKnowledgeProject(true);
-    }
-  }, [kind, runtimePool]);
 
   async function onSubmitUri(values: FormValues) {
     setGlobalError(null);
