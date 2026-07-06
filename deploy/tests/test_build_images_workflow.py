@@ -48,6 +48,16 @@ def test_backend_dockerfile_uses_wheel_auth_not_copy() -> None:
     assert "UV_INDEX_GITHUB_PASSWORD" in text
 
 
+def test_backend_dockerfile_runtime_stage_includes_hermes_base() -> None:
+    """hermes-base is an editable workspace dep; runtime image must ship its sources."""
+    text = BACKEND_DOCKERFILE.read_text()
+    assert "COPY runtimes/hermes-base" in text
+    assert re.search(
+        r"COPY --from=python-builder /app/runtimes/hermes-base",
+        text,
+    ), "runtime stage must copy hermes-base for editable install .pth"
+
+
 def test_path_graph_rag_mcp_dockerfile_uses_wheel_auth_not_copy() -> None:
     text = RAG_MCP_DOCKERFILE.read_text()
     assert "COPY path-graph/pipeline" not in text

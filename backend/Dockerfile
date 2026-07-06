@@ -44,6 +44,7 @@ WORKDIR /app
 
 COPY --from=python-builder /app/.venv ./.venv
 COPY --from=python-builder /app/packages ./packages
+COPY --from=python-builder /app/runtimes/hermes-base ./runtimes/hermes-base
 COPY --from=python-builder /app/backend ./backend
 COPY --from=frontend-builder /app/frontend/dist ./dist
 
