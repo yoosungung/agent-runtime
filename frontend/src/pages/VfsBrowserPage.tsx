@@ -170,10 +170,10 @@ export function VfsBrowserPage() {
       <div className="flex flex-wrap items-center gap-2 mb-2 text-sm shrink-0">
         <button
           type="button"
-          onClick={() => navigate("/vfs")}
+          onClick={() => navigate("/vfs/agent")}
           className="text-blue-600 hover:underline"
         >
-          VFS
+          Agent
         </button>
         <span className="text-gray-400">/</span>
         <span className="font-medium text-gray-900">{decodedName}</span>

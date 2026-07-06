@@ -18,11 +18,7 @@ export function VfsUsersListPage() {
 
   return (
     <div>
-      <PageHeader title="VFS — User">
-        <button type="button" className="text-sm text-blue-600" onClick={() => navigate("/vfs")}>
-          ← VFS home
-        </button>
-      </PageHeader>
+      <PageHeader title="User" />
       <p className="mb-4 text-sm text-gray-600">
         사용자별 개인 VFS (<code className="text-xs bg-gray-100 px-1 rounded">vfs_user_files</code>
         ).

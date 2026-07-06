@@ -6,6 +6,7 @@ import { queryClient } from "./lib/queryClient";
 import { Layout } from "./components/Layout";
 import { BundleSectionLayout } from "./components/BundleSectionLayout";
 import { ContainerSectionLayout } from "./components/ContainerSectionLayout";
+import { VfsSectionLayout } from "./components/VfsSectionLayout";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireNotForcedChangePassword } from "./components/RequireNotForcedChangePassword";
 import { RequireRole } from "./components/RequireRole";
@@ -57,9 +58,6 @@ const InfraMetaPage = lazy(() =>
 );
 const BucketPage = lazy(() =>
   import("./pages/BucketPage").then((m) => ({ default: m.BucketPage })),
-);
-const VfsLandingPage = lazy(() =>
-  import("./pages/VfsLandingPage").then((m) => ({ default: m.VfsLandingPage })),
 );
 const VfsAgentsListPage = lazy(() =>
   import("./pages/VfsAgentsListPage").then((m) => ({
@@ -273,26 +271,28 @@ export function App() {
                   </Route>
 
                   <Route element={<RequireRole min="admin" />}>
-                    <Route path="/vfs" element={<VfsLandingPage />} />
-                    <Route path="/vfs/agent" element={<VfsAgentsListPage />} />
-                    <Route
-                      path="/vfs/agent/:kind/:name"
-                      element={<VfsBrowserPage />}
-                    />
-                    <Route
-                      path="/vfs/agents/:kind/:name"
-                      element={<VfsBrowserPage />}
-                    />
-                    <Route path="/vfs/user" element={<VfsUsersListPage />} />
-                    <Route
-                      path="/vfs/user/:id"
-                      element={<VfsScopedBrowserPage scope="user" />}
-                    />
-                    <Route path="/vfs/wiki" element={<VfsWikiProjectsListPage />} />
-                    <Route
-                      path="/vfs/wiki/:id"
-                      element={<VfsScopedBrowserPage scope="wiki" />}
-                    />
+                    <Route path="/vfs" element={<Navigate to="/vfs/agent" replace />} />
+                    <Route element={<VfsSectionLayout />}>
+                      <Route path="/vfs/agent" element={<VfsAgentsListPage />} />
+                      <Route
+                        path="/vfs/agent/:kind/:name"
+                        element={<VfsBrowserPage />}
+                      />
+                      <Route
+                        path="/vfs/agents/:kind/:name"
+                        element={<VfsBrowserPage />}
+                      />
+                      <Route path="/vfs/user" element={<VfsUsersListPage />} />
+                      <Route
+                        path="/vfs/user/:id"
+                        element={<VfsScopedBrowserPage scope="user" />}
+                      />
+                      <Route path="/vfs/wiki" element={<VfsWikiProjectsListPage />} />
+                      <Route
+                        path="/vfs/wiki/:id"
+                        element={<VfsScopedBrowserPage scope="wiki" />}
+                      />
+                    </Route>
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<UserNewPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />

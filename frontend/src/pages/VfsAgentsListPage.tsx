@@ -44,11 +44,7 @@ export function VfsAgentsListPage() {
 
   return (
     <div>
-      <PageHeader title="VFS — Agent">
-        <button type="button" className="text-sm text-blue-600" onClick={() => navigate("/vfs")}>
-          ← VFS home
-        </button>
-      </PageHeader>
+      <PageHeader title="Agent" />
 
       <p className="mb-4 text-sm text-gray-600">
         General agent의 공유 영역 <code className="text-xs bg-gray-100 px-1 rounded">/agent/</code>

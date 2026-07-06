@@ -18,11 +18,7 @@ export function VfsWikiProjectsListPage() {
 
   return (
     <div>
-      <PageHeader title="VFS — Wiki">
-        <button type="button" className="text-sm text-blue-600" onClick={() => navigate("/vfs")}>
-          ← VFS home
-        </button>
-      </PageHeader>
+      <PageHeader title="Wiki" />
       <p className="mb-4 text-sm text-gray-600">
         GraphRAG pipeline wiki pages per Knowledge project (
         <code className="text-xs bg-gray-100 px-1 rounded">vfs_wiki_files</code>).
