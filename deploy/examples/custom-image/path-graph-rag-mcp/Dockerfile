@@ -14,7 +14,7 @@ ENV UV_INDEX_GITHUB_USERNAME=x-access-token \
 COPY deploy/examples/custom-image/path-graph-rag-mcp/app.py .
 
 RUN uv pip install --system --no-cache \
-    "path-graph @ https://github.com/yoosungung/path-graph/releases/download/v0.1.4/path_graph-0.1.4-py3-none-any.whl" \
+    "path-graph @ https://github.com/yoosungung/path-graph/releases/download/v0.1.5/path_graph-0.1.5-py3-none-any.whl" \
     "fastapi>=0.115" "uvicorn[standard]>=0.32"
 
 ENV RUNTIME_POOL=mcp:custom:path-graph-rag-v1

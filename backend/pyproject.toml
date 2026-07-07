@@ -17,11 +17,11 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
     "kubernetes-asyncio>=31.0",
-    "path-graph==0.1.4",
+    "path-graph==0.1.5",
 ]
 
 [tool.uv.sources]
-path-graph = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.4/path_graph-0.1.4-py3-none-any.whl" }
+path-graph = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.5/path_graph-0.1.5-py3-none-any.whl" }
 hermes-base = { workspace = true }
 
 [build-system]

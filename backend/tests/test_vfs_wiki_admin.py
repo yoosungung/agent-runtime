@@ -96,14 +96,20 @@ async def test_list_wiki_vfs_projects(wiki_vfs_client: AsyncClient):
     store = MagicMock()
     store.list_projects.return_value = [_project_profile()]
 
-    with patch("backend.routers.vfs_user_wiki._project_store", return_value=store):
+    with (
+        patch("backend.routers.vfs_user_wiki._project_store", return_value=store),
+        patch(
+            "backend.routers.vfs_user_wiki.api_get_binding",
+            return_value={"wiki": {"vfs_mount": "/wiki/Docs/"}},
+        ),
+    ):
         resp = await wiki_vfs_client.get("/api/vfs/wiki/projects")
 
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
     assert data["items"][0]["project_id"] == PROJECT_ID
-    assert data["items"][0]["vfs_mount"] == "/wiki/docs/"
+    assert data["items"][0]["vfs_mount"] == "/wiki/Docs/"
 
 
 @pytest.mark.asyncio

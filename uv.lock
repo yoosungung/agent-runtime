@@ -416,7 +416,7 @@ requires-dist = [
     { name = "hermes-base", editable = "runtimes/hermes-base" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kubernetes-asyncio", specifier = ">=31.0" },
-    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.4/path_graph-0.1.4-py3-none-any.whl" },
+    { name = "path-graph", url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.5/path_graph-0.1.5-py3-none-any.whl" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "runtime-common", editable = "packages/common" },
@@ -3087,8 +3087,8 @@ wheels = [
 
 [[package]]
 name = "path-graph"
-version = "0.1.4"
-source = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.4/path_graph-0.1.4-py3-none-any.whl" }
+version = "0.1.5"
+source = { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.5/path_graph-0.1.5-py3-none-any.whl" }
 dependencies = [
     { name = "boto3" },
     { name = "graspologic-native" },
@@ -3104,7 +3104,7 @@ dependencies = [
     { name = "python-dotenv" },
 ]
 wheels = [
-    { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.4/path_graph-0.1.4-py3-none-any.whl", hash = "sha256:1ae0fd99771928a2df8795d545271901c2be26cb798606b5da1350239f167967" },
+    { url = "https://github.com/yoosungung/path-graph/releases/download/v0.1.5/path_graph-0.1.5-py3-none-any.whl", hash = "sha256:a34bb56082011a7f3d4eed14b0959bfbdbae08796f1af2232a41744b8d42ee6a" },
 ]
 
 [package.metadata]

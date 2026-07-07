@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.audit import log_event, make_audit_row
 from backend.deps import check_csrf, get_db, get_principal, get_settings, require_admin
-from backend.pipeline_domain import ProjectStore
+from backend.pipeline_domain import ProjectStore, api_get_binding
 from backend.routers.pipeline import _project_store
 from backend.routers.vfs import (
     VfsCreateFolderRequest,
@@ -381,7 +381,8 @@ async def list_wiki_vfs_projects(
                 "total_bytes": stats_obj.total_bytes,
                 "last_modified": stats_obj.last_modified,
             }
-        mount = f"/wiki/{profile.slug}/"
+        binding = await asyncio.to_thread(api_get_binding, tenant, profile.id)
+        mount = binding["wiki"]["vfs_mount"]
         items.append(
             VfsWikiProjectSummary(
                 project_id=profile.id,

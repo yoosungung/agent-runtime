@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { VfsBreadcrumbs } from "../components/VfsBreadcrumbs";
+import { usePipelineProject } from "../pipeline/hooks/usePipeline";
 import {
   usePatchVfsUserFile,
   usePatchVfsWikiFile,
@@ -48,6 +49,7 @@ export function VfsScopedBrowserPage({ scope }: { scope: VfsScope }) {
 
   const { entries, file, patch } = useScopedVfs(scope, id, dirPath, selectedPath);
   const items = entries.data?.items ?? [];
+  const { data: wikiProject } = usePipelineProject(scope === "wiki" ? id : undefined);
 
   useEffect(() => {
     if (file.data && !editorDirty) {
@@ -80,7 +82,10 @@ export function VfsScopedBrowserPage({ scope }: { scope: VfsScope }) {
     }
   }
 
-  const title = scope === "user" ? `VFS — User ${id}` : `VFS — Wiki ${id}`;
+  const title =
+    scope === "user"
+      ? `VFS — User ${id}`
+      : `VFS — Wiki ${wikiProject?.name ?? id}`;
   const home = scope === "user" ? "/vfs/user" : "/vfs/wiki";
 
   return (
