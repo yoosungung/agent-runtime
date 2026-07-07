@@ -24,23 +24,10 @@ interface Props {
 const SOURCE_OPTIONS: {
   id: HermesModelSource;
   label: string;
-  description: string;
 }[] = [
-  {
-    id: "platform",
-    label: "플랫폼 기본",
-    description: "Infra Meta의 Default preset을 따릅니다.",
-  },
-  {
-    id: "preset",
-    label: "등록된 Preset",
-    description: "preset:NAME 형식 — 예: preset:CLAUDE_SONNET",
-  },
-  {
-    id: "explicit",
-    label: "모델 직접 지정",
-    description: "provider:model_id — 예: anthropic:claude-sonnet-4-6",
-  },
+  { id: "platform", label: "플랫폼 기본" },
+  { id: "preset", label: "등록된 Preset" },
+  { id: "explicit", label: "모델 직접 지정" },
 ];
 
 const FRONTIER_PROVIDERS: FrontierProvider[] = ["openai", "anthropic", "google"];
@@ -114,33 +101,24 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
     selectedPreset &&
     !isHermesCompatibleContext(selectedPreset.context_window_tokens);
 
-  const storedValue = formatHermesModelValue(form);
-
   return (
     <div className="space-y-3">
-      <fieldset className="space-y-2" disabled={disabled}>
-        <legend className="text-sm font-medium text-gray-700">LLM 모델</legend>
-        <div className="space-y-2">
+      <label className="block space-y-1">
+        <span className="text-sm font-medium text-gray-700">LLM 모델</span>
+        <select
+          id="hermes-model-source"
+          value={form.source}
+          disabled={disabled}
+          onChange={(e) => setSource(e.target.value as HermesModelSource)}
+          className={formInputClassName}
+        >
           {SOURCE_OPTIONS.map((opt) => (
-            <label
-              key={opt.id}
-              className="flex items-start gap-2 rounded border border-gray-200 p-3 cursor-pointer has-checked:border-blue-500 has-checked:bg-blue-50/40"
-            >
-              <input
-                type="radio"
-                name="hermes-model-source"
-                checked={form.source === opt.id}
-                onChange={() => setSource(opt.id)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
-                <span className="block text-xs text-gray-500">{opt.description}</span>
-              </span>
-            </label>
+            <option key={opt.id} value={opt.id}>
+              {opt.label}
+            </option>
           ))}
-        </div>
-      </fieldset>
+        </select>
+      </label>
 
       {form.source === "platform" && (
         <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -166,6 +144,7 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
         <label className="block space-y-1">
           <span className="text-sm font-medium text-gray-700">Preset</span>
           <select
+            id="hermes-model-preset"
             value={form.presetName}
             disabled={disabled || isLoading || !sortedPresets.length}
             onChange={(e) => patch({ presetName: e.target.value })}
@@ -186,17 +165,11 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
               })
             )}
           </select>
-          {selectedPreset && (
-            <span className="text-xs text-gray-500 block">
-              저장 값:{" "}
-              <code className="bg-gray-100 px-1 rounded">preset:{selectedPreset.name}</code>
-            </span>
-          )}
         </label>
       )}
 
       {form.source === "explicit" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(9rem,12rem)_1fr] gap-4">
           <label className="block space-y-1">
             <span className="text-sm font-medium text-gray-700">Provider</span>
             <select
@@ -212,7 +185,7 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
               ))}
             </select>
           </label>
-          <label className="block space-y-1 sm:col-span-2">
+          <label className="block space-y-1">
             <span className="text-sm font-medium text-gray-700">Model ID</span>
             <input
               type="text"
@@ -222,12 +195,6 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
               placeholder={EXPLICIT_PLACEHOLDERS[form.provider]}
               className={formInputClassName}
             />
-            <span className="text-xs text-gray-500 block">
-              저장 값:{" "}
-              <code className="bg-gray-100 px-1 rounded">
-                {form.provider}:{form.modelId || "…"}
-              </code>
-            </span>
           </label>
         </div>
       )}
@@ -237,12 +204,6 @@ export function HermesModelField({ value, onChange, disabled = false }: Props) {
           Hermes Agent는 context window가 최소{" "}
           {formatContextTokens(HERMES_MIN_CONTEXT_TOKENS)} tokens 이상이어야 합니다. 16k SLM
           preset은 사용할 수 없습니다.
-        </p>
-      )}
-
-      {storedValue && (
-        <p className="text-xs text-gray-500">
-          config: <code className="bg-gray-100 px-1 rounded">{storedValue}</code>
         </p>
       )}
     </div>
