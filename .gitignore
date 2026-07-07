@@ -62,3 +62,4 @@ secrets/
 
 .claude/worktrees
 .data/
+bundles/**/*.zip

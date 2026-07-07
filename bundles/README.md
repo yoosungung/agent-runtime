@@ -35,6 +35,29 @@ pool pod의 `BundleLoader`는 checksum별 namespace(`_rt_bundle_{checksum}`)로 
 
 상세: [packages/common/DESIGN.md](../packages/common/DESIGN.md) `bundle_import.py`.
 
+## zip 만들기
+
+`entrypoint`가 `app:build_server` / `app:build_agent`이면 **`app.py`가 zip 루트**에 있어야 한다. 디렉터리 이름으로 한 겹 감싸면 pool import가 실패한다.
+
+```bash
+# 예: bundles/mcp/search_bundle → bundles/mcp/search_bundle.zip
+cd bundles/mcp/search_bundle
+zip -r ../search_bundle.zip . -x '*/__pycache__/*' '*.pyc' '*/__MACOSX/*'
+
+# 다른 번들도 동일 — <bundle_dir> 안에서 zip -r <출력.zip> .
+cd bundles/mcp/email_bundle
+zip -r ../email_bundle.zip . -x '*/__pycache__/*' '*.pyc' '*/__MACOSX/*'
+```
+
+잘못된 예 (루트에 `search_bundle/app.py`가 들어감):
+
+```bash
+# repo 루트나 상위에서 디렉터리 이름을 넣지 말 것
+zip -r search_bundle.zip search_bundle   # ❌
+```
+
+e2e 헬퍼와 동일: [deploy/examples/tests/e2e/lib.sh](../deploy/examples/tests/e2e/lib.sh) `build_bundle_zip`.
+
 ## 배포
 
 배포 절차 정본: [deploy/examples/mcp-base/README.md](../deploy/examples/mcp-base/README.md) (zip → upload → `source_meta` 등록 → ACL·`user_meta`).
