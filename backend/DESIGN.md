@@ -331,7 +331,7 @@ Admin SPA에서 Postgres VFS 세 영역을 CRUD한다. backend는 `VFS_DSN`(미�
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/vfs/agents` | general agent 목록 + VFS 집계 |
+| GET | `/api/vfs/agents` | general·hermes_general agent 목록 + VFS 집계 |
 | GET | `/api/vfs/agents/{kind}/{name}/entries` | `list_dir` (`path` query) |
 | GET | `/api/vfs/agents/{kind}/{name}/files` | 파일 읽기 |
 | PUT | `/api/vfs/agents/{kind}/{name}/files` | 신규 파일 생성 |

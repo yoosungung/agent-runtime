@@ -5,6 +5,7 @@ export interface VfsAgentSummary {
   kind: string;
   name: string;
   version: string;
+  deploy_mode: "general" | "hermes_general";
   visibility: string;
   retired: boolean;
   vfs_enabled: boolean;

@@ -41,6 +41,28 @@ def _make_test_settings(**overrides):
     return _settings_mod.Settings(**{**defaults, **overrides})
 
 
+async def _seed_hermes_agent(session_factory, *, name: str = "hermes-bot") -> None:
+    async with session_factory() as session:
+        session.add(
+            SourceMetaRow(
+                kind="agent",
+                name=name,
+                version="v1",
+                runtime_pool="agent:hermes",
+                deploy_mode="hermes_general",
+                visibility="public",
+                config={
+                    "hermes": {
+                        "soul": "Hermes soul.",
+                        "mcp_servers": ["search-server"],
+                        "skills": ["plan"],
+                    }
+                },
+            )
+        )
+        await session.commit()
+
+
 async def _seed_general_agent(session_factory, *, name: str = "docs-bot") -> None:
     async with session_factory() as session:
         session.add(
@@ -120,6 +142,42 @@ async def vfs_client(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_vfs_agents_includes_hermes(vfs_client: AsyncClient):
+    from backend.app import app
+
+    await _seed_hermes_agent(app.state.session_factory)
+
+    resp = await vfs_client.get("/api/vfs/agents")
+    assert resp.status_code == 200
+    names = {item["name"] for item in resp.json()["items"]}
+    assert "docs-bot" in names
+    assert "hermes-bot" in names
+    hermes = next(i for i in resp.json()["items"] if i["name"] == "hermes-bot")
+    assert hermes["deploy_mode"] == "hermes_general"
+    assert hermes["vfs_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_vfs_file_crud_hermes_agent(vfs_client: AsyncClient):
+    from backend.app import app
+
+    await _seed_hermes_agent(app.state.session_factory)
+    base = "/api/vfs/agents/agent/hermes-bot"
+
+    resp = await vfs_client.put(
+        f"{base}/files",
+        headers=_csrf_headers(),
+        json={"path": "/profile/SOUL.md", "content": "Hermes soul."},
+    )
+    assert resp.status_code == 201
+
+    resp = await vfs_client.get(f"{base}/entries", params={"path": "/profile"})
+    assert resp.status_code == 200
+    names = [item["name"] for item in resp.json()["items"]]
+    assert "SOUL.md" in names
+
+
+@pytest.mark.asyncio
 async def test_list_vfs_agents(vfs_client: AsyncClient):
     resp = await vfs_client.get("/api/vfs/agents")
     assert resp.status_code == 200
@@ -128,6 +186,7 @@ async def test_list_vfs_agents(vfs_client: AsyncClient):
     assert len(items) == 1
     assert data["total"] == 1
     assert items[0]["name"] == "docs-bot"
+    assert items[0]["deploy_mode"] == "general"
     assert items[0]["vfs_enabled"] is True
 
 

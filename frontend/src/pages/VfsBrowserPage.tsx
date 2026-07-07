@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
 import { VfsBreadcrumbs } from "../components/VfsBreadcrumbs";
@@ -23,6 +23,9 @@ function formatDate(iso: string | null): string {
 export function VfsBrowserPage() {
   const { kind = "agent", name = "" } = useParams<{ kind: string; name: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const deployMode = (location.state as { deploy_mode?: string } | null)?.deploy_mode;
+  const isHermes = deployMode === "hermes_general";
   const decodedName = decodeURIComponent(name);
 
   const [dirPath, setDirPath] = useState("/");
@@ -180,7 +183,7 @@ export function VfsBrowserPage() {
       </div>
 
       <div className="shrink-0">
-      <PageHeader title={`${decodedName} — /agent/`}>
+      <PageHeader title={`${decodedName} — ${isHermes ? "/profile/" : "/agent/"}`}>
         <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
           Shared VFS
         </span>

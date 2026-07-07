@@ -26,11 +26,14 @@ router = APIRouter(
     dependencies=[Depends(require_admin), Depends(check_csrf)],
 )
 
+_VFS_AGENT_DEPLOY_MODES = ("general", "hermes_general")
+
 
 class VfsAgentSummary(BaseModel):
     kind: str
     name: str
     version: str
+    deploy_mode: str
     visibility: str
     retired: bool
     vfs_enabled: bool
@@ -96,7 +99,10 @@ def _validate_vfs_path(path: str) -> str:
     return normalize_path(path)
 
 
-def _vfs_enabled(config: dict[str, Any]) -> bool:
+def _vfs_enabled(row: SourceMetaRow) -> bool:
+    if row.deploy_mode == "hermes_general":
+        return True
+    config = row.config or {}
     general = config.get("general") or {}
     vfs = general.get("vfs") or {}
     return vfs.get("enabled", True)
@@ -145,7 +151,7 @@ async def _fetch_vfs_stats(store: AgentVfsStore) -> dict[tuple[str, str], dict[s
     }
 
 
-async def _latest_general_agents(
+async def _latest_vfs_agents(
     db: AsyncSession,
     *,
     name_prefix: str | None,
@@ -157,7 +163,10 @@ async def _latest_general_agents(
             SourceMetaRow.name,
             func.max(SourceMetaRow.version).label("max_version"),
         )
-        .where(SourceMetaRow.deploy_mode == "general", SourceMetaRow.kind == "agent")
+        .where(
+            SourceMetaRow.deploy_mode.in_(_VFS_AGENT_DEPLOY_MODES),
+            SourceMetaRow.kind == "agent",
+        )
         .group_by(SourceMetaRow.kind, SourceMetaRow.name)
         .subquery()
     )
@@ -169,7 +178,10 @@ async def _latest_general_agents(
             & (SourceMetaRow.name == latest_version.c.name)
             & (SourceMetaRow.version == latest_version.c.max_version),
         )
-        .where(SourceMetaRow.deploy_mode == "general", SourceMetaRow.kind == "agent")
+        .where(
+            SourceMetaRow.deploy_mode.in_(_VFS_AGENT_DEPLOY_MODES),
+            SourceMetaRow.kind == "agent",
+        )
     )
     if name_prefix:
         q = q.where(SourceMetaRow.name.startswith(name_prefix))
@@ -180,13 +192,11 @@ async def _latest_general_agents(
     return list(result.scalars().all())
 
 
-async def _get_general_agent_row(
-    db: AsyncSession, kind: str, name: str
-) -> SourceMetaRow | None:
+async def _get_vfs_agent_row(db: AsyncSession, kind: str, name: str) -> SourceMetaRow | None:
     result = await db.execute(
         select(SourceMetaRow)
         .where(
-            SourceMetaRow.deploy_mode == "general",
+            SourceMetaRow.deploy_mode.in_(_VFS_AGENT_DEPLOY_MODES),
             SourceMetaRow.kind == kind,
             SourceMetaRow.name == name,
         )
@@ -226,7 +236,7 @@ async def list_vfs_agents(
 ) -> VfsAgentsListResponse:
     limit = min(limit, 100)
     store = _get_agent_store(request)
-    rows = await _latest_general_agents(db, name_prefix=name or None, include_retired=include_retired)
+    rows = await _latest_vfs_agents(db, name_prefix=name or None, include_retired=include_retired)
     stats = await _fetch_vfs_stats(store)
     total = len(rows)
     page_rows = rows[offset : offset + limit]
@@ -235,9 +245,10 @@ async def list_vfs_agents(
             kind=row.kind,
             name=row.name,
             version=row.version,
+            deploy_mode=row.deploy_mode,
             visibility=row.visibility,
             retired=row.retired,
-            vfs_enabled=_vfs_enabled(row.config),
+            vfs_enabled=_vfs_enabled(row),
             file_count=stats.get((row.kind, row.name), {}).get("file_count", 0),
             total_bytes=stats.get((row.kind, row.name), {}).get("total_bytes", 0),
             last_modified=stats.get((row.kind, row.name), {}).get("last_modified"),
@@ -256,9 +267,9 @@ async def list_vfs_entries(
     db: AsyncSession = Depends(get_db),
     _principal: Principal = Depends(require_admin),  # noqa: B008
 ) -> VfsEntriesListResponse:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     store = _get_agent_store(request)
     dir_path = normalize_dir(_validate_vfs_path(path))
     entries = await store.list_dir(kind, name, dir_path)
@@ -274,9 +285,9 @@ async def read_vfs_file(
     db: AsyncSession = Depends(get_db),
     _principal: Principal = Depends(require_admin),  # noqa: B008
 ) -> VfsFileResponse:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     store = _get_agent_store(request)
     norm = _validate_vfs_path(path)
     record = await store.read(kind, name, norm)
@@ -300,9 +311,9 @@ async def create_vfs_file(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> VfsFileResponse:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     store = _get_agent_store(request)
     norm = _validate_vfs_path(body.path)
     _check_content_size(body.content, settings)
@@ -351,9 +362,9 @@ async def patch_vfs_file(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> VfsFileResponse:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     store = _get_agent_store(request)
     norm = _validate_vfs_path(body.path)
     record = await store.read(kind, name, norm)
@@ -414,9 +425,9 @@ async def delete_vfs_path(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> None:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     store = _get_agent_store(request)
     norm = _validate_vfs_path(path)
     await store.delete_tree(kind, name, norm)
@@ -450,9 +461,9 @@ async def create_vfs_folder(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> VfsEntryResponse:
-    row = await _get_general_agent_row(db, kind, name)
+    row = await _get_vfs_agent_row(db, kind, name)
     if row is None:
-        raise HTTPException(status_code=404, detail="General agent not found")
+        raise HTTPException(status_code=404, detail="VFS agent not found")
     if not body.name or "/" in body.name or ".." in body.name:
         raise HTTPException(status_code=400, detail="Invalid folder name")
     parent = normalize_dir(_validate_vfs_path(body.parent_path))

@@ -3,9 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { Paginator } from "../components/Paginator";
 import { PageHeader } from "../components/PageHeader";
 import { useViewportPagination } from "../hooks/useViewportPagination";
-import { useVfsAgents } from "../hooks/useVfs";
+import { useVfsAgents, type VfsAgentSummary } from "../hooks/useVfs";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { formatVfsSize, vfsAgentBrowserPath } from "../lib/vfsPaths";
+
+function vfsDeployModeLabel(deployMode: VfsAgentSummary["deploy_mode"]): string {
+  return deployMode === "hermes_general" ? "Hermes" : "General";
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -47,8 +51,10 @@ export function VfsAgentsListPage() {
       <PageHeader title="Agent" />
 
       <p className="mb-4 text-sm text-gray-600">
-        General agent의 공유 영역 <code className="text-xs bg-gray-100 px-1 rounded">/agent/</code>
-        를 관리합니다. VFS는 agent name 기준으로 공유되며 버전별로 분리되지 않습니다.
+        General·Hermes agent의 공유 VFS를 관리합니다. General은 런타임 마운트{" "}
+        <code className="text-xs bg-gray-100 px-1 rounded">/agent/</code>, Hermes profile은{" "}
+        <code className="text-xs bg-gray-100 px-1 rounded">/profile/</code> 아래에 저장됩니다.
+        VFS는 agent name 기준으로 공유되며 버전별로 분리되지 않습니다.
       </p>
 
       <div className="bg-white shadow rounded-lg p-4 mb-4 flex flex-col sm:flex-row gap-4 sm:items-end flex-wrap">
@@ -79,6 +85,7 @@ export function VfsAgentsListPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Visibility</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">VFS</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Files</th>
@@ -89,22 +96,22 @@ export function VfsAgentsListPage() {
             <tbody className="divide-y divide-gray-200">
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
                     Loading…
                   </td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-red-600">
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-red-600">
                     Failed to load agents
                   </td>
                 </tr>
               )}
               {!isLoading && !isError && items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
-                    No general agents found
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                    No VFS agents found
                   </td>
                 </tr>
               )}
@@ -112,7 +119,11 @@ export function VfsAgentsListPage() {
                 <tr
                   key={`${item.kind}/${item.name}`}
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => navigate(vfsAgentBrowserPath(item.kind, item.name))}
+                  onClick={() =>
+                    navigate(vfsAgentBrowserPath(item.kind, item.name), {
+                      state: { deploy_mode: item.deploy_mode },
+                    })
+                  }
                 >
                   <td className="px-4 py-3 text-sm font-medium text-blue-700">
                     {item.name}
@@ -121,6 +132,9 @@ export function VfsAgentsListPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{item.version}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {vfsDeployModeLabel(item.deploy_mode)}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {generalVisibilityLabel(item.visibility)}
                   </td>
