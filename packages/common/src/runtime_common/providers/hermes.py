@@ -91,6 +91,15 @@ def _is_custom_openai_base(base_url: str) -> bool:
     return base_url.rstrip("/").lower() not in {b.lower() for b in _OPENAI_DEFAULT_BASES}
 
 
+def _frontier_openai_base_url(preset_prefix: str | None) -> str:
+    """Frontier OpenAI presets use the official API unless the preset sets API_BASE."""
+    if preset_prefix:
+        preset_base = os.environ.get(f"{preset_prefix}_API_BASE", "").strip()
+        if preset_base:
+            return preset_base
+    return "https://api.openai.com/v1"
+
+
 def _custom_binding(
     *,
     model_id: str,
@@ -151,11 +160,16 @@ def resolve_hermes_llm_binding(cfg: dict) -> HermesLlmBinding:
     provider, _, _ = hermes_model.partition("/")
 
     if provider == "openai" and api_key:
+        openai_base = (
+            _frontier_openai_base_url(preset_prefix)
+            if mode == "frontier"
+            else (base_url or "https://api.openai.com/v1")
+        )
         return HermesLlmBinding(
             model=hermes_model,
             provider="openai",
             api_key=api_key,
-            base_url=base_url or "https://api.openai.com/v1",
+            base_url=openai_base,
             context_length=context_length,
         )
     if provider == "anthropic" and anthropic_key:

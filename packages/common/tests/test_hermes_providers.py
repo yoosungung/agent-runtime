@@ -94,3 +94,18 @@ def test_resolve_hermes_llm_binding_frontier_openai(monkeypatch: pytest.MonkeyPa
     assert binding.provider == "openai"
     assert binding.api_key == "sk-openai"
     assert binding.base_url == "https://api.openai.com/v1"
+
+
+def test_resolve_hermes_llm_binding_frontier_ignores_global_openai_api_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Frontier preset must not inherit pool-wide OPENAI_API_BASE from default self-hosted preset."""
+    monkeypatch.setenv("OPENAI_API_BASE", "http://sglang-gemma4-12b.llm-serving.svc.cluster.local:30000/v1")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_MODE", "frontier")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_MODEL_ID", "gpt-5.4-mini")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_API_KEY", "sk-openai")
+    binding = hp.resolve_hermes_llm_binding({"hermes": {"model": "preset:GPT_MINI"}})
+    assert binding.model == "openai/gpt-5.4-mini"
+    assert binding.provider == "openai"
+    assert binding.base_url == "https://api.openai.com/v1"
