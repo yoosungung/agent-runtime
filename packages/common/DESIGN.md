@@ -68,7 +68,7 @@
     - **`providers/adk.py`** (Google ADK)
       - `get_model(cfg)` — cfg 의 model 명세를 분석하여 반환. `preset:NAME` 형식을 지원하여 해당 프리셋의 환경변수(`LLM_PRESET_{NAME}_*`)로부터 provider 및 model_id를 동적으로 조합합니다. 명시적 스펙이 없으면 `DEFAULT_LLM_MODEL` 환경 변수 값을 사용합니다.
     - **`providers/hermes.py`** (Hermes AIAgent)
-      - `prepare_hermes_llm(cfg)` — `cfg.hermes.model`의 `preset:NAME`·명시 스펙·`DEFAULT_LLM_MODEL` fallback을 resolve하고 `LLM_PRESET_*` API key를 env에 바인딩한 뒤 Hermes 형식(`provider/model`)으로 반환.
+      - `prepare_hermes_llm(cfg)` / `resolve_hermes_llm_binding(cfg)` — `cfg.hermes.model`의 `preset:NAME`·명시 스펙·`DEFAULT_LLM_MODEL` fallback을 resolve하고 `LLM_PRESET_*` API key를 env에 바인딩. `openai_compatible`·커스텀 `OPENAI_API_BASE`는 Hermes `provider=custom` + explicit `api_key`/`base_url`로 반환 (`HERMES_MIN_CONTEXT_LENGTH` 적용).
       - `get_max_llm_calls(cfg)` — 단순 값 추출.
       - `build_generate_content_config(cfg)` — `cfg.adk.{temperature, max_output_tokens, top_p, top_k}` → `genai_types.GenerateContentConfig`.
       - `build_session_service(cfg, secrets)` — `cfg.adk.session_service` 기본 **`database`**. DSN `secrets["SESSION_DB_DSN"]` → `postgresql+asyncpg://` 로 정규화 후 ADK ``DatabaseSessionService`` 에 전달.

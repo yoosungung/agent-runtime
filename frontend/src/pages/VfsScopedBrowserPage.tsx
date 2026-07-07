@@ -18,10 +18,12 @@ import { formatVfsSize, normalizeVfsDir } from "../lib/vfsPaths";
 type VfsScope = "user" | "wiki";
 
 function useScopedVfs(scope: VfsScope, id: string, dirPath: string, selectedPath: string | null) {
-  const userEntries = useVfsUserEntries(id, dirPath);
-  const wikiEntries = useVfsWikiEntries(id, dirPath);
-  const userFile = useVfsUserFile(id, selectedPath);
-  const wikiFile = useVfsWikiFile(id, selectedPath);
+  const isUser = scope === "user";
+  const isWiki = scope === "wiki";
+  const userEntries = useVfsUserEntries(id, dirPath, isUser);
+  const wikiEntries = useVfsWikiEntries(id, dirPath, isWiki);
+  const userFile = useVfsUserFile(id, selectedPath, isUser);
+  const wikiFile = useVfsWikiFile(id, selectedPath, isWiki);
   const patchUser = usePatchVfsUserFile(id);
   const patchWiki = usePatchVfsWikiFile(id);
   if (scope === "user") {
@@ -100,6 +102,9 @@ export function VfsScopedBrowserPage({ scope }: { scope: VfsScope }) {
         <div className="rounded border border-gray-200">
           <ul className="divide-y text-sm">
             {entries.isLoading && <li className="px-3 py-2 text-gray-500">Loading…</li>}
+            {entries.isError && (
+              <li className="px-3 py-2 text-red-600">Failed to load entries</li>
+            )}
             {items.map((entry) => (
               <li
                 key={entry.path}

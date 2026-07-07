@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -11,10 +11,10 @@ from typing import Any
 from hermes_base.mcp_bridge import build_runtime_mcp_env
 from hermes_base.profile_scope import profile_runtime_scope
 from hermes_base.schemas import parse_hermes_cfg
-from runtime_common.factory import merge_configs
-from runtime_common.providers.hermes import prepare_hermes_llm
+
 from runtime_common.factory import merge_configs
 from runtime_common.instance_cache import InstanceCache, make_instance_key
+from runtime_common.providers.hermes import resolve_hermes_llm_binding
 from runtime_common.schemas import SourceMeta, UserMeta
 from runtime_common.secrets import SecretResolver
 
@@ -38,16 +38,24 @@ def build_hermes_agent(
     gateway = mcp_gateway_url or os.environ.get("MCP_GATEWAY_URL", "")
     if gateway and hermes.mcp_tools:
         build_runtime_mcp_env(gateway, hermes.mcp_tools)
-    model = prepare_hermes_llm(cfg)
+    llm = resolve_hermes_llm_binding(cfg)
     with profile_runtime_scope(profile_home):
+        agent_kwargs: dict[str, Any] = {
+            "model": llm.model,
+            "enabled_toolsets": hermes.enabled_toolsets,
+            "quiet_mode": True,
+            "skip_context_files": True,
+            "max_iterations": hermes.max_iterations,
+            "platform": "runtime",
+        }
+        if llm.provider:
+            agent_kwargs["provider"] = llm.provider
+        if llm.api_key:
+            agent_kwargs["api_key"] = llm.api_key
+        if llm.base_url:
+            agent_kwargs["base_url"] = llm.base_url
         if agent_factory is not None:
-            return agent_factory(
-                model=model,
-                enabled_toolsets=hermes.enabled_toolsets,
-                quiet_mode=True,
-                skip_context_files=True,
-                max_iterations=hermes.max_iterations,
-            )
+            return agent_factory(**agent_kwargs)
         try:
             from run_agent import AIAgent  # type: ignore[import-untyped]  # vendored hermes-agent
         except ImportError as exc:
@@ -55,7 +63,10 @@ def build_hermes_agent(
                 "hermes-agent not installed — run ./scripts/vendor-hermes.sh"
             ) from exc
         return AIAgent(
-            model=model,
+            model=llm.model,
+            provider=llm.provider,
+            api_key=llm.api_key,
+            base_url=llm.base_url,
             enabled_toolsets=hermes.enabled_toolsets,
             quiet_mode=True,
             skip_context_files=True,

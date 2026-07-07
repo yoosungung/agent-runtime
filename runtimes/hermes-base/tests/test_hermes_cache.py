@@ -42,8 +42,31 @@ def test_build_hermes_agent_uses_factory(tmp_path: Path) -> None:
     assert kwargs["enabled_toolsets"] == ["web"]
 
 
+def test_build_hermes_agent_openai_compatible_passes_credentials(tmp_path: Path, monkeypatch) -> None:
+    factory = MagicMock(return_value=object())
+    monkeypatch.setenv("LLM_PRESET_SLM_MODE", "openai_compatible")
+    monkeypatch.setenv("LLM_PRESET_SLM_MODEL_ID", "meta-llama/Llama-3")
+    monkeypatch.setenv("LLM_PRESET_SLM_API_KEY", "sk-local")
+    monkeypatch.setenv("LLM_PRESET_SLM_API_BASE", "http://llm.local/v1")
+    cfg = {
+        "hermes": {
+            "soul": "hi",
+            "mcp_servers": ["mcp-a"],
+            "model": "preset:SLM",
+        }
+    }
+    build_hermes_agent(cfg, EnvSecretResolver(), profile_home=tmp_path, agent_factory=factory)
+    kwargs = factory.call_args.kwargs
+    assert kwargs["model"] == "custom/meta-llama/Llama-3"
+    assert kwargs["provider"] == "custom"
+    assert kwargs["api_key"] == "sk-local"
+    assert kwargs["base_url"] == "http://llm.local/v1"
+
+
 def test_build_hermes_agent_uses_default_llm_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     factory = MagicMock(return_value=object())
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:gpt-5.4-nano")
     cfg = {
         "hermes": {

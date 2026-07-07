@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from hermes_base.schemas import parse_hermes_cfg
-from runtime_common.providers.hermes import prepare_hermes_llm
+
+from runtime_common.providers.hermes import resolve_hermes_llm_binding
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +46,12 @@ def build_config_yaml(cfg: dict, *, session_dsn: str | None = None) -> str:
     }
     if session_dsn:
         hermes_yaml["sessions"]["postgres_dsn"] = session_dsn
-    model = prepare_hermes_llm(cfg)
-    if model:
-        hermes_yaml.setdefault("model", {})["default"] = model
+    llm = resolve_hermes_llm_binding(cfg)
+    if llm.model:
+        model_section: dict[str, Any] = {"default": llm.model}
+        if llm.context_length:
+            model_section["context_length"] = llm.context_length
+        hermes_yaml.setdefault("model", {}).update(model_section)
     return yaml.safe_dump(hermes_yaml, sort_keys=False, allow_unicode=True)
 
 

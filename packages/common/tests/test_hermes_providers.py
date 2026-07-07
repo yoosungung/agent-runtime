@@ -39,7 +39,7 @@ def test_prepare_hermes_llm_exports_preset_keys(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("LLM_PRESET_TEST_PRESET_API_BASE", "http://llm.local/v1")
     cfg = {"hermes": {"model": "preset:TEST_PRESET"}}
     model = hp.prepare_hermes_llm(cfg)
-    assert model == "openai/meta-llama/Llama-3"
+    assert model == "custom/meta-llama/Llama-3"
     assert os.environ["OPENAI_API_KEY"] == "sk-preset"
     assert os.environ["OPENAI_API_BASE"] == "http://llm.local/v1"
 
@@ -50,3 +50,47 @@ def test_export_llm_api_keys_reads_hermes_preset(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("LLM_PRESET_HERMES_PRESET_API_KEY", "sk-ant")
     export_llm_api_keys({"hermes": {"model": "preset:HERMES_PRESET"}})
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant"
+
+
+def test_resolve_hermes_llm_binding_openai_compatible_preset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_PRESET_GEMMA_MODE", "openai_compatible")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_MODEL_ID", "meta-llama/Llama-3")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_CONTEXT_WINDOW", "16000")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_API_KEY", "sk-local")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_API_BASE", "http://sglang.local/v1")
+    binding = hp.resolve_hermes_llm_binding({"hermes": {"model": "preset:GEMMA"}})
+    assert binding.model == "custom/meta-llama/Llama-3"
+    assert binding.provider == "custom"
+    assert binding.api_key == "sk-local"
+    assert binding.base_url == "http://sglang.local/v1"
+    assert binding.context_length == hp.HERMES_MIN_CONTEXT_LENGTH
+
+
+def test_resolve_hermes_llm_binding_platform_default_custom_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:meta-llama/Llama-3")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_MODEL_ID", "meta-llama/Llama-3")
+    monkeypatch.setenv("LLM_PRESET_GEMMA_CONTEXT_WINDOW", "16000")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-local")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://sglang.local/v1")
+    binding = hp.resolve_hermes_llm_binding({"hermes": {"model": ""}})
+    assert binding.provider == "custom"
+    assert binding.model == "custom/meta-llama/Llama-3"
+    assert binding.context_length == hp.HERMES_MIN_CONTEXT_LENGTH
+
+
+def test_resolve_hermes_llm_binding_frontier_openai(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_MODE", "frontier")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_MODEL_ID", "gpt-4o-mini")
+    monkeypatch.setenv("LLM_PRESET_GPT_MINI_API_KEY", "sk-openai")
+    binding = hp.resolve_hermes_llm_binding({"hermes": {"model": "preset:GPT_MINI"}})
+    assert binding.model == "openai/gpt-4o-mini"
+    assert binding.provider == "openai"
+    assert binding.api_key == "sk-openai"
+    assert binding.base_url == "https://api.openai.com/v1"

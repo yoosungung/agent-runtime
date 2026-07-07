@@ -194,10 +194,11 @@ export function useVfsWikiProjects(filters?: { limit?: number; offset?: number }
   });
 }
 
-export function useVfsUserEntries(userId: string, path: string) {
+export function useVfsUserEntries(userId: string, path: string, enabled = true) {
   const params = new URLSearchParams({ path });
   return useQuery({
     queryKey: ["vfs", "user", "entries", userId, path],
+    enabled: enabled && Boolean(userId),
     queryFn: () =>
       apiJson<{ items: VfsEntry[] }>(
         `/api/vfs/users/${encodeURIComponent(userId)}/entries?${params}`,
@@ -205,10 +206,10 @@ export function useVfsUserEntries(userId: string, path: string) {
   });
 }
 
-export function useVfsUserFile(userId: string, path: string | null) {
+export function useVfsUserFile(userId: string, path: string | null, enabled = true) {
   return useQuery({
     queryKey: ["vfs", "user", "file", userId, path ?? ""],
-    enabled: !!path,
+    enabled: enabled && Boolean(userId) && !!path,
     queryFn: () =>
       apiJson<VfsFile>(
         `/api/vfs/users/${encodeURIComponent(userId)}/files?path=${encodeURIComponent(path!)}`,
@@ -231,10 +232,11 @@ export function usePatchVfsUserFile(userId: string) {
   });
 }
 
-export function useVfsWikiEntries(projectId: string, path: string) {
+export function useVfsWikiEntries(projectId: string, path: string, enabled = true) {
   const params = new URLSearchParams({ path });
   return useQuery({
     queryKey: ["vfs", "wiki", "entries", projectId, path],
+    enabled: enabled && Boolean(projectId),
     queryFn: () =>
       apiJson<{ items: VfsEntry[] }>(
         `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/entries?${params}`,
@@ -242,10 +244,10 @@ export function useVfsWikiEntries(projectId: string, path: string) {
   });
 }
 
-export function useVfsWikiFile(projectId: string, path: string | null) {
+export function useVfsWikiFile(projectId: string, path: string | null, enabled = true) {
   return useQuery({
     queryKey: ["vfs", "wiki", "file", projectId, path ?? ""],
-    enabled: !!path,
+    enabled: enabled && Boolean(projectId) && !!path,
     queryFn: () =>
       apiJson<VfsFile>(
         `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(path!)}`,
