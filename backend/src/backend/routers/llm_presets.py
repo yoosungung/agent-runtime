@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/llm-presets",
     tags=["llm-presets"],
-    dependencies=[Depends(require_admin), Depends(check_csrf)],
 )
 
 PRESET_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -94,13 +93,16 @@ class LlmPresetUpdateRequest(BaseModel):
 
 
 @router.get("", response_model=list[LlmPresetResponse])
-async def list_llm_presets(db: AsyncSession = Depends(get_db)) -> list[LlmPresetResponse]:
+async def list_llm_presets(
+    db: AsyncSession = Depends(get_db),
+    _principal: Principal = Depends(get_principal),
+) -> list[LlmPresetResponse]:
     result = await db.execute(select(LlmPresetRow).order_by(LlmPresetRow.name))
     rows = result.scalars().all()
     return [LlmPresetResponse.model_validate(row) for row in rows]
 
 
-@router.post("", response_model=LlmPresetResponse)
+@router.post("", response_model=LlmPresetResponse, dependencies=[Depends(require_admin), Depends(check_csrf)])
 async def create_llm_preset(
     body: LlmPresetCreateRequest,
     request: Request,
@@ -167,14 +169,18 @@ async def create_llm_preset(
 
 
 @router.get("/{preset_id}", response_model=LlmPresetResponse)
-async def get_llm_preset(preset_id: int, db: AsyncSession = Depends(get_db)) -> LlmPresetResponse:
+async def get_llm_preset(
+    preset_id: int,
+    db: AsyncSession = Depends(get_db),
+    _principal: Principal = Depends(get_principal),
+) -> LlmPresetResponse:
     row = await db.get(LlmPresetRow, preset_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Preset not found")
     return LlmPresetResponse.model_validate(row)
 
 
-@router.put("/{preset_id}", response_model=LlmPresetResponse)
+@router.put("/{preset_id}", response_model=LlmPresetResponse, dependencies=[Depends(require_admin), Depends(check_csrf)])
 async def update_llm_preset(
     preset_id: int,
     body: LlmPresetUpdateRequest,
@@ -238,7 +244,7 @@ async def update_llm_preset(
     return LlmPresetResponse.model_validate(row)
 
 
-@router.delete("/{preset_id}")
+@router.delete("/{preset_id}", dependencies=[Depends(require_admin), Depends(check_csrf)])
 async def delete_llm_preset(
     preset_id: int,
     request: Request,

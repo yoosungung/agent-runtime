@@ -33,6 +33,14 @@ vi.mock("../hooks/useSourceMeta", () => ({
   }),
 }));
 
+vi.mock("../hooks/useLlmPresets", () => ({
+  useLlmPresets: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -51,5 +59,6 @@ describe("HermesAgentNewPage", () => {
     expect(screen.getByText("Soul (SOUL.md)")).toBeInTheDocument();
     expect(screen.getByText("search-server")).toBeInTheDocument();
     expect(screen.getByText("/profile/SOUL.md")).toBeInTheDocument();
+    expect(screen.getByText("LLM 모델")).toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ import {
   formSecondaryButtonClassName,
 } from "../components/FormPageLayout";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { HermesModelField } from "../components/HermesModelField";
 import { AccessList } from "../components/AccessList";
 import { generalVisibilityLabel } from "../lib/generalVisibility";
 import { canManageGeneralAgent } from "../lib/generalAgent";
@@ -189,17 +190,11 @@ export function HermesAgentDetailPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Model
-            </label>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              disabled={!canManage || item.retired}
-              className={formInputClassName}
-            />
-          </div>
+          <HermesModelField
+            value={model}
+            onChange={setModel}
+            disabled={!canManage || item.retired}
+          />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

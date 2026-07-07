@@ -89,7 +89,8 @@
 | `DELETE` | `/api/user-meta/{id}` | Postgres DELETE | |
 | `GET` | `/api/infra-meta` | Postgres SELECT global infra row | secret 값 없음, `secret_keys`만 |
 | `PUT` | `/api/infra-meta` | Postgres UPSERT + K8s reconcile | `{env?, secrets?}` — secrets는 K8s Secret만, DB에는 key 이름 |
-| `GET` | `/api/llm-presets` | Postgres SELECT all presets | admin only |
+| `GET` | `/api/llm-presets` | Postgres SELECT all presets | 로그인 사용자 (preset 선택 UI용) |
+| `GET` | `/api/llm-presets/{id}` | Postgres SELECT one preset | 로그인 사용자 |
 | `POST` | `/api/llm-presets` | Postgres INSERT + K8s reconcile | `{name, description?, mode, model_id, api_key?, ...}` |
 | `PUT` | `/api/llm-presets/{id}` | Postgres UPDATE + K8s reconcile | `{description?, mode, model_id, api_key?, ...}` |
 | `DELETE` | `/api/llm-presets/{id}` | Postgres DELETE + K8s reconcile | |

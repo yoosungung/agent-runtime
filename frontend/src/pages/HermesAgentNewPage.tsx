@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useCreateHermesAgent } from "../hooks/useSourceMeta";
 import { useMyAccessResources } from "../hooks/useMyUserMeta";
 import { JsonEditor } from "../components/JsonEditor";
@@ -14,6 +14,7 @@ import {
   formSecondaryButtonClassName,
 } from "../components/FormPageLayout";
 import { GeneralAgentVisibilityField } from "../components/GeneralAgentVisibilityField";
+import { HermesModelField } from "../components/HermesModelField";
 import type { GeneralVisibility } from "../lib/generalVisibility";
 import { parseSkillsInput } from "../lib/hermesAgent";
 import {
@@ -43,6 +44,7 @@ export function HermesAgentNewPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     defaultValues: {
@@ -159,16 +161,13 @@ export function HermesAgentNewPage() {
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Model (optional)
-            </label>
-            <input
-              {...register("model")}
-              className={formInputClassName}
-              placeholder="openai/gpt-4o"
-            />
-          </div>
+          <Controller
+            name="model"
+            control={control}
+            render={({ field }) => (
+              <HermesModelField value={field.value} onChange={field.onChange} />
+            )}
+          />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
