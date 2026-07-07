@@ -48,7 +48,7 @@ def _default_top_k(cfg: dict[str, Any]) -> int:
 async def _run_search(arguments: dict[str, Any], *, default_top_k: int) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
     if not query:
-        return {"results": []}
+        return {"hits": [], "results": []}
 
     tenant = str(arguments.get("tenant") or "")
     project_id = str(arguments.get("project_id") or "")
@@ -60,17 +60,31 @@ async def _run_search(arguments: dict[str, Any], *, default_top_k: int) -> dict[
         )
 
     top_k = int(arguments.get("top_k") or default_top_k)
-    from path_graph.console.rag import hybrid_search
+    mode = str(arguments.get("mode") or "auto")
+    include_graph = bool(arguments.get("include_graph", False))
+    sub_queries = arguments.get("sub_queries") or []
+    if isinstance(sub_queries, str):
+        sub_queries = [sub_queries]
 
-    results = await asyncio.to_thread(
-        hybrid_search,
-        tenant=tenant,
-        project_id=project_id,
-        project_slug=project_slug,
-        query=query,
+    from path_graph.admin.retrieval import api_search_project
+
+    payload = await asyncio.to_thread(
+        api_search_project,
+        tenant,
+        project_id,
+        query,
         top_k=top_k,
+        mode=mode,
+        include_graph=include_graph,
+        sub_queries=sub_queries or None,
     )
-    return {"results": results}
+    return {
+        "hits": payload.get("hits") or [],
+        "results": payload.get("results") or payload.get("hits") or [],
+        "mode_resolved": payload.get("mode_resolved"),
+        "graph_context": payload.get("graph_context"),
+        "sub_queries": payload.get("sub_queries") or [],
+    }
 
 
 @app.get("/healthz")

@@ -41,12 +41,13 @@ def scope_search_arguments(
     scoped["project_id"] = binding.project_id
     scoped["project_slug"] = binding.project_slug
     scoped["nebula_space"] = binding.graph.nebula_space
+    scoped.setdefault("mode", "auto")
     return scoped
 
 
 def _normalize_search_results(payload: Any, *, project_id: str) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
-        rows = payload.get("results") or payload.get("hits") or payload.get("items") or []
+        rows = payload.get("hits") or payload.get("results") or payload.get("items") or []
     elif isinstance(payload, list):
         rows = payload
     else:
@@ -58,6 +59,7 @@ def _normalize_search_results(payload: Any, *, project_id: str) -> list[dict[str
         else:
             item = {"content": row}
         item.setdefault("id", item.get("chunk_id") or item.get("id") or f"{project_id}:{idx}")
+        item.setdefault("kind", item.get("kind") or "chunk")
         item["project_id"] = project_id
         out.append(item)
     return out

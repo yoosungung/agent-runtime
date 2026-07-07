@@ -26,8 +26,12 @@ def test_healthz() -> None:
 
 def test_invoke_search() -> None:
     client = TestClient(app)
-    with patch("path_graph.rag.hybrid_search.hybrid_search") as mock_search:
-        mock_search.return_value = [{"id": "c1", "text": "hit", "rrf_score": 0.5}]
+    with patch("path_graph.admin.retrieval.api_search_project") as mock_search:
+        mock_search.return_value = {
+            "hits": [{"id": "c1", "kind": "chunk", "text": "hit", "rrf_score": 0.5}],
+            "results": [{"id": "c1", "kind": "chunk", "text": "hit", "rrf_score": 0.5}],
+            "mode_resolved": "basic",
+        }
         cfg_b64 = base64.b64encode(
             json.dumps({"path_graph_rag": {"default_top_k": 5}}).encode()
         ).decode()
@@ -42,6 +46,7 @@ def test_invoke_search() -> None:
                     "tenant": "dev",
                     "project_id": "p1",
                     "project_slug": "default",
+                    "mode": "auto",
                 },
             },
         )

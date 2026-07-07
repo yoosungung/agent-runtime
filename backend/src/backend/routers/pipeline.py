@@ -601,12 +601,20 @@ async def search_project(
     store: ProjectStore = Depends(_project_store),  # noqa: B008
     q: str = Query(..., min_length=1),
     top_k: int = Query(10, ge=1, le=50),
+    mode: str = Query("auto"),
+    include_graph: bool = Query(False),
 ) -> dict[str, Any]:
     tenant = _require_tenant(principal)
     await _require_project(tenant, project_id, store)
     try:
         return await asyncio.to_thread(
-            api_search_project, tenant, project_id, q, top_k=top_k
+            api_search_project,
+            tenant,
+            project_id,
+            q,
+            top_k=top_k,
+            mode=mode,
+            include_graph=include_graph,
         )
     except ValueError as exc:
         msg = str(exc)
