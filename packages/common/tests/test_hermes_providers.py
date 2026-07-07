@@ -32,6 +32,12 @@ def test_to_hermes_model_format_converts_colon_spec() -> None:
     assert hp.to_hermes_model_format("openai/gpt-4o") == "openai/gpt-4o"
 
 
+def test_model_id_from_spec_strips_provider_prefix() -> None:
+    assert hp.model_id_from_spec("openai:gpt-4o") == "gpt-4o"
+    assert hp.model_id_from_spec("openai/gpt-4o") == "gpt-4o"
+    assert hp.model_id_from_spec("gpt-4o") == "gpt-4o"
+
+
 def test_prepare_hermes_llm_exports_preset_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_PRESET_TEST_PRESET_MODE", "openai_compatible")
     monkeypatch.setenv("LLM_PRESET_TEST_PRESET_MODEL_ID", "meta-llama/Llama-3")
@@ -91,6 +97,7 @@ def test_resolve_hermes_llm_binding_frontier_openai(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("LLM_PRESET_GPT_MINI_API_KEY", "sk-openai")
     binding = hp.resolve_hermes_llm_binding({"hermes": {"model": "preset:GPT_MINI"}})
     assert binding.model == "openai/gpt-4o-mini"
+    assert binding.agent_model == "gpt-4o-mini"
     assert binding.provider == "openai"
     assert binding.api_key == "sk-openai"
     assert binding.base_url == "https://api.openai.com/v1"
@@ -107,5 +114,6 @@ def test_resolve_hermes_llm_binding_frontier_ignores_global_openai_api_base(
     monkeypatch.setenv("LLM_PRESET_GPT_MINI_API_KEY", "sk-openai")
     binding = hp.resolve_hermes_llm_binding({"hermes": {"model": "preset:GPT_MINI"}})
     assert binding.model == "openai/gpt-5.4-mini"
+    assert binding.agent_model == "gpt-5.4-mini"
     assert binding.provider == "openai"
     assert binding.base_url == "https://api.openai.com/v1"

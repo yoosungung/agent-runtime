@@ -24,8 +24,10 @@ def test_profile_runtime_scope_sets_home(tmp_path: Path) -> None:
     assert get_active_home() is None
 
 
-def test_build_hermes_agent_uses_factory(tmp_path: Path) -> None:
+def test_build_hermes_agent_uses_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     factory = MagicMock(return_value=object())
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
     cfg = {
         "hermes": {
             "soul": "hi",
@@ -38,8 +40,27 @@ def test_build_hermes_agent_uses_factory(tmp_path: Path) -> None:
     factory.assert_called_once()
     kwargs = factory.call_args.kwargs
     assert kwargs["model"] == "openai/gpt-4o"
+    assert kwargs.get("provider") is None
     assert kwargs["quiet_mode"] is True
     assert kwargs["enabled_toolsets"] == ["web"]
+
+
+def test_build_hermes_agent_explicit_openai_uses_bare_model_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = MagicMock(return_value=object())
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+    cfg = {
+        "hermes": {
+            "soul": "hi",
+            "mcp_servers": ["mcp-a"],
+            "model": "openai/gpt-4o",
+        }
+    }
+    build_hermes_agent(cfg, EnvSecretResolver(), profile_home=tmp_path, agent_factory=factory)
+    kwargs = factory.call_args.kwargs
+    assert kwargs["model"] == "gpt-4o"
+    assert kwargs["provider"] == "openai"
 
 
 def test_build_hermes_agent_openai_compatible_passes_credentials(tmp_path: Path, monkeypatch) -> None:
@@ -66,7 +87,7 @@ def test_build_hermes_agent_openai_compatible_passes_credentials(tmp_path: Path,
 def test_build_hermes_agent_uses_default_llm_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     factory = MagicMock(return_value=object())
     monkeypatch.delenv("OPENAI_API_BASE", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
     monkeypatch.setenv("DEFAULT_LLM_MODEL", "openai:gpt-5.4-nano")
     cfg = {
         "hermes": {
@@ -75,7 +96,7 @@ def test_build_hermes_agent_uses_default_llm_model(tmp_path: Path, monkeypatch: 
         }
     }
     build_hermes_agent(cfg, EnvSecretResolver(), profile_home=tmp_path, agent_factory=factory)
-    assert factory.call_args.kwargs["model"] == "openai/gpt-5.4-nano"
+    assert factory.call_args.kwargs["model"] == "gpt-5.4-nano"
 
 
 def test_hermes_instance_key() -> None:

@@ -30,6 +30,18 @@ class HermesLlmBinding:
     api_key: str | None = None
     base_url: str | None = None
     context_length: int | None = None
+    model_id: str | None = None
+
+    @property
+    def agent_model(self) -> str:
+        """Bare model id for AIAgent when frontier credentials are explicit.
+
+        ``model`` keeps ``provider/model_id`` slash form for Hermes config files;
+        official OpenAI/Anthropic APIs reject the provider prefix on the wire.
+        """
+        if self.provider in ("openai", "anthropic") and self.model_id:
+            return self.model_id
+        return self.model
 
 
 def _hermes_model_spec(cfg: dict) -> str | None:
@@ -61,6 +73,15 @@ def to_hermes_model_format(spec: str) -> str:
     if ":" in spec:
         provider, _, model_id = spec.partition(":")
         return f"{provider}/{model_id}"
+    return spec
+
+
+def model_id_from_spec(spec: str) -> str:
+    """Extract bare model id from colon or slash provider specs."""
+    if ":" in spec:
+        return spec.split(":", 1)[1]
+    if "/" in spec:
+        return spec.split("/", 1)[1]
     return spec
 
 
@@ -113,6 +134,7 @@ def _custom_binding(
         api_key=api_key,
         base_url=base_url,
         context_length=context_length or HERMES_MIN_CONTEXT_LENGTH,
+        model_id=model_id,
     )
 
 
@@ -132,8 +154,7 @@ def resolve_hermes_llm_binding(cfg: dict) -> HermesLlmBinding:
     model_id_from_preset = (
         os.environ.get(f"{preset_prefix}_MODEL_ID", "").strip() if preset_prefix else ""
     )
-    model_id_from_spec = spec.split(":", 1)[1] if ":" in spec else spec
-    model_id = model_id_from_preset or model_id_from_spec
+    model_id = model_id_from_preset or model_id_from_spec(spec)
 
     if mode == "openai_compatible" and api_key and base_url:
         return _custom_binding(
@@ -171,6 +192,7 @@ def resolve_hermes_llm_binding(cfg: dict) -> HermesLlmBinding:
             api_key=api_key,
             base_url=openai_base,
             context_length=context_length,
+            model_id=model_id,
         )
     if provider == "anthropic" and anthropic_key:
         return HermesLlmBinding(
@@ -178,9 +200,10 @@ def resolve_hermes_llm_binding(cfg: dict) -> HermesLlmBinding:
             provider="anthropic",
             api_key=anthropic_key,
             context_length=context_length,
+            model_id=model_id,
         )
 
-    return HermesLlmBinding(model=hermes_model)
+    return HermesLlmBinding(model=hermes_model, model_id=model_id or None)
 
 
 def prepare_hermes_llm(cfg: dict) -> str:

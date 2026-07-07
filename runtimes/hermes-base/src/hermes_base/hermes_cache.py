@@ -41,7 +41,7 @@ def build_hermes_agent(
     llm = resolve_hermes_llm_binding(cfg)
     with profile_runtime_scope(profile_home):
         agent_kwargs: dict[str, Any] = {
-            "model": llm.model,
+            "model": llm.agent_model,
             "enabled_toolsets": hermes.enabled_toolsets,
             "quiet_mode": True,
             "skip_context_files": True,
@@ -63,7 +63,7 @@ def build_hermes_agent(
                 "hermes-agent not installed — run ./scripts/vendor-hermes.sh"
             ) from exc
         return AIAgent(
-            model=llm.model,
+            model=llm.agent_model,
             provider=llm.provider,
             api_key=llm.api_key,
             base_url=llm.base_url,
