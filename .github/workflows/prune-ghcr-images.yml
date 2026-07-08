@@ -20,6 +20,8 @@ jobs:
           - agent-runtime/ext-authz
           - agent-runtime/agent-base
           - agent-runtime/mcp-base
+          - agent-runtime/hermes-base
+          - agent-runtime/path-graph-rag-mcp
     steps:
       - name: Keep only latest version (${{ matrix.package }})
         uses: actions/delete-package-versions@v5

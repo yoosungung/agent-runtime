@@ -318,6 +318,8 @@ Release publish로 빌드:
 
 ```bash
 gh release create v0.2.0 --title "v0.2.0" --target main
+make build-images-wait
+gh workflow run prune-ghcr-images.yml   # GHCR 이전 OCI 버전 삭제 (패키지당 최신 1개 유지)
 ```
 
 로컬 `docker build` + `docker push`는 GHCR `write:packages` PAT가 필요하다. pull 전용 PAT(`registry-creds`)로는 push 불가 — **GHA 사용을 권장**.
