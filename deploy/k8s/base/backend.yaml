@@ -67,6 +67,14 @@ spec:
                   name: postgres-credentials
                   key: VFS_DSN
                   optional: true
+            - name: VFS_PGBOUNCER
+              value: "true"
+            - name: CHECKPOINTER_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: VFS_DSN
+                  optional: true
           volumeMounts:
             - name: initial-admin-password
               mountPath: /run/secrets/initial-admin-password

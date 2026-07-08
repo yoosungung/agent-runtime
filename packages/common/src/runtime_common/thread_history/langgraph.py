@@ -119,7 +119,7 @@ class LangGraphThreadHistoryAdapter:
                 msg = raw
             role = _message_role(msg)
             content = _message_content(msg)
-            if role is None or content is None:
+            if role is None or content is None or not content.strip():
                 continue
             messages.append(UiMessage(role=role, content=content))
         return messages

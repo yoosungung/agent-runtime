@@ -256,7 +256,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.vfs_user_store = vfs_user_store
     app.state.vfs_wiki_store = vfs_wiki_store
 
+    checkpointer_dsn = (settings.CHECKPOINTER_DSN or settings.VFS_DSN).replace(
+        "postgresql+asyncpg://", "postgresql://"
+    )
+    if checkpointer_dsn:
+        from runtime_common.providers.pg_infra import init_checkpointer
+
+        pgbouncer = settings.VFS_PGBOUNCER or settings.POSTGRES_PGBOUNCER
+        await init_checkpointer(checkpointer_dsn, pgbouncer=pgbouncer)
+        logger.info("checkpointer_initialized for chat thread hydrate")
+
     yield
+
+    if checkpointer_dsn:
+        from runtime_common.providers.pg_infra import close_checkpointer
+
+        await close_checkpointer()
 
     if vfs_pool is not None:
         await vfs_pool.close()

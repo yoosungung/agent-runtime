@@ -253,6 +253,47 @@ async def test_get_messages_returns_empty_without_provider_data(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_get_messages_hydrates_langgraph_checkpoint(client: AsyncClient) -> None:
+    from langgraph.checkpoint.base import empty_checkpoint
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from runtime_common.providers import pg_infra
+
+    pg_infra.reset_registry()
+    saver = MemorySaver()
+    pg_infra.set_shared_checkpointer(saver)
+
+    session_id = "sess-restore-test"
+    config = {"configurable": {"thread_id": session_id, "checkpoint_ns": ""}}
+    checkpoint = empty_checkpoint()
+    checkpoint["channel_values"] = {
+        "messages": [
+            {"type": "human", "content": "Hello world"},
+            {"type": "ai", "content": "Hi there"},
+        ],
+    }
+    checkpoint["channel_versions"] = {"messages": 1}
+    await saver.aput(config, checkpoint, {}, {"messages": 1})
+
+    try:
+        create_resp = await client.post(
+            "/api/me/chat/threads",
+            json={"agent_name": "chat-bot", "session_id": session_id},
+        )
+        assert create_resp.status_code == 201
+        created = create_resp.json()
+
+        messages_resp = await client.get(f"/api/me/chat/threads/{created['id']}/messages")
+        assert messages_resp.status_code == 200
+        assert messages_resp.json()["messages"] == [
+            {"role": "user", "content": "Hello world"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+    finally:
+        pg_infra.reset_registry()
+
+
+@pytest.mark.asyncio
 async def test_cannot_access_other_users_thread(client: AsyncClient) -> None:
     from backend.app import app
     from runtime_common.schemas import Principal

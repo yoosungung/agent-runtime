@@ -75,7 +75,7 @@
 | `GET` | `/api/me/chat/threads/{id}` | thread 상세 + `session_id` + `agent_version` | 소유권 검증 |
 | `DELETE` | `/api/me/chat/threads/{id}` | soft delete (`deleted_at`) | |
 | `POST` | `/api/me/chat/threads/{id}/touch` | `title`·`last_message_at` 갱신 | |
-| `GET` | `/api/me/chat/threads/{id}/messages` | provider adapter로 UI 메시지 hydrate | read-only runtime PG |
+| `GET` | `/api/me/chat/threads/{id}/messages` | provider adapter로 UI 메시지 hydrate | read-only runtime PG (`CHECKPOINTER_DSN` 또는 `VFS_DSN`으로 lifespan `init_checkpointer`) |
 | `GET` | `/api/me/user-meta` | 본인 `user_meta` + template | ACL `kind`+`name` |
 | `PUT` | `/api/me/user-meta` | 본인 UPSERT (`principal_id=username`) | template required 검증 |
 | `DELETE` | `/api/me/user-meta` | 본인 DELETE | |
@@ -293,7 +293,7 @@ RBAC: `backend-k8s-rbac.yaml`에 `configmaps`/`secrets` create/update/get/patch/
 admin backend가 **bundle 파일의 물리적 저장**도 책임진다. deploy-api는 `bundle_uri`만 읽고 파일을 소유하지 않는다.
 
 - **k8s 기본 (Garage)**: `deploy/k8s/garage/`가 in-cluster Garage(S3 API)를 **`runtime` NS**에 배포한다(base kustomization에 포함). backend는 `BUNDLE_STORAGE_BACKEND=s3`, `S3_ENDPOINT_URL=http://garage-s3.runtime.svc.cluster.local:3900` (`s3-creds` secret). **외부 S3**는 동일 env 키로 endpoint·자격증명만 바꾸면 된다 (`make s3-secret`).
-- **로컬 dev (wire-dev / uvicorn)**: `BUNDLE_STORAGE_BACKEND=local`, `BUNDLE_STORAGE_DIR` — k8s Garage 불필요. **Pipeline ingest**(manifest·blob)는 `./scripts/wire-dev.sh up --profile s3`로 `garage-s3:3900` 포워드 + `env`가 `PIPELINE_STORAGE_BACKEND=s3`를 씀 (`.vscode/launch.json` **Wire: dev cluster (s3)** / **Debug: backend**).
+- **로컬 dev (Telepresence / uvicorn)**: `Debug: backend`는 pod env 스냅샷(`.env.telepresence-backend`)을 쓰므로 cluster Garage·S3 설정이 그대로 적용된다. wire-dev port-forward 없이 `./scripts/wire-dev.sh up --profile s3`만 필요할 때는 CLI로 직접 실행.
 - **S3 호환 (Garage·NCP·MinIO·AWS 등)**: `BUNDLE_STORAGE_BACKEND=s3` 설정 시 admin backend가 업로드를 받아 S3에 stream 저장. `bundle_uri`는 **항상 HTTP URL** (`{BUNDLE_PUBLIC_BASE_URL}/{sha256}.zip`) 형태로 저장 — pool pod의 `BundleLoader`가 `http/https` scheme만 지원하므로 `s3://` URI를 직접 저장하지 않는다. pool pod이 해당 URL을 GET하면 backend가 presigned URL을 생성해 **307 redirect** → pool pod이 S3에서 직접 다운로드. S3 자격증명은 **admin backend 전용**, deploy-api·agent-base·mcp-base에는 불필요.
 - **번들 다운로드 흐름 (S3 모드)**:
   ```
@@ -369,6 +369,7 @@ Admin SPA에서 Postgres VFS 세 영역을 CRUD한다. backend는 `VFS_DSN`(미�
 |-----|---------|------|
 | `VFS_DSN` | `""` (→ `POSTGRES_DSN`) | VFS asyncpg pool DSN |
 | `VFS_PGBOUNCER` | `false` | PgBouncer transaction mode |
+| `CHECKPOINTER_DSN` | `""` (→ `VFS_DSN`) | LangGraph checkpoint read — Recent Chats 메시지 hydrate |
 | `MAX_VFS_FILE_BYTES` | `1048576` | admin agent/user VFS 파일 상한 |
 | `MAX_WIKI_VFS_FILE_BYTES` | `4194304` | admin wiki VFS 파일 상한 |
 
@@ -521,6 +522,9 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 |---|---|---|
 | `POSTGRES_DSN` | — | write primary (asyncpg URL). `runtime_common.db.make_engine` |
 | `POSTGRES_PGBOUNCER` | `false` | pgbouncer 경유 시 true |
+| `VFS_DSN` | `""` | VFS asyncpg pool DSN (미설정 시 chat hydrate용 checkpointer fallback 없음) |
+| `VFS_PGBOUNCER` | `false` | VFS·checkpointer asyncpg PgBouncer 모드 |
+| `CHECKPOINTER_DSN` | `""` (→ `VFS_DSN`) | LangGraph checkpoint read — `/api/me/chat/threads/{id}/messages` |
 | `AUTH_URL` | — | auth 서비스 |
 | `ADMIN_USERNAMES` | — | 쉼표 구분 allowlist. `users.is_admin` 마이그레이션 전 부트스트랩용 폴백. 정상화 후 제거. |
 | `INITIAL_ADMIN_USERNAME` | — | 첫 설치 seed 계정 (한 번 생성 후 env 제거 권장) |

@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     # VFS admin (general agent /agent/ shared files)
     VFS_DSN: str = ""
     VFS_PGBOUNCER: bool = False
+
+    # LangGraph checkpoint read (Recent Chats message hydrate)
+    CHECKPOINTER_DSN: str = ""
     MAX_VFS_FILE_BYTES: int = 1_048_576  # 1 MiB
     MAX_WIKI_VFS_FILE_BYTES: int = 4_194_304  # 4 MiB
 
