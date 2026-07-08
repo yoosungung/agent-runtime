@@ -112,7 +112,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 
 **Bucket (`/bundle/bucket`, admin)** — Bundle 섹션 탭(Agent/MCP 옆, admin만 표시). `GET /api/bucket/info` 배지(S3/local). breadcrumb + 1-depth listing. toolbar: New Folder · Upload · Move · Delete. `in_use` 행(checkbox disabled, "In use" badge) — `source_meta` 참조 중 번들. delete/move 409 → "Source Meta가 참조 중인 번들입니다…" toast.
 
-**VFS (`/vfs`, admin)** — Platform → **VFS**. Bundle/Container와 동일한 섹션 레이아웃(`VfsSectionLayout`) + **Agent · User · Wiki** 탭. `/vfs` → `/vfs/agent` redirect. Agent(`/vfs/agent`)는 general·hermes_general agent 목록 → 브라우저(`/vfs/agent/:kind/:name`). User(`/vfs/user`)는 사용자 목록 → 개인 VFS(`/vfs/user/:userId`). Wiki(`/vfs/wiki`)는 pipeline project 목록 → project wiki VFS(`/vfs/wiki/:projectId`); scoped 브라우저는 active tab에 맞는 API만 호출. Bucket UX와 유사(breadcrumb, 텍스트 에디터). agent name·project slug 기준 공유 안내.
+**VFS (`/vfs`, admin)** — Platform → **VFS**. Bundle/Container와 동일한 섹션 레이아웃(`VfsSectionLayout`) + **Agent · User · Wiki** 탭. `/vfs` → `/vfs/agent` redirect. Agent·User·Wiki 목록은 동일한 카드 테이블·prefix 필터·`Paginator` UX. 브라우저는 공통 `VfsBrowserView`(breadcrumb, 파일 테이블, New Folder/File, Upload, Delete, 텍스트 에디터). Agent(`/vfs/agent`)는 general·hermes_general agent 목록 → 브라우저(`/vfs/agent/:kind/:name`). User(`/vfs/user`)는 사용자 목록 → 개인 VFS(`/vfs/user/:userId`). Wiki(`/vfs/wiki`)는 pipeline project 목록 → project wiki VFS(`/vfs/wiki/:projectId`).
 
 **가드 매트릭스**:
 

@@ -118,6 +118,12 @@ class UserVfsStore(ABC):
     async def delete(self, user_id: int, path: str) -> None: ...
 
     @abstractmethod
+    async def mkdir(self, user_id: int, dir_path: str) -> None: ...
+
+    @abstractmethod
+    async def delete_tree(self, user_id: int, path: str) -> None: ...
+
+    @abstractmethod
     async def glob(
         self,
         user_id: int,
@@ -375,6 +381,38 @@ class MemoryUserVfsStore(UserVfsStore, _MemoryStoreBase):
 
     async def delete(self, user_id: int, path: str) -> None:
         self._rows.pop((user_id, normalize_path(path)), None)
+
+    async def mkdir(self, user_id: int, dir_path: str) -> None:
+        norm = normalize_dir(dir_path)
+        if norm == "/":
+            return
+        path, parent_path, name, size = dir_row_fields(norm)
+        self._ensure_dir_rows(self._rows, (user_id,), ancestor_dir_paths(parent_path))
+        self._rows[(user_id, path)] = _MemoryRow(
+            path=path,
+            parent_path=parent_path,
+            name=name,
+            is_dir=True,
+            size=size,
+            content="",
+            modified_at=datetime.now(UTC),
+        )
+
+    async def delete_tree(self, user_id: int, path: str) -> None:
+        norm = normalize_path(path)
+        row = self._rows.get((user_id, norm))
+        if row is not None and not row.is_dir:
+            self._rows.pop((user_id, norm), None)
+            return
+        dir_path = normalize_dir(norm)
+        keys = [
+            key
+            for key in list(self._rows)
+            if key[0] == user_id
+            and (key[1] == norm or key[1] == dir_path or key[1].startswith(dir_path))
+        ]
+        for key in keys:
+            self._rows.pop(key, None)
 
     async def glob(
         self,
@@ -764,12 +802,68 @@ class AsyncpgUserVfsStore(UserVfsStore):
             )
 
     async def delete(self, user_id: int, path: str) -> None:
+        await self.delete_tree(user_id, path)
+
+    async def mkdir(self, user_id: int, dir_path: str) -> None:
+        norm = normalize_dir(dir_path)
+        if norm == "/":
+            return
+        path, parent_path, name, _ = dir_row_fields(norm)
         async with self._pool.acquire() as conn:
+            await _ensure_user_dirs(conn, user_id, parent_path)
             await conn.execute(
-                "DELETE FROM vfs_user_files WHERE user_id = $1 AND path = $2",
+                _USER_ENSURE_DIRS_SQL,
                 user_id,
-                normalize_path(path),
+                path,
+                parent_path,
+                name,
             )
+
+    async def delete_tree(self, user_id: int, path: str) -> None:
+        norm = normalize_path(path)
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT is_dir FROM vfs_user_files
+                WHERE user_id = $1 AND path = $2
+                """,
+                user_id,
+                norm,
+            )
+            if row is None:
+                dir_path = normalize_dir(norm)
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_user_files
+                    WHERE user_id = $1
+                      AND (path = $2 OR path LIKE $3)
+                    """,
+                    user_id,
+                    norm,
+                    dir_path + "%",
+                )
+                return
+            if row["is_dir"]:
+                dir_path = normalize_dir(norm)
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_user_files
+                    WHERE user_id = $1
+                      AND (path = $2 OR path LIKE $3)
+                    """,
+                    user_id,
+                    dir_path,
+                    dir_path + "%",
+                )
+            else:
+                await conn.execute(
+                    """
+                    DELETE FROM vfs_user_files
+                    WHERE user_id = $1 AND path = $2
+                    """,
+                    user_id,
+                    norm,
+                )
 
     async def glob(
         self,

@@ -157,3 +157,53 @@ async def test_user_vfs_write_audit_log(user_vfs_client: AsyncClient):
         rows = list(result.scalars().all())
     assert len(rows) >= 1
     assert rows[-1].details.get("path") == "/audited.txt"
+
+
+@pytest.mark.asyncio
+async def test_list_vfs_users_name_filter(user_vfs_client: AsyncClient):
+    resp = await user_vfs_client.get("/api/vfs/users", params={"name": "ali"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["username"] == "alice"
+
+    resp = await user_vfs_client.get("/api/vfs/users", params={"name": "bob"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_user_vfs_folder_create(user_vfs_client: AsyncClient):
+    base = "/api/vfs/users/10"
+    resp = await user_vfs_client.post(
+        f"{base}/folders",
+        headers=_csrf_headers(),
+        json={"parent_path": "/", "name": "docs"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "docs"
+    assert resp.json()["is_dir"] is True
+
+    resp = await user_vfs_client.get(f"{base}/entries", params={"path": "/"})
+    names = [item["name"] for item in resp.json()["items"]]
+    assert "docs" in names
+
+
+@pytest.mark.asyncio
+async def test_user_vfs_delete_tree(user_vfs_client: AsyncClient):
+    base = "/api/vfs/users/10"
+    await user_vfs_client.put(
+        f"{base}/files",
+        headers=_csrf_headers(),
+        json={"path": "/docs/readme.md", "content": "hello"},
+    )
+    resp = await user_vfs_client.delete(
+        f"{base}/files",
+        headers=_csrf_headers(),
+        params={"path": "/docs/"},
+    )
+    assert resp.status_code == 204
+
+    resp = await user_vfs_client.get(f"{base}/entries", params={"path": "/"})
+    names = [item["name"] for item in resp.json()["items"]]
+    assert "docs" not in names

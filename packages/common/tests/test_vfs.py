@@ -175,6 +175,19 @@ async def test_glob_and_grep(agent_store):
 
 
 @pytest.mark.asyncio
+async def test_user_mkdir_and_delete_tree(user_store):
+    await user_store.mkdir(42, "/docs/")
+    await user_store.write(42, "/docs/readme.md", "hello")
+    entries = await user_store.list_dir(42, "/")
+    names = {e.name for e in entries}
+    assert "docs" in names
+
+    await user_store.delete_tree(42, "/docs/")
+    entries = await user_store.list_dir(42, "/")
+    assert entries == []
+
+
+@pytest.mark.asyncio
 async def test_composite_routes_agent_and_user_prefixes(agent_store, user_store):
     vfs = build_general_vfs(
         agent_store,

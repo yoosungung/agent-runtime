@@ -172,3 +172,45 @@ async def test_wiki_vfs_write_audit_log(wiki_vfs_client: AsyncClient):
         rows = list(result.scalars().all())
     assert len(rows) >= 1
     assert rows[-1].details.get("path") == "/audited.md"
+
+
+@pytest.mark.asyncio
+async def test_list_wiki_vfs_projects_name_filter(wiki_vfs_client: AsyncClient):
+    store = MagicMock()
+    store.list_projects.return_value = [_project_profile()]
+
+    with (
+        patch("backend.routers.vfs_user_wiki._project_store", return_value=store),
+        patch(
+            "backend.routers.vfs_user_wiki.api_get_binding",
+            return_value={"wiki": {"vfs_mount": "/wiki/Docs/"}},
+        ),
+    ):
+        resp = await wiki_vfs_client.get("/api/vfs/wiki/projects", params={"name": "Doc"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
+
+        resp = await wiki_vfs_client.get("/api/vfs/wiki/projects", params={"name": "other"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_wiki_vfs_folder_create(wiki_vfs_client: AsyncClient):
+    store = MagicMock()
+    store.get_project.return_value = _project_profile()
+    base = f"/api/vfs/wiki/projects/{PROJECT_ID}"
+
+    with patch("backend.routers.vfs_user_wiki._project_store", return_value=store):
+        resp = await wiki_vfs_client.post(
+            f"{base}/folders",
+            headers=_csrf_headers(),
+            json={"parent_path": "/", "name": "pages"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["name"] == "pages"
+        assert resp.json()["is_dir"] is True
+
+        resp = await wiki_vfs_client.get(f"{base}/entries", params={"path": "/"})
+        names = [item["name"] for item in resp.json()["items"]]
+        assert "pages" in names

@@ -168,25 +168,38 @@ export interface VfsWikiProjectSummary {
   last_modified: string | null;
 }
 
-export function useVfsUsers(filters?: { limit?: number; offset?: number }) {
+export function useVfsUsers(filters?: { name?: string; limit?: number; offset?: number }) {
   const params = new URLSearchParams();
+  if (filters?.name) params.set("name", filters.name);
   if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
   if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
   const qs = params.toString();
   return useQuery({
-    queryKey: ["vfs", "users", filters?.limit ?? 50, filters?.offset ?? 0],
+    queryKey: ["vfs", "users", filters?.name ?? "", filters?.limit ?? 50, filters?.offset ?? 0],
     queryFn: () =>
       apiJson<PageResponse<VfsUserSummary>>(`/api/vfs/users${qs ? `?${qs}` : ""}`),
   });
 }
 
-export function useVfsWikiProjects(filters?: { limit?: number; offset?: number }) {
+export function useVfsWikiProjects(filters?: {
+  name?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const params = new URLSearchParams();
+  if (filters?.name) params.set("name", filters.name);
   if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
   if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
   const qs = params.toString();
   return useQuery({
-    queryKey: ["vfs", "wiki", "projects", filters?.limit ?? 50, filters?.offset ?? 0],
+    queryKey: [
+      "vfs",
+      "wiki",
+      "projects",
+      filters?.name ?? "",
+      filters?.limit ?? 50,
+      filters?.offset ?? 0,
+    ],
     queryFn: () =>
       apiJson<PageResponse<VfsWikiProjectSummary>>(
         `/api/vfs/wiki/projects${qs ? `?${qs}` : ""}`,
@@ -228,6 +241,58 @@ export function usePatchVfsUserFile(userId: string) {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["vfs", "user", "entries", userId] });
       qc.invalidateQueries({ queryKey: ["vfs", "user", "file", userId, vars.path] });
+      qc.invalidateQueries({ queryKey: ["vfs", "users"] });
+    },
+  });
+}
+
+export function useCreateVfsUserFile(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { path: string; content: string }) =>
+      apiJson<VfsFile>(`/api/vfs/users/${encodeURIComponent(userId)}/files`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "user", "entries", userId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "users"] });
+    },
+  });
+}
+
+export function useDeleteVfsUserPath(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) =>
+      apiFetch(
+        `/api/vfs/users/${encodeURIComponent(userId)}/files?path=${encodeURIComponent(path)}`,
+        { method: "DELETE" },
+      ).then(async (resp) => {
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(
+            typeof body?.detail === "string" ? body.detail : `HTTP ${resp.status}`,
+          );
+        }
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "user", "entries", userId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "users"] });
+    },
+  });
+}
+
+export function useCreateVfsUserFolder(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { parent_path: string; name: string }) =>
+      apiJson<VfsEntry>(
+        `/api/vfs/users/${encodeURIComponent(userId)}/folders`,
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "user", "entries", userId] });
     },
   });
 }
@@ -266,6 +331,58 @@ export function usePatchVfsWikiFile(projectId: string) {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["vfs", "wiki", "entries", projectId] });
       qc.invalidateQueries({ queryKey: ["vfs", "wiki", "file", projectId, vars.path] });
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "projects"] });
+    },
+  });
+}
+
+export function useCreateVfsWikiFile(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { path: string; content: string }) =>
+      apiJson<VfsFile>(`/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/files`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "entries", projectId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "projects"] });
+    },
+  });
+}
+
+export function useDeleteVfsWikiPath(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) =>
+      apiFetch(
+        `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(path)}`,
+        { method: "DELETE" },
+      ).then(async (resp) => {
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(
+            typeof body?.detail === "string" ? body.detail : `HTTP ${resp.status}`,
+          );
+        }
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "entries", projectId] });
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "projects"] });
+    },
+  });
+}
+
+export function useCreateVfsWikiFolder(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { parent_path: string; name: string }) =>
+      apiJson<VfsEntry>(
+        `/api/vfs/wiki/projects/${encodeURIComponent(projectId)}/folders`,
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vfs", "wiki", "entries", projectId] });
     },
   });
 }

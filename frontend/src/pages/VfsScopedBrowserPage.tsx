@@ -1,162 +1,118 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { PageHeader } from "../components/PageHeader";
-import { VfsBreadcrumbs } from "../components/VfsBreadcrumbs";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { VfsBrowserView } from "../components/VfsBrowserView";
 import { usePipelineProject } from "../pipeline/hooks/usePipeline";
 import {
+  useCreateVfsUserFile,
+  useCreateVfsUserFolder,
+  useCreateVfsWikiFile,
+  useCreateVfsWikiFolder,
+  useDeleteVfsUserPath,
+  useDeleteVfsWikiPath,
   usePatchVfsUserFile,
   usePatchVfsWikiFile,
   useVfsUserEntries,
   useVfsUserFile,
   useVfsWikiEntries,
   useVfsWikiFile,
-  vfsErrorMessage,
-  type VfsEntry,
 } from "../hooks/useVfs";
-import { formatVfsSize, normalizeVfsDir } from "../lib/vfsPaths";
+import { useVfsBrowserController, useVfsEditorSync } from "../hooks/useVfsBrowserController";
 
 type VfsScope = "user" | "wiki";
 
-function useScopedVfs(scope: VfsScope, id: string, dirPath: string, selectedPath: string | null) {
-  const isUser = scope === "user";
-  const isWiki = scope === "wiki";
-  const userEntries = useVfsUserEntries(id, dirPath, isUser);
-  const wikiEntries = useVfsWikiEntries(id, dirPath, isWiki);
-  const userFile = useVfsUserFile(id, selectedPath, isUser);
-  const wikiFile = useVfsWikiFile(id, selectedPath, isWiki);
+function useScopedVfsMutations(scope: VfsScope, id: string) {
+  const createUserFile = useCreateVfsUserFile(id);
   const patchUser = usePatchVfsUserFile(id);
+  const deleteUser = useDeleteVfsUserPath(id);
+  const createUserFolder = useCreateVfsUserFolder(id);
+  const createWikiFile = useCreateVfsWikiFile(id);
   const patchWiki = usePatchVfsWikiFile(id);
+  const deleteWiki = useDeleteVfsWikiPath(id);
+  const createWikiFolder = useCreateVfsWikiFolder(id);
+
   if (scope === "user") {
     return {
-      entries: userEntries,
-      file: userFile,
-      patch: patchUser,
+      createFile: createUserFile,
+      patchFile: patchUser,
+      deletePath: deleteUser,
+      createFolder: createUserFolder,
     };
   }
   return {
-    entries: wikiEntries,
-    file: wikiFile,
-    patch: patchWiki,
+    createFile: createWikiFile,
+    patchFile: patchWiki,
+    deletePath: deleteWiki,
+    createFolder: createWikiFolder,
   };
+}
+
+function useScopedVfsQueries(
+  scope: VfsScope,
+  id: string,
+  dirPath: string,
+  selectedPath: string | null,
+) {
+  const isUser = scope === "user";
+  const userEntries = useVfsUserEntries(id, dirPath, isUser);
+  const wikiEntries = useVfsWikiEntries(id, dirPath, !isUser);
+  const userFile = useVfsUserFile(id, selectedPath, isUser);
+  const wikiFile = useVfsWikiFile(id, selectedPath, !isUser);
+
+  if (scope === "user") {
+    return { entries: userEntries, file: userFile };
+  }
+  return { entries: wikiEntries, file: wikiFile };
 }
 
 export function VfsScopedBrowserPage({ scope }: { scope: VfsScope }) {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [dirPath, setDirPath] = useState("/");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [editorContent, setEditorContent] = useState("");
-  const [editorDirty, setEditorDirty] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const { entries, file, patch } = useScopedVfs(scope, id, dirPath, selectedPath);
-  const items = entries.data?.items ?? [];
+  const location = useLocation();
+  const username = (location.state as { username?: string } | null)?.username;
   const { data: wikiProject } = usePipelineProject(scope === "wiki" ? id : undefined);
 
-  useEffect(() => {
-    if (file.data && !editorDirty) {
-      setEditorContent(file.data.content);
-    }
-  }, [file.data, editorDirty]);
+  const mutations = useScopedVfsMutations(scope, id);
+  const controller = useVfsBrowserController(mutations);
+  const { entries, file } = useScopedVfsQueries(
+    scope,
+    id,
+    controller.dirPath,
+    controller.selectedPath,
+  );
+  useVfsEditorSync(file.data, controller.editorDirty, controller.setEditorContent);
 
-  function openDir(entry: VfsEntry) {
-    if (!entry.is_dir) return;
-    const next = entry.path.endsWith("/") ? entry.path : `${entry.path}/`;
-    setDirPath(normalizeVfsDir(next));
-    setSelectedPath(null);
-    setEditorDirty(false);
-  }
-
-  function openFile(entry: VfsEntry) {
-    if (entry.is_dir) return;
-    setSelectedPath(entry.path);
-    setEditorDirty(false);
-  }
-
-  async function handleSave() {
-    if (!selectedPath) return;
-    setActionError(null);
-    try {
-      await patch.mutateAsync({ path: selectedPath, content: editorContent });
-      setEditorDirty(false);
-    } catch (err) {
-      setActionError(vfsErrorMessage(err));
-    }
-  }
-
-  const title =
-    scope === "user"
-      ? `VFS — User ${id}`
-      : `VFS — Wiki ${wikiProject?.name ?? id}`;
+  const entityName =
+    scope === "user" ? (username ?? `User ${id}`) : (wikiProject?.name ?? id);
   const home = scope === "user" ? "/vfs/user" : "/vfs/wiki";
+  const backLabel = scope === "user" ? "User" : "Wiki";
 
   return (
-    <div>
-      <PageHeader title={title}>
-        <button type="button" className="text-sm text-blue-600" onClick={() => navigate(home)}>
-          ← Back
-        </button>
-      </PageHeader>
-      <VfsBreadcrumbs path={dirPath} onNavigate={setDirPath} />
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="rounded border border-gray-200">
-          <ul className="divide-y text-sm">
-            {entries.isLoading && <li className="px-3 py-2 text-gray-500">Loading…</li>}
-            {entries.isError && (
-              <li className="px-3 py-2 text-red-600">Failed to load entries</li>
-            )}
-            {items.map((entry) => (
-              <li
-                key={entry.path}
-                className="flex cursor-pointer items-center justify-between px-3 py-2 hover:bg-gray-50"
-                onClick={() => (entry.is_dir ? openDir(entry) : openFile(entry))}
-              >
-                <span>{entry.is_dir ? `${entry.name}/` : entry.name}</span>
-                <span className="text-xs text-gray-500">{formatVfsSize(entry.size)}</span>
-              </li>
-            ))}
-            {dirPath !== "/" && (
-              <li
-                className="cursor-pointer px-3 py-2 text-blue-600 hover:bg-gray-50"
-                onClick={() => {
-                  const parent =
-                    dirPath.replace(/\/$/, "").split("/").slice(0, -1).join("/") || "/";
-                  setDirPath(parent === "" ? "/" : `${parent}/`);
-                  setSelectedPath(null);
-                }}
-              >
-                ..
-              </li>
-            )}
-          </ul>
-        </div>
-        <div className="rounded border border-gray-200 p-3">
-          {selectedPath ? (
-            <>
-              <div className="mb-2 font-mono text-xs text-gray-600">{selectedPath}</div>
-              <textarea
-                className="h-64 w-full rounded border p-2 font-mono text-sm"
-                value={editorContent}
-                onChange={(e) => {
-                  setEditorContent(e.target.value);
-                  setEditorDirty(true);
-                }}
-              />
-              <button
-                type="button"
-                className="mt-2 rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
-                disabled={!editorDirty || patch.isPending}
-                onClick={handleSave}
-              >
-                Save
-              </button>
-            </>
-          ) : (
-            <p className="text-sm text-gray-500">Select a file to edit</p>
-          )}
-          {actionError && <p className="mt-2 text-sm text-red-600">{actionError}</p>}
-        </div>
-      </div>
-    </div>
+    <VfsBrowserView
+      backLabel={backLabel}
+      onBack={() => navigate(home)}
+      entityName={entityName}
+      mountLabel={scope === "user" ? "/user/" : (wikiProject?.slug ? `/wiki/${wikiProject.slug}/` : "/wiki/")}
+      scopeBadge={scope === "user" ? "Personal VFS" : "Wiki VFS"}
+      settingsLink={
+        scope === "wiki" && id
+          ? { to: `/pipeline/projects/${id}/sources`, label: "Project settings" }
+          : undefined
+      }
+      emptyFolderMessage={
+        scope === "user"
+          ? "Empty folder — create a file for this user's personal VFS."
+          : "Empty folder — create a wiki page file for this project."
+      }
+      deleteFileDescription={
+        scope === "user"
+          ? "This file will be permanently removed from the user VFS."
+          : "This file will be permanently removed from the wiki VFS."
+      }
+      deleteFolderDescription="This deletes the folder and all files under it."
+      items={entries.data?.items ?? []}
+      isLoading={entries.isLoading}
+      isError={entries.isError}
+      fileLoading={file.isLoading}
+      controller={controller}
+    />
   );
 }

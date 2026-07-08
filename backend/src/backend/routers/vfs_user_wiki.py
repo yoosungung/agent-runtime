@@ -139,6 +139,7 @@ def _check_wiki_content_size(content: str, settings: Settings) -> None:
 @router.get("/users", response_model=VfsUsersListResponse)
 async def list_vfs_users(
     request: Request,
+    name: str | None = Query(default=None, description="Username prefix filter"),
     limit: int = Query(50, ge=1),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -149,6 +150,8 @@ async def list_vfs_users(
     stats = await _fetch_user_vfs_stats(store)
     result = await db.execute(select(UserRow).order_by(UserRow.username))
     users = list(result.scalars().all())
+    if name:
+        users = [u for u in users if u.username.startswith(name)]
     total = len(users)
     page = users[offset : offset + limit]
     items = [
@@ -327,7 +330,7 @@ async def delete_user_vfs_path(
         raise HTTPException(status_code=404, detail="User not found")
     store = _get_user_store(request)
     norm = _validate_vfs_path(path)
-    await store.delete(user_id, norm)
+    await store.delete_tree(user_id, norm)
     db.add(
         make_audit_row(
             "vfs.user.delete",
@@ -347,6 +350,47 @@ async def delete_user_vfs_path(
     )
 
 
+@router.post("/users/{user_id}/folders", response_model=VfsEntryResponse, status_code=201)
+async def create_user_vfs_folder(
+    user_id: int,
+    body: VfsCreateFolderRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> VfsEntryResponse:
+    user = await db.get(UserRow, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not body.name or "/" in body.name or ".." in body.name:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    parent = normalize_dir(_validate_vfs_path(body.parent_path))
+    dir_path = normalize_dir(f"{parent.rstrip('/')}/{body.name}")
+    store = _get_user_store(request)
+    await store.mkdir(user_id, dir_path)
+    entries = await store.list_dir(user_id, parent)
+    entry = next((e for e in entries if e.path == dir_path.rstrip("/") or e.path == dir_path), None)
+    if entry is None:
+        entry = VfsEntry(path=dir_path, name=body.name, is_dir=True, size=0, modified_at=None)
+    db.add(
+        make_audit_row(
+            "vfs.user.mkdir",
+            principal.user_id,
+            principal.sub,
+            target_user_id=user_id,
+            path=dir_path,
+        )
+    )
+    await db.commit()
+    log_event(
+        "vfs.user.mkdir",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        target_user_id=user_id,
+        path=dir_path,
+    )
+    return _entry_response(entry)
+
+
 async def _get_wiki_project(store: ProjectStore, tenant: str, project_id: str):
     profile = await asyncio.to_thread(store.get_project, tenant, project_id)
     if profile is None:
@@ -357,6 +401,7 @@ async def _get_wiki_project(store: ProjectStore, tenant: str, project_id: str):
 @router.get("/wiki/projects", response_model=VfsWikiProjectsListResponse)
 async def list_wiki_vfs_projects(
     request: Request,
+    name: str | None = Query(default=None, description="Project name or slug prefix filter"),
     limit: int = Query(50, ge=1),
     offset: int = Query(0, ge=0),
     settings: Settings = Depends(get_settings),  # noqa: B008
@@ -368,6 +413,10 @@ async def list_wiki_vfs_projects(
         raise HTTPException(status_code=400, detail="tenant required")
     wiki_store = _get_wiki_store(request)
     profiles = await asyncio.to_thread(_project_store(settings).list_projects, tenant)
+    if name:
+        profiles = [
+            p for p in profiles if p.name.startswith(name) or p.slug.startswith(name)
+        ]
     total = len(profiles)
     page = profiles[offset : offset + limit]
     items: list[VfsWikiProjectSummary] = []
@@ -568,3 +617,48 @@ async def delete_wiki_vfs_path(
         )
     )
     await db.commit()
+
+
+@router.post(
+    "/wiki/projects/{project_id}/folders", response_model=VfsEntryResponse, status_code=201
+)
+async def create_wiki_vfs_folder(
+    project_id: str,
+    body: VfsCreateFolderRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> VfsEntryResponse:
+    tenant = principal.tenant
+    if not tenant:
+        raise HTTPException(status_code=400, detail="tenant required")
+    await _get_wiki_project(_project_store(settings), tenant, project_id)
+    if not body.name or "/" in body.name or ".." in body.name:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    parent = normalize_dir(_validate_vfs_path(body.parent_path))
+    dir_path = normalize_dir(f"{parent.rstrip('/')}/{body.name}")
+    store = _get_wiki_store(request)
+    await store.mkdir(tenant, project_id, dir_path)
+    entries = await store.list_dir(tenant, project_id, parent)
+    entry = next((e for e in entries if e.path == dir_path.rstrip("/") or e.path == dir_path), None)
+    if entry is None:
+        entry = VfsEntry(path=dir_path, name=body.name, is_dir=True, size=0, modified_at=None)
+    db.add(
+        make_audit_row(
+            "vfs.wiki.mkdir",
+            principal.user_id,
+            principal.sub,
+            project_id=project_id,
+            path=dir_path,
+        )
+    )
+    await db.commit()
+    log_event(
+        "vfs.wiki.mkdir",
+        actor_id=principal.user_id,
+        actor=principal.sub,
+        project_id=project_id,
+        path=dir_path,
+    )
+    return _entry_response(entry)
