@@ -54,6 +54,19 @@ def _make_langgraph_config(session_id: str | None, agent_name: str | None) -> di
     return config or None
 
 
+def _compiled_graph_input(input: dict) -> dict:  # noqa: A002
+    """Normalize platform invoke payload to LangGraph AgentState input."""
+    if input.get("messages"):
+        return input
+    text = input.get("message")
+    if text is None:
+        text = input.get("text")
+    if text is None:
+        return input
+    payload = {k: v for k, v in input.items() if k not in ("message", "text")}
+    return {**payload, "messages": [{"role": "user", "content": text}]}
+
+
 def _adk_user_session_ids(
     session_id: str | None,
     principal_user_id: int | str | None,
@@ -168,7 +181,8 @@ async def run(  # noqa: A002
     match kind:
         case AgentRuntimeKind.COMPILED_GRAPH:
             config = _make_langgraph_config(session_id, agent_name)
-            result = await instance.ainvoke(input, config=config)
+            graph_input = _compiled_graph_input(input)
+            result = await instance.ainvoke(graph_input, config=config)
             return {"output": result}
 
         case AgentRuntimeKind.ADK:
@@ -207,9 +221,10 @@ async def run_stream(  # noqa: A002
         match kind:
             case AgentRuntimeKind.COMPILED_GRAPH:
                 config = _make_langgraph_config(session_id, agent_name)
+                graph_input = _compiled_graph_input(input)
                 streaming_emitted = False
                 final_output: Any = None
-                async for event in instance.astream_events(input, config=config, version="v2"):
+                async for event in instance.astream_events(graph_input, config=config, version="v2"):
                     yield f"data: {json.dumps(event, default=_json_default)}\n\n"
                     if event.get("event") == "on_chat_model_stream":
                         streaming_emitted = True

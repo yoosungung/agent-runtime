@@ -32,7 +32,7 @@ ZIP 번들 없이 `config.general`만으로 동작하는 config-only agent. `/in
      - `secrets` = `SecretResolver` 인스턴스 (실제 비밀값은 `user.secrets_ref`에서 lazy resolve)
      - 하위호환: zero-arg factory / `(cfg,)` 1-arg factory도 인트로스펙션으로 허용 — `runtime_common.factory.call_factory`가 시그니처 자동 분기.
   5. `runner.run(kind, instance, input, session_id, cfg=…, secrets=…)` — kind별 어댑터가 프레임워크-네이티브 호출.
-     - `compiled_graph` → LangGraph `CompiledGraph.ainvoke(input, config={"configurable": {"thread_id": session_id}})`. **체크포인터 기본 Postgres** — pod lifespan에서 shared `AsyncPostgresSaver` 초기화, 번들 factory는 `runtime_common.providers.langgraph.build_checkpointer(cfg, secrets)` 로 attach. `checkpointer: none` 등 명시 opt-out 가능. DeepAgents (`create_deep_agent`) 도 동일 풀.
+     - `compiled_graph` → LangGraph `CompiledGraph.ainvoke(input, config={"configurable": {"thread_id": session_id}})`. pool invoke payload의 `input.message`/`input.text`는 runner가 `messages: [{role,user,content}]`로 정규화한 뒤 그래프에 전달(DeepAgents `_InputAgentState` 계약). **체크포인터 기본 Postgres** — pod lifespan에서 shared `AsyncPostgresSaver` 초기화, 번들 factory는 `runtime_common.providers.langgraph.build_checkpointer(cfg, secrets)` 로 attach. `checkpointer: none` 등 명시 opt-out 가능. DeepAgents (`create_deep_agent`) 도 동일 풀.
      - `adk` → `build_session_service(cfg, secrets)` (기본 `database` / `SESSION_DB_DSN`) 로 shared session service를 붙인 `Runner` + `runner.run_async(...)`. 번들은 agent 만 반환.
      - `custom` → `ainvoke`/`astream`/`callable` 에 `session_id`·`config.configurable.thread_id` kwargs 전달 (수신 시그니처에 있을 때만)
 

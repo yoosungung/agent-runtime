@@ -29,6 +29,43 @@ class TestRun:
         call_kwargs = instance.ainvoke.call_args
         assert call_kwargs.kwargs.get("config") is None
 
+    async def test_compiled_graph_converts_message_to_messages(self):
+        instance = AsyncMock()
+        instance.ainvoke.return_value = {"answer": "ok"}
+
+        await run(
+            AgentRuntimeKind.COMPILED_GRAPH,
+            instance,
+            {"message": "오늘 네이버 뉴스 검색 해줘."},
+            "sess-1",
+        )
+
+        call_input = instance.ainvoke.call_args.args[0]
+        assert call_input == {
+            "messages": [{"role": "user", "content": "오늘 네이버 뉴스 검색 해줘."}]
+        }
+
+    async def test_compiled_graph_converts_text_to_messages(self):
+        instance = AsyncMock()
+        instance.ainvoke.return_value = {"answer": "ok"}
+
+        await run(AgentRuntimeKind.COMPILED_GRAPH, instance, {"text": "hello"}, None)
+
+        call_input = instance.ainvoke.call_args.args[0]
+        assert call_input == {"messages": [{"role": "user", "content": "hello"}]}
+
+    async def test_compiled_graph_preserves_existing_messages(self):
+        instance = AsyncMock()
+        instance.ainvoke.return_value = {"answer": "ok"}
+        payload = {
+            "messages": [{"role": "user", "content": "prior turn"}],
+            "message": "ignored",
+        }
+
+        await run(AgentRuntimeKind.COMPILED_GRAPH, instance, payload, None)
+
+        assert instance.ainvoke.call_args.args[0] is payload
+
     async def test_custom_ainvoke(self):
         instance = AsyncMock()
         instance.ainvoke.return_value = "hello"
@@ -166,6 +203,28 @@ class TestRunStream:
             chunks.append(chunk)
 
         assert received_kwargs.get("config") == {"configurable": {"thread_id": "sess-42"}}
+
+    async def test_compiled_graph_stream_converts_message_to_messages(self):
+        instance = MagicMock()
+        received_input: dict = {}
+
+        async def fake_events(inp, **kwargs):
+            received_input.update(inp)
+            yield {"event": "on_chain_end"}
+
+        instance.astream_events = fake_events
+
+        async for _ in run_stream(
+            AgentRuntimeKind.COMPILED_GRAPH,
+            instance,
+            {"message": "stream me"},
+            None,
+        ):
+            pass
+
+        assert received_input == {
+            "messages": [{"role": "user", "content": "stream me"}]
+        }
 
     async def test_custom_astream_fallback(self):
         instance = MagicMock(spec=[])  # no attributes by default
