@@ -62,7 +62,7 @@ def test_path_graph_rag_mcp_dockerfile_uses_wheel_auth_not_copy() -> None:
     text = RAG_MCP_DOCKERFILE.read_text()
     assert "COPY path-graph/pipeline" not in text
     assert "UV_INDEX_GITHUB_PASSWORD" in text
-    assert "path_graph-0.1.5" in text
+    assert "path_graph-0.1.6" in text
 
 
 def test_path_graph_rag_mcp_workflow_exists() -> None:
