@@ -18,6 +18,8 @@ dependencies = [
     "asyncpg>=0.29",
     "kubernetes-asyncio>=31.0",
     "path-graph==0.1.5",
+    "langgraph>=1.0",
+    "langgraph-checkpoint-postgres>=2.0",
 ]
 
 [tool.uv.sources]
