@@ -19,7 +19,9 @@ venv/
 # IDE
 .idea/
 .vscode/
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 *.swp
 
 # Local path-graph editable override (see uv.override.toml.example)

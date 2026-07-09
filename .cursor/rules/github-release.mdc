@@ -1,0 +1,55 @@
+---
+description: agents-runtime GitHub release 제출 절차 (path-graph pin → gh release → GHCR prune)
+alwaysApply: true
+---
+
+# GitHub Release 절차
+
+사용자가 release 제출을 요청하면 **아래 순서를 반드시** 따른다.
+
+## 1. path-graph 최신 release 확인
+
+```bash
+gh release view --repo yoosungung/path-graph --json tagName -q .tagName
+bash scripts/check-path-graph-pin.sh
+```
+
+pin 불일치 시 bump 후 테스트·커밋·push:
+
+- `backend/pyproject.toml` (`path-graph==X.Y.Z` + `[tool.uv.sources]`)
+- `deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile`
+- `deploy/tests/test_path_graph_dependency.py` (`PATH_GRAPH_VERSION`)
+- `deploy/tests/test_build_images_workflow.py` (wheel 버전 assert)
+- `UV_INDEX_GITHUB_USERNAME=x-access-token UV_INDEX_GITHUB_PASSWORD="$(gh auth token)" uv lock`
+
+## 2. gh release 제출
+
+태그·제목 패턴: `v0.1.N-dev` / `dev 0.1.N` (이전 release patch +1).
+
+```bash
+gh release create v0.1.N-dev --title "dev 0.1.N" --target main --notes "$(cat <<'EOF'
+## Highlights
+- (변경 요약)
+
+**Full Changelog**: https://github.com/yoosungung/agent-runtime/compare/v0.1.(N-1)-dev...v0.1.N-dev
+EOF
+)"
+```
+
+- `published` 이벤트로 `.github/workflows/build-images.yml` 자동 실행
+- 빌드 완료 대기: `make build-images-wait`
+
+## 3. GHCR 이전 OCI 이미지 삭제
+
+release 빌드 **성공 후** 패키지별 최신 1개만 남기고 이전 버전 전부 삭제:
+
+```bash
+gh workflow run prune-ghcr-images.yml
+gh run list --workflow=prune-ghcr-images.yml --limit 1
+```
+
+대상 8종 (`ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>`):
+
+`backend`, `auth`, `deploy-api`, `ext-authz`, `agent-base`, `mcp-base`, `hermes-base`, `path-graph-rag-mcp`
+
+`:latest` 태그는 사용하지 않는다. 배포 시 `make k8s-apply-dev` (기본 `IMAGE_TAG` = release 태그의 git SHA).
