@@ -472,7 +472,7 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 
 ### Chat invoke
 
-**Chat UI 경로 (기본)**: Ingress `/v1/agents/invoke` → Envoy. 프런트는 `GET /api/auth/access-token`으로 httpOnly JWT를 Bearer로 받은 뒤 직접 POST. SSE 정규화는 [frontend/DESIGN.md](../frontend/DESIGN.md) `lib/chatStream.ts`.
+**Chat UI 경로 (기본)**: Ingress `/v1/agents/invoke` → Envoy. 프런트는 `GET /api/auth/access-token`으로 httpOnly JWT를 Bearer로 받은 뒤 직접 POST. `compiled_graph`는 agent-pool이 `{"text":…}` 슬림 SSE를 emit — [frontend/DESIGN.md](../frontend/DESIGN.md) `lib/chatStream.ts`는 ADK/CUSTOM·레거시 이벤트 정규화만 담당.
 
 **`GET /api/auth/access-token`**: 세션 쿠키의 access JWT(또는 refresh 직후 `request.state.new_access_token`)를 JSON `{access_token}`으로 반환. refresh 발생 시 Set-Cookie로 쿠키 갱신. Chat UI 전용 — 일반 admin API는 cookie+CSRF 유지.
 
@@ -495,7 +495,8 @@ enum 목록은 `runtime_common.schemas.AgentRuntimeKind` / `McpRuntimeKind`를 �
 | `data: [DONE]\n\n` | 정상 종료 마커. | yes |
 
 **SSE 정규화 규칙** (`_extract_text()`):
-- LangGraph `compiled_graph`: `astream_events` v2 이벤트 중 `event=="on_chat_model_stream"`만 surface, `data.chunk.content` 추출 (string·LangChain content-block list 양쪽 처리).
+- pool 슬림 포맷: `{"text": "…"}` pass-through (agent-pool `compiled_graph` NTH-5).
+- LangGraph `compiled_graph` (레거시 full event): `astream_events` v2 이벤트 중 `event=="on_chat_model_stream"`만 surface, `data.chunk.content` 추출 (string·LangChain content-block list 양쪽 처리).
 - ADK: `Event.model_dump(mode="json")` 결과의 `content.parts[*].text` join.
 - CUSTOM: `{chunk: ...}` (per-chunk)·`{output: ...}` (final). LangGraph state-style `output.messages[-1].content`도 처리.
 - 알 수 없는 이벤트는 silent skip — 노이즈가 프런트로 흘러가지 않게.

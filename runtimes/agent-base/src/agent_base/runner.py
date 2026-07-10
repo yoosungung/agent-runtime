@@ -54,6 +54,28 @@ def _make_langgraph_config(session_id: str | None, agent_name: str | None) -> di
     return config or None
 
 
+def _extract_langgraph_stream_text(event: dict) -> str | None:
+    """Surface user-facing token deltas from LangGraph astream_events v2."""
+    if event.get("event") != "on_chat_model_stream":
+        return None
+    chunk = event.get("data", {}).get("chunk")
+    if not isinstance(chunk, dict):
+        return None
+    content = chunk.get("content")
+    if isinstance(content, str):
+        return content or None
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                parts.append(part.get("text", ""))
+            elif isinstance(part, str):
+                parts.append(part)
+        joined = "".join(parts)
+        return joined or None
+    return None
+
+
 def _compiled_graph_input(input: dict) -> dict:  # noqa: A002
     """Normalize platform invoke payload to LangGraph AgentState input."""
     if input.get("messages"):
@@ -225,8 +247,9 @@ async def run_stream(  # noqa: A002
                 streaming_emitted = False
                 final_output: Any = None
                 async for event in instance.astream_events(graph_input, config=config, version="v2"):
-                    yield f"data: {json.dumps(event, default=_json_default)}\n\n"
-                    if event.get("event") == "on_chat_model_stream":
+                    text = _extract_langgraph_stream_text(event)
+                    if text:
+                        yield f"data: {json.dumps({'text': text})}\n\n"
                         streaming_emitted = True
                     elif event.get("event") == "on_chain_end" and not event.get("parent_ids"):
                         final_output = event.get("data", {}).get("output")

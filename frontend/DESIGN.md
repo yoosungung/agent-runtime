@@ -231,7 +231,7 @@ MVP 범위는 **관리(admin) 기능**. 챗 기능은 페이지 구조를 예약
 - agent 선택 → `GET /api/me/access-resources?kind=agent`. 사이드바는 `{name}`만 표시(latest 참고용).
 - **버전 핀**: New Chat 시 BFF가 latest `source_meta.version`을 `chat_threads.agent_version`에 저장. 이후 invoke는 thread의 pinned version을 body·`x-runtime-version`에 포함 — mid-thread silent upgrade 방지.
 - invoke 흐름: `GET /api/auth/access-token` → `POST ${VITE_AGENTS_INVOKE_URL}` body `{agent, version, input: {message}, session_id, stream: true}` + Bearer/`x-runtime-name`/`x-runtime-version`/`x-runtime-session-id` 헤더. Ingress → Envoy → ext-authz → pool.
-- 응답은 `text/event-stream`. agent-base emit 포맷(runtime_kind별 LangGraph/ADK/CUSTOM)을 `lib/chatStream.ts`의 `extractTextFromAgentEvent()`로 UI용 텍스트 델타로 정규화(BFF `/api/chat/invoke`에 있던 규칙과 동일). `[DONE]`·`{"error":…}`·BFF 레거시 `{"text":…}` 모두 처리.
+- 응답은 `text/event-stream`. `compiled_graph`는 agent-pool이 `{"text":"<delta>"}` 슬림 SSE를 emit(NTH-5). ADK/CUSTOM·레거시 LangGraph full event는 `lib/chatStream.ts`의 `extractTextFromAgentEvent()`로 UI용 텍스트 델타로 정규화. `[DONE]`·`{"error":…}`·BFF 레거시 `{"text":…}` 모두 처리.
 - 파싱은 fetch + `ReadableStream`(`lib/agentsInvoke.ts`). `\n\n` 단위 버퍼링.
 - `session_id`는 페이지 진입 시 **New Chat** → `POST /api/me/chat/threads` 응답의 `session_id`(= DB `provider_session_id`)로 발급·재사용. 플랫폼 thread `id`와 분리.
 - **Recent Chats** — `GET /api/me/chat/threads` 목록. 선택 시 `GET .../threads/{id}` + `GET .../messages`로 hydrate 후 동일 `session_id`로 invoke 연속.

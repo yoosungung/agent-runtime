@@ -38,6 +38,9 @@ def _extract_text(event: dict) -> str | None:
       - adk: google.adk Event with `content.parts[].text`.
       - custom: `{chunk: ...}` per chunk, or `{output: ...}` final.
     """
+    if isinstance(event.get("text"), str):
+        return event["text"] or None
+
     if event.get("event") == "on_chat_model_stream":
         chunk = event.get("data", {}).get("chunk")
         if isinstance(chunk, dict):

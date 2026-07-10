@@ -97,7 +97,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
      │ (MCP tool 필요 시) ──> Envoy /v1/mcp/invoke-internal ──> [mcp-pool pod]
      │ (delegate agent 필요 시) ──> Envoy /v1/agents/invoke-internal ──> [agent-pool pod]
      ▼
-[User/Chat UI]  ← SSE (agent-base emit; UI가 runtime_kind별 포맷 정규화)
+[User/Chat UI]  ← SSE (`compiled_graph`: `{"text":…}` 슬림; ADK/CUSTOM은 `chatStream.ts` 정규화)
 ```
 
 **핵심**: pool은 gateway 경유 payload의 번들 정보를 신뢰하지 않는다. Envoy+ext-authz 경로에서는 **`x-resolve` 스냅샷**으로 deploy-api 왕복을 줄이되, 헤더가 없거나 검증 실패 시 **deploy-api 재조회**로 폴백한다. agent와 MCP invoke는 ext-authz / Envoy / pool / deploy-api 네 축이 `kind` 하나로만 분기 — 대칭 구조.

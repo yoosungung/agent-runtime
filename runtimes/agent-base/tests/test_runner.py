@@ -149,7 +149,36 @@ class TestRun:
 
 
 class TestRunStream:
-    async def test_compiled_graph_streams_events(self):
+    async def test_compiled_graph_streams_text_deltas_only(self):
+        instance = MagicMock()
+
+        async def fake_events(*args, **kwargs):
+            yield {"event": "on_chain_start", "data": {}}
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": {"content": "hel"}},
+            }
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": {"content": "lo"}},
+            }
+            yield {"event": "on_tool_start", "data": {}}
+            yield {"event": "on_chain_end", "data": {"output": "hello"}, "parent_ids": []}
+
+        instance.astream_events = fake_events
+
+        chunks = []
+        async for chunk in run_stream(AgentRuntimeKind.COMPILED_GRAPH, instance, {}, None):
+            chunks.append(chunk)
+
+        assert chunks[-1] == "data: [DONE]\n\n"
+        data_chunks = [c for c in chunks if c != "data: [DONE]\n\n"]
+        assert len(data_chunks) == 2
+        assert json.loads(data_chunks[0][len("data: ") :].strip()) == {"text": "hel"}
+        assert json.loads(data_chunks[1][len("data: ") :].strip()) == {"text": "lo"}
+        assert not any("on_chain_start" in c or "on_tool_start" in c for c in chunks)
+
+    async def test_compiled_graph_streams_output_when_no_llm_tokens(self):
         instance = MagicMock()
 
         async def fake_events(*args, **kwargs):
@@ -163,30 +192,10 @@ class TestRunStream:
             chunks.append(chunk)
 
         assert chunks[-1] == "data: [DONE]\n\n"
-        event_chunks = chunks[:-1]
-        assert len(event_chunks) == 3
-        # Verify SSE format (last chunk may be synthetic {"output": ...})
-        for chunk in event_chunks:
-            assert chunk.startswith("data: ")
-            assert chunk.endswith("\n\n")
-            parsed = json.loads(chunk[len("data: ") :].strip())
-            assert "event" in parsed or "output" in parsed
-
-    async def test_compiled_graph_streams_done(self):
-        instance = MagicMock()
-
-        async def fake_events(*args, **kwargs):
-            yield {"event": "on_chain_start"}
-            yield {"event": "on_chain_end", "data": {"output": "ok"}}
-
-        instance.astream_events = fake_events
-
-        chunks = []
-        async for chunk in run_stream(AgentRuntimeKind.COMPILED_GRAPH, instance, {}, None):
-            chunks.append(chunk)
-
-        assert chunks[-1] == "data: [DONE]\n\n"
-        assert any("on_chain_start" in c for c in chunks)
+        data_chunks = [c for c in chunks if c != "data: [DONE]\n\n"]
+        assert len(data_chunks) == 1
+        assert json.loads(data_chunks[0][len("data: ") :].strip()) == {"output": "ok"}
+        assert not any("on_chain_start" in c for c in chunks)
 
     async def test_compiled_graph_with_session(self):
         instance = MagicMock()
