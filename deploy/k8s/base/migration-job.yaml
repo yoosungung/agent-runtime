@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-migrations
   namespace: runtime
-# 소스 원본: backend/migrations/0001_init.sql … 0015_chat_threads_hermes.sql — 수정 시 양쪽을 같이 업데이트.
+# 소스 원본: backend/migrations/0001_init.sql … 0016_vfs_glob_indexes.sql — 수정 시 양쪽을 같이 업데이트.
 # (kustomize configMapGenerator는 loadRestrictor 설정이 필요해 당분간 inline 유지.)
 data:
   0001_init.sql: |
@@ -434,14 +434,36 @@ data:
     ALTER TABLE chat_threads
         ADD CONSTRAINT chk_chat_threads_type
         CHECK (thread_type IN ('langgraph', 'adk', 'custom', 'hermes'));
+  0016_vfs_glob_indexes.sql: |
+    -- VFS glob query indexes — pg_trgm on name, varchar_pattern_ops on path.
+
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_agent_files_path_prefix
+        ON vfs_agent_files (kind, agent_name, path varchar_pattern_ops);
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_agent_files_name_trgm
+        ON vfs_agent_files USING gin (name gin_trgm_ops);
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_user_files_path_prefix
+        ON vfs_user_files (user_id, path varchar_pattern_ops);
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_user_files_name_trgm
+        ON vfs_user_files USING gin (name gin_trgm_ops);
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_wiki_files_path_prefix
+        ON vfs_wiki_files (tenant, project_id, path varchar_pattern_ops);
+
+    CREATE INDEX IF NOT EXISTS ix_vfs_wiki_files_name_trgm
+        ON vfs_wiki_files USING gin (name gin_trgm_ops);
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-0015
+  name: db-migrate-0016
   namespace: runtime
   annotations:
-    migration-version: "0015"
+    migration-version: "0016"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 86400
@@ -495,6 +517,8 @@ spec:
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0014_resource_visibility_allowlist.sql
               echo "Applying /migrations/0015_chat_threads_hermes.sql ..."
               psql "$POSTGRES_DIRECT_DSN" -f /migrations/0015_chat_threads_hermes.sql
+              echo "Applying /migrations/0016_vfs_glob_indexes.sql ..."
+              psql "$POSTGRES_DIRECT_DSN" -f /migrations/0016_vfs_glob_indexes.sql
               echo "Migration applied."
           volumeMounts:
             - name: migrations

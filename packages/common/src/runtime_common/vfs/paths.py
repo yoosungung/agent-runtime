@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 
@@ -85,6 +86,123 @@ def glob_to_pg_regex(pattern: str) -> str:
             i += 1
     parts.append("$")
     return "".join(parts)
+
+
+@dataclass(frozen=True)
+class GlobSqlPlan:
+    """Index-friendly decomposition of a VFS glob pattern."""
+
+    path_exact: str | None = None
+    path_prefix: str | None = None
+    name_exact: str | None = None
+    name_like: str | None = None
+    regex: str = ""
+    use_regex: bool = False
+
+
+def _literal_path_prefix(dir_part: str) -> str | None:
+    if not dir_part or dir_part == "/":
+        return None
+    i = 0
+    while i < len(dir_part):
+        ch = dir_part[i]
+        if ch == "*" and i + 1 < len(dir_part) and dir_part[i + 1] == "*":
+            prefix = dir_part[:i]
+            if not prefix or prefix == "/":
+                return None
+            return prefix if prefix.endswith("/") else prefix + "/"
+        if ch in "*?":
+            return None
+        i += 1
+    return dir_part
+
+
+def _basename_to_like(base_part: str) -> str | None:
+    if "**" in base_part:
+        return None
+    return base_part.replace("*", "%").replace("?", "_")
+
+
+def _dir_has_non_recursive_wildcard(dir_part: str) -> bool:
+    if dir_part in ("/**/", "/**", "/"):
+        return False
+    if not any(ch in dir_part for ch in "*?"):
+        return False
+    return _literal_path_prefix(dir_part) is None
+
+
+def plan_glob_sql(pattern: str) -> GlobSqlPlan:
+    """Decompose a glob into btree / pg_trgm friendly predicates when possible."""
+    pattern = normalize_path(pattern)
+    regex = glob_to_pg_regex(pattern)
+
+    if "*" not in pattern and "?" not in pattern:
+        return GlobSqlPlan(path_exact=pattern, regex=regex, use_regex=False)
+
+    slash = pattern.rfind("/")
+    if slash < 0:
+        dir_part, base_part = "/", pattern
+    else:
+        dir_part = pattern[: slash + 1]
+        base_part = pattern[slash + 1 :]
+
+    path_prefix = _literal_path_prefix(dir_part)
+    if _dir_has_non_recursive_wildcard(dir_part):
+        return GlobSqlPlan(regex=regex, use_regex=True)
+
+    if base_part in ("", "**"):
+        return _ensure_glob_predicate(
+            GlobSqlPlan(path_prefix=path_prefix, regex=regex, use_regex=False),
+            regex,
+        )
+
+    if base_part == "*":
+        return GlobSqlPlan(path_prefix=path_prefix, regex=regex, use_regex=True)
+
+    if "*" not in base_part and "?" not in base_part:
+        return GlobSqlPlan(
+            path_prefix=path_prefix,
+            name_exact=base_part,
+            regex=regex,
+            use_regex=False,
+        )
+
+    name_like = _basename_to_like(base_part)
+    if name_like is None:
+        return GlobSqlPlan(path_prefix=path_prefix, regex=regex, use_regex=True)
+
+    plan = GlobSqlPlan(
+        path_prefix=path_prefix,
+        name_like=name_like,
+        regex=regex,
+        use_regex=False,
+    )
+    return _ensure_glob_predicate(plan, regex)
+
+
+def _ensure_glob_predicate(plan: GlobSqlPlan, regex: str) -> GlobSqlPlan:
+    if (
+        plan.path_exact is None
+        and plan.path_prefix is None
+        and plan.name_exact is None
+        and plan.name_like is None
+        and not plan.use_regex
+    ):
+        return GlobSqlPlan(regex=regex, use_regex=True)
+    return plan
+
+
+def merge_glob_scope_prefix(base_path: str | None, plan: GlobSqlPlan) -> str | None:
+    """Combine aglob directory scope with a pattern literal prefix."""
+    scope = path_like_prefix(base_path)
+    pattern_prefix = plan.path_prefix
+    if scope is None:
+        return pattern_prefix
+    if pattern_prefix is None:
+        return scope
+    if pattern_prefix.startswith(scope):
+        return pattern_prefix
+    return scope
 
 
 def format_read_content(content: str, offset: int = 0, limit: int = 2000) -> str:

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from runtime_common.vfs.dirs import ancestor_dir_paths, dir_row_fields
+from runtime_common.vfs.glob_query import glob_path_filter_sql
 from runtime_common.vfs.paths import (
     glob_to_pg_regex,
     normalize_dir,
@@ -483,7 +484,7 @@ async def _ensure_user_dirs(conn: Any, user_id: int, parent_path: str) -> None:
 
 
 class AsyncpgAgentVfsStore(AgentVfsStore):
-    """Postgres agent VFS — indexed parent_path listing, regex glob, lateral grep."""
+    """Postgres agent VFS — indexed parent_path listing, optimized glob, lateral grep."""
 
     def __init__(self, pool: Any) -> None:
         self._pool = pool
@@ -657,23 +658,22 @@ class AsyncpgAgentVfsStore(AgentVfsStore):
         *,
         base_path: str | None = None,
     ) -> list[str]:
-        prefix = path_like_prefix(base_path)
-        regex = glob_to_pg_regex(pattern)
+        filter_sql, filter_params, _ = glob_path_filter_sql(
+            pattern, base_path, start_param=3
+        )
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                """
+                f"""
                 SELECT path
                 FROM vfs_agent_files
                 WHERE kind = $1 AND agent_name = $2
                   AND is_dir = FALSE
-                  AND ($3::text IS NULL OR path LIKE $3 || '%')
-                  AND path ~ $4
+                  AND {filter_sql}
                 ORDER BY path
                 """,
                 kind,
                 agent_name,
-                prefix,
-                regex,
+                *filter_params,
             )
         return [row["path"] for row in rows]
 
@@ -872,22 +872,21 @@ class AsyncpgUserVfsStore(UserVfsStore):
         *,
         base_path: str | None = None,
     ) -> list[str]:
-        prefix = path_like_prefix(base_path)
-        regex = glob_to_pg_regex(pattern)
+        filter_sql, filter_params, _ = glob_path_filter_sql(
+            pattern, base_path, start_param=2
+        )
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                """
+                f"""
                 SELECT path
                 FROM vfs_user_files
                 WHERE user_id = $1
                   AND is_dir = FALSE
-                  AND ($2::text IS NULL OR path LIKE $2 || '%')
-                  AND path ~ $3
+                  AND {filter_sql}
                 ORDER BY path
                 """,
                 user_id,
-                prefix,
-                regex,
+                *filter_params,
             )
         return [row["path"] for row in rows]
 

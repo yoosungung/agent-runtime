@@ -8,7 +8,11 @@ import pytest
 
 from runtime_common.vfs.composite import build_general_vfs
 from runtime_common.vfs.database_backend import AgentDatabaseBackend, UserDatabaseBackend
-from runtime_common.vfs.paths import glob_to_pg_regex, vfs_entry_metadata
+from runtime_common.vfs.paths import (
+    glob_to_pg_regex,
+    plan_glob_sql,
+    vfs_entry_metadata,
+)
 from runtime_common.vfs.store import (
     MemoryAgentVfsStore,
     MemoryUserVfsStore,
@@ -51,6 +55,49 @@ def test_glob_to_pg_regex():
     assert re.match(glob_to_pg_regex("**/*.py"), "/src/a.py")
     assert re.match(glob_to_pg_regex("**/*.py"), "/a.py")
     assert not re.match(glob_to_pg_regex("**/*.py"), "/src/a.txt")
+
+
+def test_plan_glob_sql_exact_path():
+    plan = plan_glob_sql("/notes.md")
+    assert plan.path_exact == "/notes.md"
+    assert not plan.use_regex
+
+
+def test_plan_glob_sql_suffix_glob():
+    plan = plan_glob_sql("**/*.py")
+    assert plan.name_like == "%.py"
+    assert plan.path_prefix is None
+    assert not plan.use_regex
+
+
+def test_plan_glob_sql_prefixed_suffix_glob():
+    plan = plan_glob_sql("/src/**/*.py")
+    assert plan.path_prefix == "/src/"
+    assert plan.name_like == "%.py"
+    assert not plan.use_regex
+
+
+def test_plan_glob_sql_recursive_dir():
+    plan = plan_glob_sql("/src/**")
+    assert plan.path_prefix == "/src/"
+    assert plan.name_like is None
+    assert not plan.use_regex
+
+
+def test_plan_glob_sql_single_segment_wildcard_uses_regex():
+    plan = plan_glob_sql("/src/*")
+    assert plan.path_prefix == "/src/"
+    assert plan.use_regex
+
+
+def test_plan_glob_sql_midpath_wildcard_uses_regex():
+    plan = plan_glob_sql("/fo*/bar.txt")
+    assert plan.use_regex
+
+
+def test_plan_glob_sql_match_all_uses_regex():
+    plan = plan_glob_sql("/**")
+    assert plan.use_regex
 
 
 @pytest.fixture

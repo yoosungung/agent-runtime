@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from runtime_common.vfs.dirs import ancestor_dir_paths, dir_row_fields
+from runtime_common.vfs.glob_query import glob_path_filter_sql
 from runtime_common.vfs.paths import (
     glob_to_pg_regex,
     normalize_dir,
@@ -379,23 +380,22 @@ class AsyncpgWikiVfsStore(WikiVfsStore):
         *,
         base_path: str | None = None,
     ) -> list[str]:
-        prefix = path_like_prefix(base_path)
-        regex = glob_to_pg_regex(pattern)
+        filter_sql, filter_params, _ = glob_path_filter_sql(
+            pattern, base_path, start_param=3
+        )
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                """
+                f"""
                 SELECT path
                 FROM vfs_wiki_files
                 WHERE tenant = $1 AND project_id = $2::uuid
                   AND is_dir = FALSE
-                  AND ($3::text IS NULL OR path LIKE $3 || '%')
-                  AND path ~ $4
+                  AND {filter_sql}
                 ORDER BY path
                 """,
                 tenant,
                 project_id,
-                prefix,
-                regex,
+                *filter_params,
             )
         return [row["path"] for row in rows]
 
