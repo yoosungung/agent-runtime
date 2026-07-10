@@ -125,7 +125,7 @@ LLM serving, RAG 스토리지, OTEL collector, 사용자 Chat UI. **번들 objec
 | `vfs_user_files` | admin backend / agent-pool | agent-pool (read-write `/user/`) | per-user cross-agent VFS |
 | `vfs_wiki_files` | path-graph pipeline / admin backend | agent-pool (read-only wiki mount) | `(tenant, project_id)` scoped wiki pages |
 
-마이그레이션: `backend/migrations/0001_init.sql` … `0013_vfs_wiki.sql`. 적용: `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate-0013` Job. path-graph 스키마는 `path_graph.migrations` (동일 DSN).
+마이그레이션: `backend/migrations/0001_init.sql` … `0016_vfs_glob_indexes.sql`. 적용: `make db-migrate-all` 또는 `deploy/k8s/base/migration-job.yaml`의 `db-migrate-0016` Job. path-graph 스키마는 `path_graph.migrations` (동일 DSN).
 
 ### source_meta
 
