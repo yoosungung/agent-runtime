@@ -35,10 +35,11 @@ deploy/k8s/
 적용:
 
 ```bash
-make k8s-apply-dev          # IMAGE_TAG=git rev-parse HEAD (default)
+make k8s-apply-dev          # IMAGE_TAG=git rev-parse HEAD (default; short SHA → full)
 make k8s-redeploy-dev       # GHA build → apply with current HEAD SHA
 ```
 
+`IMAGE_TAG`가 short SHA(7)나 git ref이면 `scripts/resolve-image-tag.sh`로 full commit SHA로 펼친다. GHCR에는 full SHA(+ short)로 태그한다 — short만 넣으면 ImagePullBackOff가 난다.
 컨테이너 이미지 빌드·GHCR push는 GitHub Actions — [## Commands](#commands) 참조.
 
 `k8s-apply-*`는 overlay 한 번으로 **Garage + runtime 스택**을 함께 적용한다. `jwt-keys`·`registry-creds` secret이 없으면 idempotent하게 생성한다. **`s3-creds`**는 kustomize가 Garage bootstrap credential과 함께 생성한다 — 외부 S3 사용 시 `make s3-secret`으로 덮어쓴다. `registry-creds`는 `GITHUB_USER`/`GITHUB_PAT`가 없을 때 `gh auth token --user $(GHCR_USER)`로 시도(`REGISTRY`의 GHCR owner, 기본 `yoosungung`). 수동 갱신: `GITHUB_USER=... GITHUB_PAT=... make registry-secret`
@@ -107,8 +108,9 @@ Garage StatefulSet은 그대로 두거나 `kubectl -n runtime scale sts/garage -
 
 ## 컨테이너 이미지 (GHCR)
 
-- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` — **`:latest` 미사용**. 배포 시 `IMAGE_TAG`(`git rev-parse HEAD` 기본)로 kustomize `__IMAGE_TAG__` 치환(`make k8s-apply-*`). base overlay의 모든 runtime `Deployment`는 `imagePullPolicy: IfNotPresent` — immutable tag이므로 노드 캐시 안전.
-- **빌드**: GitHub Actions (`.github/workflows/build-images.yml`) — Release publish 또는 `workflow_dispatch`
+- **레지스트리**: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` — **`:latest` 미사용**. 배포 시 `IMAGE_TAG`(`git rev-parse HEAD` 기본; short SHA는 full로 정규화)로 kustomize `__IMAGE_TAG__` 치환(`make k8s-apply-*`). base overlay의 모든 runtime `Deployment`는 `imagePullPolicy: IfNotPresent` — immutable tag이므로 노드 캐시 안전.
+- **빌드**: GitHub Actions (`.github/workflows/build-images.yml`) — Release publish 또는 `workflow_dispatch`. **full SHA + short(7) 동시 push.**
+- **기존 digest에 short 태그 추가**: `gh workflow run retag-ghcr-short-sha.yml -f full_sha=<40-char>` (이미 클러스터가 short를 바라볼 때).
 - **overlays**: `components/ghcr-images`로 GHCR remap + tag placeholder. dev/stage/prod 공통.
 
 ## Ingress 호스트
@@ -285,8 +287,8 @@ PR/push: [`.github/workflows/hermes-base-oci.yml`](../.github/workflows/hermes-b
 | 트리거 | 워크플로 | push |
 |--------|----------|------|
 | PR (path 필터) | [`path-graph-rag-mcp.yml`](../.github/workflows/path-graph-rag-mcp.yml) | 없음 (build 검증만) |
-| `main` push / `workflow_dispatch` | 동일 | `:<git-sha>` |
-| `workflow_dispatch` / Release | `build-images.yml` (8종 일괄) | `:<git-sha>` |
+| `main` push / `workflow_dispatch` | 동일 | `:<full-sha>` + `:<short-7>` |
+| `workflow_dispatch` / Release | `build-images.yml` (8종 일괄) | `:<full-sha>` + `:<short-7>` |
 
 ```bash
 make build-path-graph-rag-mcp      # MCP 이미지만 빠르게 GHCR push
@@ -295,7 +297,7 @@ make build-path-graph-rag-mcp-wait
 
 `backend`·`agent-base`·`path-graph-rag-mcp`는 `path-graph` Python wheel이 필요하다. **release wheel URL pin** (`path-graph==0.1.6` + GitHub Release asset). GHA/Docker는 `UV_INDEX_GITHUB_*`로 private release 다운로드 후 `uv sync`/`uv pip install` — path-graph repo checkout·`path-graph/pipeline` staging 없음. 로컬 sibling 개발: `cp uv.override.toml.example uv.override.toml`. 로컬 Docker: `docker build` 시 `--build-arg UV_INDEX_GITHUB_PASSWORD=$(gh auth token)` (backend·agent-base·path-graph-rag-mcp).
 
-태그: `ghcr.io/yoosungung/agent-runtime/<service>:<git-sha>` (`:latest` push 없음)
+태그: `ghcr.io/yoosungung/agent-runtime/<service>:<full-git-sha>` 및 동일 digest의 `:<short-7>` (`:latest` push 없음). short만 배포된 클러스터 복구: `gh workflow run retag-ghcr-short-sha.yml -f full_sha=<40-char>`.
 
 ```bash
 # 1) 변경분을 원격에 push (GHA는 checkout ref 기준)
@@ -305,7 +307,7 @@ git push origin main
 make build-images
 make build-images-wait   # 또는 gh run watch <run-id>
 
-# 3) 클러스터에 반영 (IMAGE_TAG 기본값 = 현재 HEAD SHA)
+# 3) 클러스터에 반영 (IMAGE_TAG 기본값 = 현재 HEAD SHA; short는 full로 정규화)
 make k8s-apply-dev
 # 또는 빌드+적용 일괄:
 make k8s-redeploy-dev
