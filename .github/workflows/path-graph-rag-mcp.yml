@@ -57,13 +57,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Image tags (full + short SHA)
+        id: image_tags
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${OWNER}/agent-runtime/path-graph-rag-mcp:${GITHUB_SHA}"
+            echo "ghcr.io/${OWNER}/agent-runtime/path-graph-rag-mcp:${short_sha}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ghcr.io/${{ github.repository_owner }}/agent-runtime/path-graph-rag-mcp:${{ github.sha }}
+          tags: ${{ steps.image_tags.outputs.tags }}
           build-args: |
             UV_INDEX_GITHUB_PASSWORD=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha

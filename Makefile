@@ -2,7 +2,10 @@ REGISTRY  ?= ghcr.io/yoosungung/agent-runtime
 GHCR_USER ?= $(shell echo $(REGISTRY) | cut -d/ -f2)
 NAMESPACE ?= runtime
 S3_BUCKET ?= agent-bundles
+# Default = full HEAD. Short SHA / git ref expands via scripts/resolve-image-tag.sh
+# (GHCR build-images tags full github.sha; short-only IMAGE_TAG caused ImagePullBackOff).
 IMAGE_TAG ?= $(shell git rev-parse HEAD)
+override IMAGE_TAG := $(shell ./scripts/resolve-image-tag.sh "$(IMAGE_TAG)")
 
 .PHONY: help sync lint typecheck test fmt \
         registry-secret ensure-registry-secret _bootstrap-registry-secret \

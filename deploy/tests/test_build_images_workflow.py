@@ -36,6 +36,22 @@ def test_build_images_workflow_includes_path_graph_rag_mcp_matrix() -> None:
     assert "deploy/examples/custom-image/path-graph-rag-mcp/Dockerfile" in text
 
 
+def test_build_images_workflow_pushes_full_and_short_sha_tags() -> None:
+    """Short SHA (7) alone 404s on GHCR if only github.sha was pushed — dual-tag."""
+    text = WORKFLOW.read_text()
+    assert "GITHUB_SHA:0:7" in text
+    assert "short_sha" in text
+    assert "${{ github.sha }}" in text or "github.sha" in text
+
+
+def test_retag_short_sha_workflow_exists() -> None:
+    workflow = REPO_ROOT / ".github/workflows/retag-ghcr-short-sha.yml"
+    text = workflow.read_text()
+    assert "workflow_dispatch" in text
+    assert "imagetools create" in text or "crane copy" in text
+    assert "full_sha" in text
+
+
 def test_agent_base_dockerfile_uses_wheel_auth_not_copy() -> None:
     text = AGENT_DOCKERFILE.read_text()
     assert "COPY path-graph/pipeline" not in text
